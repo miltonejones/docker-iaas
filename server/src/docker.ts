@@ -36,6 +36,27 @@ export interface DockerReachability {
   error?: string;
 }
 
+const DOCKYARD_NET = 'dockyard-net';
+
+/** Ensure the shared dockyard network exists so containers and lambda
+ *  functions can address each other by container name. */
+export async function ensureNetwork(): Promise<void> {
+  const nets = await docker.listNetworks();
+  if (nets.some((n) => n.Name === DOCKYARD_NET)) return;
+  await docker.createNetwork({ Name: DOCKYARD_NET, Driver: 'bridge' });
+}
+
+/** NetworkingConfig fragment that attaches a container to the shared network. */
+export function dockyardNetworkConfig(): { NetworkingConfig: { EndpointsConfig: Record<string, {}> } } {
+  return {
+    NetworkingConfig: {
+      EndpointsConfig: {
+        [DOCKYARD_NET]: {},
+      },
+    },
+  };
+}
+
 export async function pingDocker(): Promise<DockerReachability> {
   try {
     const info = await docker.version();

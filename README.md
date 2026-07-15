@@ -1,8 +1,8 @@
-# Docker IaaS Console
+# Dockyard
 
-A personal **Infrastructure-as-a-Service** console for Docker — stand up and
-manage containers from a gallery of presets in an **EC2-style** interface, with
-**disk usage front and center** and reported continuously.
+A personal container management console — stand up and manage containers from a
+gallery of presets in an **EC2-style** interface, with **disk usage front and
+center** and reported continuously. Plus on-demand lambda functions.
 
 ![stack](https://img.shields.io/badge/stack-Node%20%2B%20React%20%2B%20dockerode-4f8cff)
 
@@ -30,7 +30,7 @@ manage containers from a gallery of presets in an **EC2-style** interface, with
 ## Architecture
 
 ```
-docker-iaas/
+dockyard/
   server/   Express + dockerode REST API and SSE usage stream (TypeScript, ESM)
   web/      React + Vite dashboard (TypeScript)
   scripts/  dev launcher that runs both together
@@ -47,7 +47,7 @@ statically by the server in production.
 Requires Node 18.15+ (for `fs.statfs`) and a reachable Docker daemon.
 
 ```bash
-cd docker-iaas
+cd dockyard
 npm install          # installs both workspaces
 npm run dev          # server on :4300, web on :5173 (proxied)
 # open http://localhost:5173
@@ -63,7 +63,7 @@ npm start            # http://localhost:4300
 ## Run the console itself in Docker
 
 ```bash
-cd docker-iaas
+cd dockyard
 docker compose up --build
 # open http://localhost:4300
 ```

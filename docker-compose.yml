@@ -1,7 +1,7 @@
 services:
   console:
     build: .
-    container_name: docker-iaas-console
+    container_name: dockyard
     ports:
       - '4300:4300'
     environment:

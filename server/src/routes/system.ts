@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { pingDocker } from '../docker.js';
+import { pingDocker, docker } from '../docker.js';
 import { PRESETS } from '../presets.js';
 import { getUsageSnapshot } from '../usage.js';
 
@@ -18,6 +18,23 @@ systemRouter.get('/presets', (_req: Request, res: Response) => {
 // One-shot usage snapshot.
 systemRouter.get('/usage', async (_req: Request, res: Response) => {
   res.json(await getUsageSnapshot());
+});
+
+// Return host ports currently published by running containers, so the launch
+// flow can warn about conflicts before creating a new container.
+systemRouter.get('/used-ports', async (_req: Request, res: Response) => {
+  try {
+    const list = await docker.listContainers({ all: true });
+    const used = new Set<number>();
+    for (const c of list) {
+      for (const p of c.Ports || []) {
+        if (p.PublicPort) used.add(p.PublicPort);
+      }
+    }
+    res.json({ ports: Array.from(used).sort((a, b) => a - b) });
+  } catch (err) {
+    res.status(502).json({ error: (err as Error).message });
+  }
 });
 
 // Continuous usage reporting over Server-Sent Events. The dashboard subscribes

@@ -7,11 +7,12 @@ interface Props {
   containers: Container[];
   busy: boolean;
   onChanged: () => void;
+  onSelect: (c: Container) => void;
 }
 
 const RUNNING = new Set(['running', 'restarting']);
 
-export function Instances({ containers, busy, onChanged }: Props) {
+export function Instances({ containers, busy, onChanged, onSelect }: Props) {
   const [pending, setPending] = useState<string | null>(null);
   const [logsFor, setLogsFor] = useState<Container | null>(null);
   const [logText, setLogText] = useState<string>('');
@@ -70,7 +71,13 @@ export function Instances({ containers, busy, onChanged }: Props) {
                   <tr key={c.id}>
                     <td>
                       <span className={`dot dot--${running ? 'up' : 'down'}`} />
-                      <span className="mono">{c.name || c.id.slice(0, 12)}</span>
+                      <button
+                        className="instance-link"
+                        onClick={() => onSelect(c)}
+                        title="View details"
+                      >
+                        {c.name || c.id.slice(0, 12)}
+                      </button>
                     </td>
                     <td className="mono muted">{c.image}</td>
                     <td>

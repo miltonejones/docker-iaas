@@ -72,6 +72,56 @@ export interface DockerUsage {
   totalReclaimable: number;
 }
 
+export interface VolumeMount {
+  source: string;
+  destination: string;
+  mode: string;
+  type: string;
+}
+
+export interface ContainerDetail {
+  id: string;
+  name: string;
+  image: string;
+  state: string;
+  status: string;
+  created: number;
+  ports: ContainerPort[];
+  env: string[];
+  volumes: VolumeMount[];
+  restartPolicy: string;
+  labels: Record<string, string>;
+  sizeRw: number;
+  sizeRootFs: number;
+}
+
+export interface LambdaFunction {
+  id: string;
+  name: string;
+  runtime: string;
+  code: string;
+  packages: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LambdaRuntime {
+  id: string;
+  name: string;
+  image: string;
+  icon: string;
+}
+
+export interface LambdaResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  durationMs: number;
+  runtime: string;
+  timestamp: string;
+  error?: string;
+}
+
 export interface UsageSnapshot {
   timestamp: string;
   host: HostDisk | null;
