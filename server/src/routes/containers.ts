@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import type Docker from 'dockerode';
-import { docker } from '../docker.js';
+import { docker, dockyardNetworkConfig } from '../docker.js';
 import { findPreset } from '../presets.js';
 
 export const containersRouter = Router();
@@ -54,6 +54,7 @@ interface LaunchBody {
   name?: string;
   ports?: { container: string; host: number }[];
   env?: { key: string; value: string }[];
+  volumes?: string[];
   autoStart?: boolean;
 }
 
@@ -83,6 +84,22 @@ containersRouter.post('/', async (req: Request, res: Response) => {
       .filter((e) => e.key)
       .map((e) => `${e.key}=${e.value}`);
 
+    // Build volume mounts from the preset (or explicit request).
+    // Named volumes are created automatically by Docker and survive container
+    // removal, so database data persists across recreate cycles.
+    const volumePaths = body.volumes ?? preset?.volumes ?? [];
+    const containerName = body.name || `${preset?.id ?? 'container'}-${Math.random().toString(36).slice(2, 8)}`;
+    const mounts = volumePaths.length > 0
+      ? volumePaths.map((dest) => {
+          const slug = dest.replace(/^\//, '').replace(/\//g, '-');
+          return {
+            Type: 'volume' as const,
+            Source: `iaas-${containerName}-${slug}`,
+            Target: dest,
+          };
+        })
+      : undefined;
+
     const container = await docker.createContainer({
       Image: image,
       name: body.name || undefined,
@@ -90,12 +107,13 @@ containersRouter.post('/', async (req: Request, res: Response) => {
       ExposedPorts: Object.keys(exposedPorts).length ? exposedPorts : undefined,
       Labels: preset ? { 'iaas.preset': preset.id } : undefined,
       // Keep interactive OS/runtime images alive so they show as "running".
-      Tty: preset?.interactive ?? false,
-      OpenStdin: preset?.interactive ?? false,
+      Tty: preset ? ['ubuntu', 'debian', 'alpine', 'fedora', 'rockylinux', 'archlinux', 'node', 'python'].includes(preset.id) : false,
       HostConfig: {
         PortBindings: Object.keys(portBindings).length ? portBindings : undefined,
         RestartPolicy: { Name: 'unless-stopped' },
+        Mounts: mounts,
       },
+      ...dockyardNetworkConfig(),
     });
 
     if (body.autoStart !== false) {
@@ -151,6 +169,45 @@ containersRouter.delete('/:id', async (req: Request, res: Response) => {
   try {
     await docker.getContainer(req.params.id).remove({ force, v: true });
     res.json({ ok: true });
+  } catch (err) {
+    res.status(502).json({ error: (err as Error).message });
+  }
+});
+
+// Full container detail (inspect) for the drill-down panel.
+containersRouter.get('/:id/inspect', async (req: Request, res: Response) => {
+  try {
+    const data = await docker.getContainer(req.params.id).inspect();
+    const detail = {
+      id: data.Id,
+      name: (data.Name || '').replace(/^\//, ''),
+      image: data.Config?.Image ?? '',
+      state: data.State?.Status ?? 'unknown',
+      status: data.State?.Status ?? '',
+      created: new Date(data.Created).getTime() / 1000,
+      ports: (data.NetworkSettings?.Ports
+        ? Object.entries(data.NetworkSettings.Ports).flatMap(([key, bindings]) => {
+            const [port, proto] = key.split('/');
+            return (bindings || []).map((b) => ({
+              privatePort: Number(port),
+              publicPort: b?.HostPort ? Number(b.HostPort) : undefined,
+              type: proto || 'tcp',
+            }));
+          })
+        : []),
+      env: data.Config?.Env ?? [],
+      volumes: (data.Mounts || []).map((m) => ({
+        source: m.Source ?? '',
+        destination: m.Destination ?? '',
+        mode: m.Mode ?? '',
+        type: m.Type ?? 'volume',
+      })),
+      restartPolicy: data.HostConfig?.RestartPolicy?.Name ?? 'no',
+      labels: data.Config?.Labels ?? {},
+      sizeRw: (data as unknown as { SizeRw?: number }).SizeRw ?? 0,
+      sizeRootFs: (data as unknown as { SizeRootFs?: number }).SizeRootFs ?? 0,
+    };
+    res.json(detail);
   } catch (err) {
     res.status(502).json({ error: (err as Error).message });
   }

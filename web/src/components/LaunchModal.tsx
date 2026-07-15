@@ -1,36 +1,65 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Preset } from '../types';
 import { api, type LaunchRequest } from '../api';
-import { diskImpact } from '../format';
 
 interface Props {
   preset: Preset;
-  freeBytes: number | null;
   onClose: () => void;
   onLaunched: () => void;
+  /** Pre-fill overrides for relaunch (from detail view). */
+  prefill?: { name?: string; ports?: { container: string; host: number; label?: string }[]; env?: { key: string; value: string }[] };
+  /** If set, this container will be removed before launching the new one. */
+  replaceId?: string;
 }
 
-export function LaunchModal({ preset, freeBytes, onClose, onLaunched }: Props) {
-  const [name, setName] = useState(`${preset.id}-${Math.random().toString(36).slice(2, 6)}`);
-  const [ports, setPorts] = useState(preset.ports.map((p) => ({ ...p })));
-  const [env, setEnv] = useState(preset.env.map((e) => ({ ...e })));
+export function LaunchModal({ preset, onClose, onLaunched, prefill, replaceId }: Props) {
+  const [name, setName] = useState(prefill?.name || `${preset.id}-${Math.random().toString(36).slice(2, 6)}`);
+  const [ports, setPorts] = useState(
+    (prefill?.ports ?? preset.ports).map((p) => ({ ...p })),
+  );
+  const [env, setEnv] = useState(
+    (prefill?.env ?? preset.env).map((e) => ({ ...e })),
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [usedPorts, setUsedPorts] = useState<Set<number>>(new Set());
+
+  // Fetch used ports for conflict detection.
+  useEffect(() => {
+    api.usedPorts().then(({ ports: list }) => setUsedPorts(new Set(list))).catch(() => {});
+  }, []);
 
   const missingRequired = env.some((e) => e.required && !e.value.trim());
-  const impact = diskImpact(preset.diskImpact, freeBytes);
+
+  const conflictingPorts = ports
+    .filter((p) => p.host > 0 && usedPorts.has(p.host))
+    .map((p) => p.host);
 
   async function submit() {
     setSubmitting(true);
     setError(null);
+
+    if (conflictingPorts.length > 0) {
+      setError(`Host port(s) already in use: ${conflictingPorts.join(', ')}. Change them to avoid conflicts.`);
+      setSubmitting(false);
+      return;
+    }
+
     const body: LaunchRequest = {
       presetId: preset.id,
       name: name.trim() || undefined,
-      ports: ports.map((p) => ({ container: p.container, host: p.host })),
+      ports: ports
+        .filter((p) => p.container.trim() && p.host > 0)
+        .map((p) => ({ container: p.container.trim(), host: p.host })),
       env: env.map((e) => ({ key: e.key, value: e.value })),
+      volumes: preset.volumes,
       autoStart: true,
     };
     try {
+      // If replacing, remove the old container first.
+      if (replaceId) {
+        await api.remove(replaceId, true);
+      }
       await api.launch(body);
       onLaunched();
       onClose();
@@ -52,38 +81,25 @@ export function LaunchModal({ preset, freeBytes, onClose, onLaunched }: Props) {
           </button>
         </div>
 
-        {impact && (
-          <div className={`impact-banner impact--${impact.level}`}>
-            <span className="impact-banner__icon" aria-hidden>
-              💾
-            </span>
-            <div>
-              <strong>Disk impact ≈ {impact.onDiskLabel}</strong> on disk
-              <span className="muted"> · {impact.downloadLabel} download</span>
-              {impact.percentOfFree != null && (
-                <div className="impact-banner__sub">
-                  {impact.fits
-                    ? `${impact.percentOfFree < 0.1 ? '<0.1' : impact.percentOfFree.toFixed(1)}% of your current free space`
-                    : 'This image is larger than your remaining free space.'}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
         <label className="field">
           <span>Instance name</span>
           <input value={name} onChange={(e) => setName(e.target.value)} spellCheck={false} />
         </label>
 
-        {ports.length > 0 && (
-          <fieldset className="field">
-            <legend>Port mappings (host → container)</legend>
-            {ports.map((p, i) => (
-              <div className="port-row" key={p.container}>
+        <fieldset className="field">
+          <legend>Port mappings (host → container)</legend>
+          {ports.length === 0 && (
+            <p className="muted empty-sm">No ports mapped. Add one below to make the instance reachable.</p>
+          )}
+          {ports.map((p, i) => {
+            const conflict = p.host > 0 && usedPorts.has(p.host);
+            return (
+              <div className={`port-row${conflict ? ' port-row--conflict' : ''}`} key={i}>
                 <input
                   type="number"
                   value={p.host}
+                  placeholder="host"
+                  className={conflict ? 'input--conflict' : ''}
                   onChange={(e) => {
                     const next = [...ports];
                     next[i] = { ...p, host: Number(e.target.value) };
@@ -91,12 +107,52 @@ export function LaunchModal({ preset, freeBytes, onClose, onLaunched }: Props) {
                   }}
                 />
                 <span className="arrow">→</span>
-                <code>{p.container}</code>
+                <input
+                  className={`port-container${conflict ? ' input--conflict' : ''}`}
+                  value={p.container}
+                  placeholder="80/tcp"
+                  onChange={(e) => {
+                    const next = [...ports];
+                    next[i] = { ...p, container: e.target.value };
+                    setPorts(next);
+                  }}
+                  onBlur={(e) => {
+                    const v = e.target.value.trim();
+                    // Auto-suffix bare numbers with /tcp.
+                    if (/^\d+$/.test(v)) {
+                      const next = [...ports];
+                      next[i] = { ...p, container: `${v}/tcp` };
+                      setPorts(next);
+                    }
+                  }}
+                />
                 {p.label && <span className="muted">{p.label}</span>}
+                {conflict && <span className="port-conflict-msg">in use</span>}
+                <button
+                  type="button"
+                  className="btn btn--sm btn--ghost port-remove"
+                  title="Remove this mapping"
+                  onClick={() => {
+                    const next = ports.filter((_, idx) => idx !== i);
+                    setPorts(next);
+                  }}
+                >
+                  ×
+                </button>
               </div>
-            ))}
-          </fieldset>
-        )}
+            );
+          })}
+          <button
+            type="button"
+            className="btn btn--sm"
+            style={{ marginTop: '8px' }}
+            onClick={() => {
+              setPorts([...ports, { container: '', host: 0, label: '' }]);
+            }}
+          >
+            + Add port
+          </button>
+        </fieldset>
 
         {env.length > 0 && (
           <fieldset className="field">
@@ -121,22 +177,31 @@ export function LaunchModal({ preset, freeBytes, onClose, onLaunched }: Props) {
           </fieldset>
         )}
 
+        {(preset.volumes ?? []).length > 0 && (
+          <fieldset className="field">
+            <legend>Persistent volumes</legend>
+            <p className="muted" style={{ fontSize: '12px', margin: '0 0 8px' }}>
+              Named Docker volumes that survive container removal.
+            </p>
+            {preset.volumes!.map((v) => (
+              <div className="port-row" key={v}>
+                <code style={{ flex: 1 }}>{v}</code>
+                <span className="muted">→ named volume (auto-created)</span>
+              </div>
+            ))}
+          </fieldset>
+        )}
+
         {error && <p className="usage__error">⚠ {error}</p>}
 
         <div className="modal__foot">
           <span className="muted mono">{preset.image}</span>
           <button
             className="btn btn--primary"
-            disabled={submitting || missingRequired || (impact ? !impact.fits : false)}
+            disabled={submitting || missingRequired}
             onClick={submit}
           >
-            {submitting
-              ? 'Launching…'
-              : impact && !impact.fits
-                ? 'Not enough free disk'
-                : missingRequired
-                  ? 'Fill required fields'
-                  : 'Launch instance'}
+            {submitting ? 'Launching…' : missingRequired ? 'Fill required fields' : 'Launch instance'}
           </button>
         </div>
       </div>

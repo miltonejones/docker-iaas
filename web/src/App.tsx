@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { BrowserRouter, NavLink, Route, Routes } from 'react-router-dom';
 import type { Container, Preset, UsageSnapshot } from './types';
 import { api, subscribeUsage } from './api';
-import { UsageHeader } from './components/UsageHeader';
-import { Gallery } from './components/Gallery';
-import { Instances } from './components/Instances';
-import { LaunchModal } from './components/LaunchModal';
 import { bytes } from './format';
+import { HomePage } from './pages/Home';
+import { ContainersPage } from './pages/Containers';
+import { FunctionsPage } from './pages/Functions';
 
 export function App() {
   const [presets, setPresets] = useState<Preset[]>([]);
@@ -14,7 +14,6 @@ export function App() {
   const [live, setLive] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pruning, setPruning] = useState(false);
-  const [launchPreset, setLaunchPreset] = useState<Preset | null>(null);
   const lastBeat = useRef<number>(0);
 
   const refreshContainers = useCallback(async () => {
@@ -25,14 +24,13 @@ export function App() {
     }
   }, []);
 
-  // Initial load of the static-ish data.
+  // Initial load.
   useEffect(() => {
     api.presets().then(setPresets).catch(console.error);
     refreshContainers();
   }, [refreshContainers]);
 
-  // Live disk/Docker usage over SSE; fall back to a "reconnecting" indicator if
-  // the stream goes quiet for more than two poll intervals.
+  // Live disk/Docker usage over SSE.
   useEffect(() => {
     const unsub = subscribeUsage((snap) => {
       setUsage(snap);
@@ -48,8 +46,7 @@ export function App() {
     };
   }, []);
 
-  // Refresh instance list on a slower cadence to catch state changes (a DB that
-  // finished starting, a crash, sizes growing) without a full page reload.
+  // Refresh instance list on a slower cadence.
   useEffect(() => {
     const t = setInterval(refreshContainers, 6000);
     return () => clearInterval(t);
@@ -74,42 +71,75 @@ export function App() {
   }
 
   const running = containers.filter((c) => c.state === 'running').length;
-  const freeBytes = usage?.host?.freeBytes ?? null;
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <div className="brand">
-          <span className="brand__mark">◈</span>
-          <div>
-            <h1>Docker IaaS Console</h1>
-            <p className="brand__sub">Personal infrastructure, EC2-style.</p>
+    <BrowserRouter>
+      <div className="app">
+        <header className="topbar">
+          <div className="brand">
+            <span className="brand__mark">◈</span>
+            <div>
+              <h1>Dockyard</h1>
+              <p className="brand__sub">Personal container management, EC2-style.</p>
+            </div>
           </div>
-        </div>
-        <div className="topbar__stats">
-          <span>
-            <strong>{running}</strong> running
-          </span>
-          <span>
-            <strong>{containers.length}</strong> total
-          </span>
-        </div>
-      </header>
+          <div className="topbar__stats">
+            <span>
+              <strong>{running}</strong> running
+            </span>
+            <span>
+              <strong>{containers.length}</strong> total
+            </span>
+          </div>
+        </header>
 
-      <main className="content">
-        <UsageHeader snapshot={usage} live={live} onPrune={onPrune} pruning={pruning} />
-        <Instances containers={containers} busy={busy} onChanged={onChanged} />
-        <Gallery presets={presets} onLaunch={setLaunchPreset} freeBytes={freeBytes} />
-      </main>
+        <div className="app-body">
+          <nav className="sidebar">
+            <NavLink to="/" end className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`}>
+              <span className="sidebar__icon">◈</span>
+              Home
+            </NavLink>
+            <NavLink to="/containers" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`}>
+              <span className="sidebar__icon">📦</span>
+              Containers
+            </NavLink>
+            <NavLink to="/functions" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`}>
+              <span className="sidebar__icon">⚡</span>
+              Functions
+            </NavLink>
+          </nav>
 
-      {launchPreset && (
-        <LaunchModal
-          preset={launchPreset}
-          freeBytes={freeBytes}
-          onClose={() => setLaunchPreset(null)}
-          onLaunched={onChanged}
-        />
-      )}
-    </div>
+          <main className="content">
+            <Routes>
+              <Route
+                path="/"
+                element={
+                  <HomePage
+                    snapshot={usage}
+                    live={live}
+                    onPrune={onPrune}
+                    pruning={pruning}
+                    runningCount={running}
+                    totalCount={containers.length}
+                  />
+                }
+              />
+              <Route
+                path="/containers"
+                element={
+                  <ContainersPage
+                    containers={containers}
+                    presets={presets}
+                    busy={busy}
+                    onChanged={onChanged}
+                  />
+                }
+              />
+              <Route path="/functions" element={<FunctionsPage />} />
+            </Routes>
+          </main>
+        </div>
+      </div>
+    </BrowserRouter>
   );
 }
