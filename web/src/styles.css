@@ -1230,11 +1230,12 @@ input:focus {
   z-index: 0;
   opacity: 0;
   background: radial-gradient(
-    240px circle at var(--mx, 50%) var(--my, 50%),
-    var(--accent-glow),
-    transparent 60%
+    260px circle at var(--mx, 50%) var(--my, 50%),
+    rgba(37, 99, 235, 0.22),
+    rgba(37, 99, 235, 0.08) 38%,
+    transparent 70%
   );
-  transition: opacity 0.25s var(--ease);
+  transition: opacity 0.2s var(--ease);
 }
 .glow:hover::after {
   opacity: 1;
