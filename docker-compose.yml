@@ -1,0 +1,17 @@
+services:
+  console:
+    build: .
+    container_name: docker-iaas-console
+    ports:
+      - '4300:4300'
+    environment:
+      # Where to read host disk usage from. When running the console inside a
+      # container, mount the host root read-only (below) and point here.
+      HOST_DISK_PATH: /host
+      USAGE_POLL_MS: '5000'
+    volumes:
+      # Manage the host's Docker daemon.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Report the host's real disk usage rather than the container's overlay.
+      - /:/host:ro
+    restart: unless-stopped

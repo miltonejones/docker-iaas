@@ -1,0 +1,15 @@
+{
+  "name": "docker-iaas",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Personal IaaS console for managing Docker instances, EC2-style.",
+  "workspaces": ["server", "web"],
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:server": "npm --workspace server run dev",
+    "dev:web": "npm --workspace web run dev",
+    "build": "npm --workspace web run build && npm --workspace server run build",
+    "start": "npm --workspace server run start",
+    "typecheck": "npm --workspace server run typecheck && npm --workspace web run typecheck"
+  }
+}
