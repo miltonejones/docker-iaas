@@ -19,6 +19,18 @@ export interface PresetEnv {
   description?: string;
 }
 
+/**
+ * Structured disk footprint so the UI can weigh a launch against real free
+ * space rather than showing a vague string. Numbers are approximate for
+ * linux/amd64 and drift by tag/date — they exist to size the *impact*, not to
+ * be exact. `download` is the compressed pull; `onDisk` is what lands on the
+ * host and shows up under the Docker "Images" footprint.
+ */
+export interface DiskImpact {
+  download: number;
+  onDisk: number;
+}
+
 export interface Preset {
   id: string;
   name: string;
@@ -30,9 +42,17 @@ export interface Preset {
   env: PresetEnv[];
   /** Named/anonymous volume mount points to persist data. */
   volumes?: string[];
-  /** Rough at-a-glance pull size, purely informational for the gallery. */
-  approxSize?: string;
+  /** Approximate on-disk / download footprint, in bytes. */
+  diskImpact?: DiskImpact;
+  /**
+   * Bare shell images (OS bases, language runtimes) need a TTY to stay running
+   * once launched detached — otherwise the default shell exits immediately.
+   */
+  interactive?: boolean;
 }
+
+/** MB → bytes helper for the approximate figures below (1 MB = 1024 KB). */
+const mb = (n: number): number => Math.round(n * 1024 * 1024);
 
 export const PRESETS: Preset[] = [
   {
@@ -44,7 +64,7 @@ export const PRESETS: Preset[] = [
     icon: '🌐',
     ports: [{ container: '80/tcp', host: 8080, label: 'HTTP' }],
     env: [],
-    approxSize: '~190 MB',
+    diskImpact: { download: mb(70), onDisk: mb(190) },
   },
   {
     id: 'httpd',
@@ -55,7 +75,7 @@ export const PRESETS: Preset[] = [
     icon: '🪶',
     ports: [{ container: '80/tcp', host: 8081, label: 'HTTP' }],
     env: [],
-    approxSize: '~170 MB',
+    diskImpact: { download: mb(60), onDisk: mb(170) },
   },
   {
     id: 'wordpress',
@@ -72,7 +92,7 @@ export const PRESETS: Preset[] = [
       { key: 'WORDPRESS_DB_NAME', value: 'wordpress' },
     ],
     volumes: ['/var/www/html'],
-    approxSize: '~700 MB',
+    diskImpact: { download: mb(270), onDisk: mb(700) },
   },
   {
     id: 'postgres',
@@ -88,7 +108,7 @@ export const PRESETS: Preset[] = [
       { key: 'POSTGRES_DB', value: 'postgres' },
     ],
     volumes: ['/var/lib/postgresql/data'],
-    approxSize: '~430 MB',
+    diskImpact: { download: mb(145), onDisk: mb(430) },
   },
   {
     id: 'mysql',
@@ -103,7 +123,7 @@ export const PRESETS: Preset[] = [
       { key: 'MYSQL_DATABASE', value: 'app' },
     ],
     volumes: ['/var/lib/mysql'],
-    approxSize: '~600 MB',
+    diskImpact: { download: mb(250), onDisk: mb(600) },
   },
   {
     id: 'mongo',
@@ -118,7 +138,7 @@ export const PRESETS: Preset[] = [
       { key: 'MONGO_INITDB_ROOT_PASSWORD', value: '', required: true },
     ],
     volumes: ['/data/db'],
-    approxSize: '~750 MB',
+    diskImpact: { download: mb(280), onDisk: mb(750) },
   },
   {
     id: 'redis',
@@ -130,7 +150,7 @@ export const PRESETS: Preset[] = [
     ports: [{ container: '6379/tcp', host: 6379, label: 'Redis' }],
     env: [],
     volumes: ['/data'],
-    approxSize: '~140 MB',
+    diskImpact: { download: mb(45), onDisk: mb(140) },
   },
   {
     id: 'node',
@@ -141,7 +161,8 @@ export const PRESETS: Preset[] = [
     icon: '🟢',
     ports: [{ container: '3000/tcp', host: 3000, label: 'App' }],
     env: [],
-    approxSize: '~180 MB',
+    interactive: true,
+    diskImpact: { download: mb(65), onDisk: mb(180) },
   },
   {
     id: 'python',
@@ -152,18 +173,155 @@ export const PRESETS: Preset[] = [
     icon: '🐍',
     ports: [{ container: '8000/tcp', host: 8000, label: 'App' }],
     env: [],
-    approxSize: '~130 MB',
+    interactive: true,
+    diskImpact: { download: mb(45), onDisk: mb(130) },
+  },
+
+  // Operating systems — bare boxes you can shell into (`docker exec -it … sh`).
+  // Sorted lightest first. All run detached with a TTY so they stay alive.
+  {
+    id: 'busybox',
+    name: 'BusyBox',
+    category: 'OS',
+    image: 'busybox:latest',
+    description: 'Smallest possible box — a single static binary of Unix tools.',
+    icon: '📦',
+    ports: [],
+    env: [],
+    interactive: true,
+    diskImpact: { download: mb(2), onDisk: mb(4) },
+  },
+  {
+    id: 'alpine',
+    name: 'Alpine',
+    category: 'OS',
+    image: 'alpine:3.20',
+    description: 'Tiny, security-oriented distro with the apk package manager.',
+    icon: '🏔️',
+    ports: [],
+    env: [],
+    interactive: true,
+    diskImpact: { download: mb(3), onDisk: mb(8) },
   },
   {
     id: 'ubuntu',
     name: 'Ubuntu',
     category: 'OS',
     image: 'ubuntu:24.04',
-    description: 'A blank Ubuntu box you can shell into.',
+    description: 'Familiar Debian-based distro with a huge apt ecosystem.',
     icon: '🐧',
     ports: [],
     env: [],
-    approxSize: '~78 MB',
+    interactive: true,
+    diskImpact: { download: mb(28), onDisk: mb(78) },
+  },
+  {
+    id: 'debian-slim',
+    name: 'Debian (slim)',
+    category: 'OS',
+    image: 'debian:12-slim',
+    description: 'Debian stable, trimmed — best size/compatibility trade-off.',
+    icon: '🌀',
+    ports: [],
+    env: [],
+    interactive: true,
+    diskImpact: { download: mb(28), onDisk: mb(75) },
+  },
+  {
+    id: 'debian',
+    name: 'Debian (full)',
+    category: 'OS',
+    image: 'debian:12',
+    description: 'Full Debian stable base with more preinstalled than slim.',
+    icon: '🌀',
+    ports: [],
+    env: [],
+    interactive: true,
+    diskImpact: { download: mb(48), onDisk: mb(117) },
+  },
+  {
+    id: 'amazonlinux',
+    name: 'Amazon Linux',
+    category: 'OS',
+    image: 'amazonlinux:2023',
+    description: 'AWS-tuned RHEL-family base — closest to a real EC2 default.',
+    icon: '🟧',
+    ports: [],
+    env: [],
+    interactive: true,
+    diskImpact: { download: mb(60), onDisk: mb(160) },
+  },
+  {
+    id: 'rockylinux',
+    name: 'Rocky (minimal)',
+    category: 'OS',
+    image: 'rockylinux:9-minimal',
+    description: 'RHEL-compatible enterprise base, trimmed to a minimal set.',
+    icon: '⛰️',
+    ports: [],
+    env: [],
+    interactive: true,
+    diskImpact: { download: mb(35), onDisk: mb(92) },
+  },
+  {
+    id: 'almalinux',
+    name: 'AlmaLinux',
+    category: 'OS',
+    image: 'almalinux:9',
+    description: 'RHEL-compatible full base with the dnf package manager.',
+    icon: '🏛️',
+    ports: [],
+    env: [],
+    interactive: true,
+    diskImpact: { download: mb(70), onDisk: mb(190) },
+  },
+  {
+    id: 'opensuse',
+    name: 'openSUSE Leap',
+    category: 'OS',
+    image: 'opensuse/leap:15',
+    description: 'Enterprise-grade SUSE base with the zypper package manager.',
+    icon: '🦎',
+    ports: [],
+    env: [],
+    interactive: true,
+    diskImpact: { download: mb(45), onDisk: mb(100) },
+  },
+  {
+    id: 'archlinux',
+    name: 'Arch Linux',
+    category: 'OS',
+    image: 'archlinux:latest',
+    description: 'Rolling-release distro with pacman. Grows fast as you add tools.',
+    icon: '🎗️',
+    ports: [],
+    env: [],
+    interactive: true,
+    diskImpact: { download: mb(50), onDisk: mb(170) },
+  },
+  {
+    id: 'fedora',
+    name: 'Fedora',
+    category: 'OS',
+    image: 'fedora:40',
+    description: 'Cutting-edge RHEL-upstream distro; heaviest of the OS bases.',
+    icon: '🎩',
+    ports: [],
+    env: [],
+    interactive: true,
+    diskImpact: { download: mb(90), onDisk: mb(230) },
+  },
+  {
+    id: 'kali',
+    name: 'Kali Linux',
+    category: 'OS',
+    image: 'kalilinux/kali-rolling:latest',
+    description: 'Security/pentest distro. Modest base that balloons with toolsets.',
+    icon: '🐉',
+    ports: [],
+    env: [],
+    interactive: true,
+    diskImpact: { download: mb(130), onDisk: mb(330) },
   },
 ];
 

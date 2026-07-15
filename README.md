@@ -8,9 +8,15 @@ manage containers from a gallery of presets in an **EC2-style** interface, with
 
 ## What it does
 
-- **Launch gallery** — a curated set of "AMI-like" presets (Nginx, Postgres,
-  MySQL, MongoDB, Redis, Node, Python, WordPress, Ubuntu, …). Pick one, tweak
-  ports/env, and launch. Missing images are pulled automatically.
+- **Launch gallery** — a curated set of "AMI-like" presets across Web, Database,
+  Cache, Runtime, and OS categories: services (Nginx, Postgres, MySQL, MongoDB,
+  Redis, WordPress, …) and a full spread of OS bases (BusyBox, Alpine, Ubuntu,
+  Debian, Amazon Linux, Rocky, AlmaLinux, openSUSE, Arch, Fedora, Kali). Pick
+  one, tweak ports/env, and launch. Missing images are pulled automatically.
+- **Disk impact before you launch** — every preset carries an approximate
+  on-disk / download footprint, and the gallery card and launch modal weigh it
+  against your *current free space* live ("≈ 160 MB · 0.06% of free"), flagging
+  heavy pulls and blocking any image that wouldn't fit.
 - **Instance management** — start / stop / restart / remove containers, view
   logs, and see live state, published ports, age, and per-instance writable
   disk size.

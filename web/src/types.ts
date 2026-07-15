@@ -11,6 +11,11 @@ export interface PresetEnv {
   description?: string;
 }
 
+export interface DiskImpact {
+  download: number;
+  onDisk: number;
+}
+
 export interface Preset {
   id: string;
   name: string;
@@ -21,7 +26,8 @@ export interface Preset {
   ports: PresetPort[];
   env: PresetEnv[];
   volumes?: string[];
-  approxSize?: string;
+  diskImpact?: DiskImpact;
+  interactive?: boolean;
 }
 
 export interface ContainerPort {

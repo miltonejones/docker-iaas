@@ -74,6 +74,7 @@ export function App() {
   }
 
   const running = containers.filter((c) => c.state === 'running').length;
+  const freeBytes = usage?.host?.freeBytes ?? null;
 
   return (
     <div className="app">
@@ -98,12 +99,13 @@ export function App() {
       <main className="content">
         <UsageHeader snapshot={usage} live={live} onPrune={onPrune} pruning={pruning} />
         <Instances containers={containers} busy={busy} onChanged={onChanged} />
-        <Gallery presets={presets} onLaunch={setLaunchPreset} />
+        <Gallery presets={presets} onLaunch={setLaunchPreset} freeBytes={freeBytes} />
       </main>
 
       {launchPreset && (
         <LaunchModal
           preset={launchPreset}
+          freeBytes={freeBytes}
           onClose={() => setLaunchPreset(null)}
           onLaunched={onChanged}
         />

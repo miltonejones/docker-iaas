@@ -90,7 +90,8 @@ containersRouter.post('/', async (req: Request, res: Response) => {
       ExposedPorts: Object.keys(exposedPorts).length ? exposedPorts : undefined,
       Labels: preset ? { 'iaas.preset': preset.id } : undefined,
       // Keep interactive OS/runtime images alive so they show as "running".
-      Tty: preset ? ['ubuntu', 'node', 'python'].includes(preset.id) : false,
+      Tty: preset?.interactive ?? false,
+      OpenStdin: preset?.interactive ?? false,
       HostConfig: {
         PortBindings: Object.keys(portBindings).length ? portBindings : undefined,
         RestartPolicy: { Name: 'unless-stopped' },

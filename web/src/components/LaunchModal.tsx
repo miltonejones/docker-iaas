@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import type { Preset } from '../types';
 import { api, type LaunchRequest } from '../api';
+import { diskImpact } from '../format';
 
 interface Props {
   preset: Preset;
+  freeBytes: number | null;
   onClose: () => void;
   onLaunched: () => void;
 }
 
-export function LaunchModal({ preset, onClose, onLaunched }: Props) {
+export function LaunchModal({ preset, freeBytes, onClose, onLaunched }: Props) {
   const [name, setName] = useState(`${preset.id}-${Math.random().toString(36).slice(2, 6)}`);
   const [ports, setPorts] = useState(preset.ports.map((p) => ({ ...p })));
   const [env, setEnv] = useState(preset.env.map((e) => ({ ...e })));
@@ -16,6 +18,7 @@ export function LaunchModal({ preset, onClose, onLaunched }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const missingRequired = env.some((e) => e.required && !e.value.trim());
+  const impact = diskImpact(preset.diskImpact, freeBytes);
 
   async function submit() {
     setSubmitting(true);
@@ -48,6 +51,25 @@ export function LaunchModal({ preset, onClose, onLaunched }: Props) {
             Close
           </button>
         </div>
+
+        {impact && (
+          <div className={`impact-banner impact--${impact.level}`}>
+            <span className="impact-banner__icon" aria-hidden>
+              💾
+            </span>
+            <div>
+              <strong>Disk impact ≈ {impact.onDiskLabel}</strong> on disk
+              <span className="muted"> · {impact.downloadLabel} download</span>
+              {impact.percentOfFree != null && (
+                <div className="impact-banner__sub">
+                  {impact.fits
+                    ? `${impact.percentOfFree < 0.1 ? '<0.1' : impact.percentOfFree.toFixed(1)}% of your current free space`
+                    : 'This image is larger than your remaining free space.'}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         <label className="field">
           <span>Instance name</span>
@@ -105,10 +127,16 @@ export function LaunchModal({ preset, onClose, onLaunched }: Props) {
           <span className="muted mono">{preset.image}</span>
           <button
             className="btn btn--primary"
-            disabled={submitting || missingRequired}
+            disabled={submitting || missingRequired || (impact ? !impact.fits : false)}
             onClick={submit}
           >
-            {submitting ? 'Launching…' : missingRequired ? 'Fill required fields' : 'Launch instance'}
+            {submitting
+              ? 'Launching…'
+              : impact && !impact.fits
+                ? 'Not enough free disk'
+                : missingRequired
+                  ? 'Fill required fields'
+                  : 'Launch instance'}
           </button>
         </div>
       </div>

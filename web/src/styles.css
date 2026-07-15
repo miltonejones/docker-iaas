@@ -594,6 +594,67 @@ input:focus {
   margin: 0;
 }
 
+/* Disk impact (gallery cards + launch modal) --------------------------- */
+.impact {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.impact__size {
+  font-size: 13px;
+  font-weight: 700;
+}
+.impact__pct {
+  font-size: 11px;
+  color: var(--muted);
+}
+.impact--warn {
+  border-color: rgba(242, 181, 68, 0.4);
+}
+.impact--warn .impact__size {
+  color: var(--warn);
+}
+.impact--crit {
+  border-color: rgba(255, 93, 93, 0.45);
+}
+.impact--crit .impact__size {
+  color: var(--crit);
+}
+
+.impact-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+.impact-banner__icon {
+  font-size: 20px;
+  line-height: 1;
+}
+.impact-banner__sub {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
+.impact-banner.impact--warn {
+  border-color: rgba(242, 181, 68, 0.45);
+  background: rgba(242, 181, 68, 0.06);
+}
+.impact-banner.impact--crit {
+  border-color: rgba(255, 93, 93, 0.5);
+  background: rgba(255, 93, 93, 0.08);
+}
+
 @media (max-width: 780px) {
   .usage {
     grid-template-columns: 1fr;

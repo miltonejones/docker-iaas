@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react';
 import type { Preset } from '../types';
+import { diskImpact } from '../format';
 
 interface Props {
   presets: Preset[];
   onLaunch: (preset: Preset) => void;
+  freeBytes: number | null;
 }
 
-export function Gallery({ presets, onLaunch }: Props) {
+export function Gallery({ presets, onLaunch, freeBytes }: Props) {
   const [filter, setFilter] = useState<string>('All');
   const categories = useMemo(
     () => ['All', ...Array.from(new Set(presets.map((p) => p.category)))],
@@ -31,24 +33,42 @@ export function Gallery({ presets, onLaunch }: Props) {
         </div>
       </div>
       <div className="gallery">
-        {shown.map((p) => (
-          <article className="card" key={p.id}>
-            <div className="card__icon" aria-hidden>
-              {p.icon}
-            </div>
-            <div className="card__body">
-              <h3>{p.name}</h3>
-              <p className="card__desc">{p.description}</p>
-              <div className="card__meta">
-                <code>{p.image}</code>
-                {p.approxSize && <span className="card__size">{p.approxSize}</span>}
+        {shown.map((p) => {
+          const impact = diskImpact(p.diskImpact, freeBytes);
+          return (
+            <article className="card" key={p.id}>
+              <div className="card__icon" aria-hidden>
+                {p.icon}
               </div>
-            </div>
-            <button className="btn btn--primary card__launch" onClick={() => onLaunch(p)}>
-              Launch
-            </button>
-          </article>
-        ))}
+              <div className="card__body">
+                <h3>{p.name}</h3>
+                <p className="card__desc">{p.description}</p>
+                <div className="card__meta">
+                  <code>{p.image}</code>
+                </div>
+                {impact && (
+                  <div className={`impact impact--${impact.level}`} title="Approximate on-disk footprint">
+                    <span className="impact__size">{impact.onDiskLabel}</span>
+                    <span className="impact__pct">
+                      {impact.percentOfFree != null
+                        ? impact.fits
+                          ? `${impact.percentOfFree < 0.1 ? '<0.1' : impact.percentOfFree.toFixed(1)}% of free`
+                          : "won't fit"
+                        : 'on disk'}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <button
+                className="btn btn--primary card__launch"
+                disabled={impact ? !impact.fits : false}
+                onClick={() => onLaunch(p)}
+              >
+                Launch
+              </button>
+            </article>
+          );
+        })}
       </div>
     </section>
   );
