@@ -36,7 +36,7 @@ export function Gallery({ presets, onLaunch, freeBytes }: Props) {
         {shown.map((p) => {
           const impact = diskImpact(p.diskImpact, freeBytes);
           return (
-            <article className="card" key={p.id}>
+            <article className="card glow" key={p.id}>
               <div className="card__icon" aria-hidden>
                 {p.icon}
               </div>

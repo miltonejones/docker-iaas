@@ -24,15 +24,15 @@ export function HomePage({ snapshot, live, onPrune, pruning, runningCount, total
       <UsageHeader snapshot={snapshot} live={live} onPrune={onPrune} pruning={pruning} />
 
       <div className="home-cards">
-        <div className="home-card">
+        <div className="home-card glow">
           <span className="home-card__num">{runningCount}</span>
           <span className="home-card__label">Running containers</span>
         </div>
-        <div className="home-card">
+        <div className="home-card glow">
           <span className="home-card__num">{totalCount}</span>
           <span className="home-card__label">Total containers</span>
         </div>
-        <div className="home-card">
+        <div className="home-card glow">
           <span className="home-card__num">{fnCount}</span>
           <span className="home-card__label">Saved functions</span>
         </div>
