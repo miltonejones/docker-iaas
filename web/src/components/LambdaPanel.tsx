@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Container, LambdaFile, LambdaFunction, LambdaResult, LambdaRuntime } from '../types';
 import { api } from '../api';
+import { AssistantBar } from './AssistantBar';
+import { emitRefresh } from '../refresh';
 
 const PLACEHOLDERS: Record<string, string> = {
   node: 'console.log("hello from Node.js");',
@@ -317,6 +319,29 @@ export function LambdaPanel({ functionId: initialFunctionId, onSaved, embedded }
   }
 
   const currentRuntime = runtimes.find((r) => r.id === runtime);
+  const functionAssistantContext = activeId
+    ? `You are the dedicated assistant for the function currently open in Dockyard's editor. Help only with this function unless the user explicitly asks otherwise. Its id is "${activeId}". When changing it, use update_lambda_function with this exact id and preserve any files or settings that are not part of the requested change. Do not create, delete, run, or modify any other resource unless the user explicitly asks.
+
+Current editor state:
+${JSON.stringify({
+  id: activeId,
+  name,
+  runtime,
+  packages,
+  entryPoint,
+  files: filePaths.map((path) => ({ path, content: contents[path] ?? '' })),
+}, null, 2)}`
+    : undefined;
+
+  async function refreshFunctionAfterAssistantChange() {
+    emitRefresh();
+    if (!activeId) return;
+    try {
+      selectFunction(await api.lambdaGetFunction(activeId));
+    } catch {
+      await loadFunctions();
+    }
+  }
 
   return (
     <section className="panel">
@@ -329,7 +354,7 @@ export function LambdaPanel({ functionId: initialFunctionId, onSaved, embedded }
         </div>
       )}
 
-      <div className={`panel-layout${embedded ? ' panel-layout--full' : ''}`}>
+      <div className={`panel-layout${embedded ? (activeId ? ' panel-layout--function-detail' : ' panel-layout--full') : ''}`}>
         {/* Sidebar — function list (hidden in embedded/detail mode) */}
         {!embedded && (
         <aside className="panel-sidebar">
@@ -576,6 +601,15 @@ export function LambdaPanel({ functionId: initialFunctionId, onSaved, embedded }
           )}
 
         </div>
+        {embedded && activeId && functionAssistantContext && (
+          <aside className="function-assistant">
+            <AssistantBar
+              embedded
+              contextPrompt={functionAssistantContext}
+              onChanged={refreshFunctionAfterAssistantChange}
+            />
+          </aside>
+        )}
       </div>
 
       {/* Environment variables modal — stored separately from code, masked by default. */}

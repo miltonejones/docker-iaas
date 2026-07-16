@@ -12,6 +12,8 @@ import { bucketsRouter } from './routes/buckets.js';
 import { gatewayRouter } from './routes/gateway.js';
 import { volumesRouter } from './routes/volumes.js';
 import { assistantRouter } from './routes/assistant.js';
+import { hostFilesRouter } from './routes/hostFiles.js';
+import { hostBuildsRouter } from './routes/hostBuilds.js';
 import { gatewayProxyRouter } from './gatewayProxy.js';
 import { initDb } from './db.js';
 import { connectToRelay } from './relay.js';
@@ -43,6 +45,8 @@ app.use('/api/system', systemRouter);
 app.use('/api/lambda', lambdaRouter);
 app.use('/api/gateway', gatewayRouter);
 app.use('/api/volumes', volumesRouter);
+app.use('/api/host-files', hostFilesRouter);
+app.use('/api/host-builds', hostBuildsRouter);
 app.use('/api/assistant', assistantRouter);
 
 // Serve the built frontend in production (web/dist), if present.

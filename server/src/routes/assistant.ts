@@ -18,6 +18,7 @@ import {
 } from '../db.js';
 import { getS3Client } from '../minio.js';
 import { PRESETS } from '../presets.js';
+import { listHostBuildPresets } from './hostBuilds.js';
 
 export const assistantRouter = Router();
 
@@ -46,7 +47,7 @@ const SYSTEM = `You are the Dockyard.ai assistant. You translate a user's natura
 
 Rules:
 - Always call a tool rather than describing what you would do. Never invent a resource id.
-- If the user names a resource by a friendly name/description rather than an id, and you don't already have that id from the user's message or an earlier tool result, first call the matching list_* tool to look it up (list_containers, list_functions, list_gateway_routes, list_buckets, list_images — these run automatically, no confirmation needed). If exactly one result matches, use its id. If there's no match or more than one plausible match, ask the user to clarify rather than guessing.
+- If the user names a resource by a friendly name/description rather than an id, and you don't already have that id from the user's message or an earlier tool result, first call the matching list_* tool to look it up (list_containers, list_functions, list_gateway_routes, list_buckets, list_images, list_host_build_presets — these run automatically, no confirmation needed). If exactly one result matches, use its id. If there's no match or more than one plausible match, ask the user to clarify rather than guessing.
 - When the user refers to a resource vaguely ("the function", "it", "that one", "this bucket") without naming it, first check whether an earlier message or tool result in this same conversation already established which one. If exactly one resource was clearly the subject of the recent exchange, use its id directly without re-listing or re-asking. Only fall back to list_* or asking the user to clarify when no such resource is evident from the conversation so far.
 - When the user asks what a function does or wants to see its code, call read_function with its id — list_functions only returns id/name/runtime, not the source code. read_function runs automatically (no confirmation needed) and returns the full function details including code, runtime, packages, and entry point.
 - Before editing a file that might already exist in a bucket (e.g. "change the title", "add a button", "fix the CSS"), call list_bucket_objects and read_bucket_object first and base the edit on the real current content — never blindly regenerate a file from scratch when the request implies an existing one. write_bucket_object always replaces a file's entire content, so the new content you send must include everything you want kept, not just the changed part.
@@ -57,7 +58,9 @@ Rules:
 - gateway route "pathPattern" is matched by EXACT string equality against the incoming request path (with the route's own name already stripped from the front) — there is no wildcard, glob, or prefix support. A trailing "/*" or "/:id" will never match anything real; do not use them. To match every path and method under a route (a whole static site, or a REST resource with multiple sub-paths like "/todos" and "/todos/{id}"), omit both "method" and "pathPattern" entirely rather than guessing a pattern.
 - To host a static website on a BUCKET (the default, simplest path): create the bucket first if it doesn't already exist (check with list_buckets), write each file with write_bucket_object (e.g. "index.html", "style.css", "script.js" — one tool call per file), then create_gateway_route with targetType "bucket" and targetId set to the bucket name, omitting method and pathPattern so every file in the site is reachable. Requests to "/" or a path with no file extension serve "index.html" (SPA-style fallback).
 - To host a site on an OS CONTAINER instead (when the user asks for a container/VM/server, needs a long-running process, dynamic requests, or explicitly wants it on a container rather than a bucket): call launch_container with a serving image — prefer "nginx:alpine" for static sites because its default command serves /usr/share/nginx/html on port 80 with no extra setup. Write each site file with write_container_file to that directory (e.g. "/usr/share/nginx/html/index.html", "/usr/share/nginx/html/style.css" — one call per file). Then create_gateway_route with targetType "container", targetId set to the container id returned by launch_container, targetPort 80, omitting method and pathPattern so every path reaches the container. Use this path only when a container is genuinely wanted; otherwise default to the bucket path.
-- Destructive or disruptive actions (delete_*, prune_*, container_action) still go through the normal tool-call flow — the user reviews and confirms every tool call before it executes, so call the tool directly rather than asking "are you sure?" in text first. write_container_file and launch_container are no exception: call them directly; the user confirms before they run.
+- To copy one host file to a bucket, use copy_host_file_to_bucket. To copy one host file to a container folder, use copy_host_file_to_container. Both tools require confirmation and accept the source as its absolute HOST path (for example, "/home/me/report.pdf"), not Dockyard's internal "/host/..." mount path. Do not read, list, summarize, or send host file contents to the model: transfer only the file explicitly named by the user. Host file transfers support regular files up to 200 MiB.
+- To build a configured host project and deploy its artifacts to a container, first call list_host_build_presets to find the exact preset, then call run_host_build_preset with its name, target container id, and destination directory. Presets contain fixed host-side commands and artifact directories; never invent a command, command arguments, working directory, or artifact path.
+- Destructive or disruptive actions (delete_*, prune_*, container_action) still go through the normal tool-call flow — the user reviews and confirms every tool call before it executes, so call the tool directly rather than asking "are you sure?" in text first. write_container_file, host-file copies, and launch_container are no exception: call them directly; the user confirms before they run.
 - When done, give a short (1-2 sentence) confirmation of what was done — no more.`;
 
 const tools: Anthropic.Tool[] = [
@@ -104,7 +107,7 @@ const tools: Anthropic.Tool[] = [
   },
   {
     name: 'update_lambda_function',
-    description: "Update an existing Lambda function's name, runtime, code, or packages.",
+    description: "Update an existing Lambda function's name, runtime, code, packages, entry point, or additional files.",
     input_schema: {
       type: 'object',
       properties: {
@@ -114,6 +117,18 @@ const tools: Anthropic.Tool[] = [
         code: { type: 'string' },
         packages: { type: 'string', description: 'Space-separated packages to install' },
         entryPoint: { type: 'string' },
+        files: {
+          type: 'array',
+          description: 'Additional function files, excluding the entry point. Replaces the complete additional-file list when provided.',
+          items: {
+            type: 'object',
+            properties: {
+              path: { type: 'string', description: 'Relative file path' },
+              content: { type: 'string', description: 'Complete file content' },
+            },
+            required: ['path', 'content'],
+          },
+        },
       },
       required: ['id'],
     },
@@ -200,6 +215,20 @@ const tools: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'copy_host_file_to_container',
+    description:
+      'Copy one existing regular file from the host filesystem into a running, non-system container. This copies binary data without reading its contents into the conversation. The user must explicitly name the absolute host source path and the absolute destination path inside the container. Requires user confirmation.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        sourcePath: { type: 'string', description: 'Absolute path on the Docker host, e.g. "/home/me/report.pdf"' },
+        id: { type: 'string', description: 'Container id (from launch_container or list_containers)' },
+        path: { type: 'string', description: 'Absolute destination file path inside the container' },
+      },
+      required: ['sourcePath', 'id', 'path'],
+    },
+  },
+  {
     name: 'delete_container',
     description: 'Remove a container by id.',
     input_schema: {
@@ -274,6 +303,35 @@ const tools: Anthropic.Tool[] = [
         },
       },
       required: ['name', 'key', 'content'],
+    },
+  },
+  {
+    name: 'copy_host_file_to_bucket',
+    description:
+      'Copy one existing regular file from the host filesystem into an existing storage bucket. This copies binary data without reading its contents into the conversation. The user must explicitly name the absolute host source path, destination bucket, and destination object key. Requires user confirmation.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        sourcePath: { type: 'string', description: 'Absolute path on the Docker host, e.g. "/home/me/report.pdf"' },
+        bucket: { type: 'string', description: 'Existing destination bucket name' },
+        key: { type: 'string', description: 'Destination object key/path in the bucket' },
+        contentType: { type: 'string', description: 'Optional MIME type, e.g. application/pdf' },
+      },
+      required: ['sourcePath', 'bucket', 'key'],
+    },
+  },
+  {
+    name: 'run_host_build_preset',
+    description:
+      'Run a named, administrator-configured host build preset and copy its configured artifact directory into a running non-system container. The preset fixes the host command, arguments, working directory, and artifact path; this tool accepts only the preset name, target container id, and destination directory. Requires user confirmation.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        preset: { type: 'string', description: 'Configured host build preset name (from list_host_build_presets)' },
+        id: { type: 'string', description: 'Target container id' },
+        path: { type: 'string', description: 'Absolute destination directory inside the target container' },
+      },
+      required: ['preset', 'id', 'path'],
     },
   },
   {
@@ -382,6 +440,12 @@ const tools: Anthropic.Tool[] = [
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
+    name: 'list_host_build_presets',
+    description:
+      'List administrator-configured host build presets. Each preset has a name, fixed command/arguments, host working directory, and artifact directory. Read-only, runs automatically with no confirmation.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
     name: 'run_function',
     description:
       'Run a saved Lambda function by id and return its stdout, status code, and duration. Use this when the user asks to test or run a function. An optional JSON `payload` is provided to the function as the DOCKYARD_REQUEST environment variable (the gateway contract); omit it for functions that take no request. The function runs with its saved environment variables, the same as the editor Run button and gateway invocations. The user confirms before it runs.',
@@ -415,6 +479,7 @@ const READ_ONLY_TOOLS = new Set([
   'inspect_container',
   'list_presets',
   'list_used_ports',
+  'list_host_build_presets',
 ]);
 
 /** Caps how much of a bucket object's content gets fed back to Claude — a
@@ -564,6 +629,11 @@ async function executeReadOnlyTool(name: string, input: Record<string, unknown>)
         }
       }
       return { ports: Array.from(used).sort((a, b) => a - b) };
+    }
+    case 'list_host_build_presets': {
+      return listHostBuildPresets().map(({ name, cwd, command, args, artifacts }) => ({
+        name, cwd, command, args, artifacts,
+      }));
     }
     default:
       throw new Error(`Unknown read-only tool "${name}".`);

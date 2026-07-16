@@ -8,6 +8,7 @@ import type {
   AssistantSessionState,
   AssistantSessionSummary,
   AssistantTurn,
+  LambdaFile,
 } from '../types';
 
 type LogEntry = AssistantLogEntry;
@@ -22,6 +23,7 @@ const ACTION_LABEL: Record<string, string> = {
   launch_container: 'Launch container',
   container_action: 'Container action',
   write_container_file: 'Write container file',
+  copy_host_file_to_container: 'Copy host file to container',
   delete_container: 'Delete container',
   delete_image: 'Delete image',
   prune_images: 'Prune unused images',
@@ -29,6 +31,8 @@ const ACTION_LABEL: Record<string, string> = {
   delete_bucket: 'Delete bucket',
   delete_bucket_object: 'Delete bucket object',
   write_bucket_object: 'Write bucket file',
+  copy_host_file_to_bucket: 'Copy host file to bucket',
+  run_host_build_preset: 'Build host project and deploy artifacts',
   prune_build_cache: 'Prune build cache',
   run_function: 'Run function',
 };
@@ -41,6 +45,7 @@ const LOOKUP_LABEL: Record<string, string> = {
   list_images: 'images',
   list_bucket_objects: 'bucket contents',
   read_bucket_object: 'file content',
+  list_host_build_presets: 'host build presets',
 };
 
 /** Actions that mutate/destroy state in a way worth calling out visually,
@@ -79,8 +84,25 @@ function deriveSessionName(log: LogEntry[]): string {
   return firstUser.length > 60 ? `${firstUser.slice(0, 60)}…` : firstUser;
 }
 
+function parseLambdaFiles(value: unknown): LambdaFile[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) throw new Error('Function files must be an array.');
+  return value.map((file) => {
+    if (
+      !file ||
+      typeof file !== 'object' ||
+      typeof (file as Record<string, unknown>).path !== 'string' ||
+      typeof (file as Record<string, unknown>).content !== 'string'
+    ) {
+      throw new Error('Each function file needs a path and content.');
+    }
+    const { path, content } = file as { path: string; content: string };
+    return { path, content };
+  });
+}
+
 interface Props {
-  onClose: () => void;
+  onClose?: () => void;
   /** Called after any create so pages showing that data can refresh next time they mount. */
   onChanged?: () => void;
   /** A prompt already submitted from the toolbar search box — run it
@@ -89,9 +111,20 @@ interface Props {
   /** If set, load this saved session on mount instead of running a new
    *  prompt. Takes precedence over `initialPrompt`. */
   initialSessionId?: string;
+  /** Renders the assistant inside a page panel rather than a modal. */
+  embedded?: boolean;
+  /** Context added to every request without exposing it in the visible chat log. */
+  contextPrompt?: string;
 }
 
-export function AssistantBar({ onClose, onChanged, initialPrompt, initialSessionId }: Props) {
+export function AssistantBar({
+  onClose,
+  onChanged,
+  initialPrompt,
+  initialSessionId,
+  embedded = false,
+  contextPrompt,
+}: Props) {
   const [prompt, setPrompt] = useState('');
   const [log, setLog] = useState<LogEntry[]>([]);
   const [rawMessages, setRawMessages] = useState<unknown[]>([]);
@@ -108,8 +141,8 @@ export function AssistantBar({ onClose, onChanged, initialPrompt, initialSession
     const el = logRef.current;
     if (!el) return;
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    if (nearBottom) el.scrollTop = el.scrollHeight;
-  }, [log, error, pending]);
+    if (embedded || nearBottom) el.scrollTop = el.scrollHeight;
+  }, [embedded, log, error, pending]);
   // Guards the initial-prompt effect below against React StrictMode's
   // dev-only double-invoke of effects (mount → cleanup → mount) — without
   // this, the same prompt gets submitted twice and comes back with two
@@ -130,7 +163,7 @@ export function AssistantBar({ onClose, onChanged, initialPrompt, initialSession
   // Skipped while a turn is in flight (busy) and on the pristine empty
   // render, so we don't create a session for a modal nobody used yet.
   useEffect(() => {
-    if (busy) return;
+    if (embedded || busy) return;
     if (log.length === 0 && rawMessages.length === 0) return;
 
     let cancelled = false;
@@ -306,7 +339,10 @@ export function AssistantBar({ onClose, onChanged, initialPrompt, initialSession
     setLog((l) => [...l, { kind: 'user', text }]);
     setPrompt('');
     try {
-      const stream = await api.assistantPlanStream(text, rawMessages);
+      const request = contextPrompt
+        ? `${contextPrompt}\n\nUser request: ${text}`
+        : text;
+      const stream = await api.assistantPlanStream(request, rawMessages);
       await consumeTurnStream(stream);
     } catch (err) {
       setError((err as Error).message);
@@ -388,6 +424,7 @@ export function AssistantBar({ onClose, onChanged, initialPrompt, initialSession
           code: str(input.code),
           packages: str(input.packages),
           entryPoint: str(input.entryPoint),
+          files: parseLambdaFiles(input.files),
         });
 
       case 'delete_lambda_function':
@@ -426,6 +463,13 @@ export function AssistantBar({ onClose, onChanged, initialPrompt, initialSession
           String(input.content ?? ''),
         );
 
+      case 'copy_host_file_to_container':
+        return api.hostFileToContainer(
+          String(input.sourcePath ?? ''),
+          String(input.id ?? ''),
+          String(input.path ?? ''),
+        );
+
       case 'delete_container':
         return api.remove(String(input.id ?? ''), bool(input.force));
 
@@ -450,6 +494,21 @@ export function AssistantBar({ onClose, onChanged, initialPrompt, initialSession
           String(input.key ?? ''),
           String(input.content ?? ''),
           str(input.contentType) ?? 'text/plain',
+        );
+
+      case 'copy_host_file_to_bucket':
+        return api.hostFileToBucket(
+          String(input.sourcePath ?? ''),
+          String(input.bucket ?? ''),
+          String(input.key ?? ''),
+          str(input.contentType),
+        );
+
+      case 'run_host_build_preset':
+        return api.hostBuildRun(
+          String(input.preset ?? ''),
+          String(input.id ?? ''),
+          String(input.path ?? ''),
         );
 
       case 'prune_build_cache':
@@ -534,36 +593,43 @@ export function AssistantBar({ onClose, onChanged, initialPrompt, initialSession
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal modal--assistant" onClick={(e) => e.stopPropagation()}>
-        <div className="modal__head">
-          <h3>✨ Ask Dockyard.ai</h3>
-          <button className="btn btn--ghost" onClick={onClose}>
-            Close
-          </button>
+    <div className={embedded ? 'assistant-panel' : 'modal-backdrop'} onClick={embedded ? undefined : onClose}>
+      <div
+        className={embedded ? 'assistant-panel__content' : 'modal modal--assistant'}
+        onClick={embedded ? undefined : (e) => e.stopPropagation()}
+      >
+        <div className={embedded ? 'assistant-panel__head' : 'modal__head'}>
+          <h3>{embedded ? '✨ Function assistant' : '✨ Ask Dockyard.ai'}</h3>
+          {!embedded && (
+            <button className="btn btn--ghost" onClick={onClose}>
+              Close
+            </button>
+          )}
         </div>
 
-        <div className="assistant-session-bar">
-          <input
-            className="assistant-session-bar__name"
-            value={sessionName}
-            onChange={(e) => setSessionName(e.target.value)}
-            onBlur={commitSessionName}
-            onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-            placeholder="Untitled session"
-          />
-          {sessionSaving && <span className="assistant-session-bar__status muted">Saving…</span>}
-          <div className="assistant-session-bar__actions">
-            <button className="btn btn--ghost btn--sm" onClick={resetToNewSession}>
-              + New
-            </button>
-            <button className="btn btn--ghost btn--sm" onClick={toggleSessionsList}>
-              📂 Sessions
-            </button>
+        {!embedded && (
+          <div className="assistant-session-bar">
+            <input
+              className="assistant-session-bar__name"
+              value={sessionName}
+              onChange={(e) => setSessionName(e.target.value)}
+              onBlur={commitSessionName}
+              onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+              placeholder="Untitled session"
+            />
+            {sessionSaving && <span className="assistant-session-bar__status muted">Saving…</span>}
+            <div className="assistant-session-bar__actions">
+              <button className="btn btn--ghost btn--sm" onClick={resetToNewSession}>
+                + New
+              </button>
+              <button className="btn btn--ghost btn--sm" onClick={toggleSessionsList}>
+                📂 Sessions
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
-        {sessionsOpen && (
+        {!embedded && sessionsOpen && (
           <div className="assistant-sessions-panel">
             {sessionsLoading && <p className="muted empty-sm">Loading…</p>}
             {!sessionsLoading && sessionsList.length === 0 && <p className="muted empty-sm">No saved sessions yet.</p>}
@@ -590,7 +656,9 @@ export function AssistantBar({ onClose, onChanged, initialPrompt, initialSession
         <div className="assistant-log" ref={logRef}>
           {log.length === 0 && (
             <p className="muted empty-sm">
-              Try: "create a lambda function that sorts strings and attach a gateway endpoint to it"
+              {embedded
+                ? 'Ask for an explanation, a review, or a change to this function.'
+                : 'Try: "create a lambda function that sorts strings and attach a gateway endpoint to it"'}
             </p>
           )}
           {log.map((entry, i) => (

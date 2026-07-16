@@ -94,6 +94,27 @@ export const api = {
       body: JSON.stringify({ path, content }),
     }).then((r) => json<{ ok: true; path: string }>(r)),
 
+  hostFileToBucket: (sourcePath: string, bucket: string, key: string, contentType?: string) =>
+    fetch('/api/host-files/to-bucket', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourcePath, bucket, key, contentType }),
+    }).then((r) => json<{ bucket: string; key: string; size: number }>(r)),
+
+  hostFileToContainer: (sourcePath: string, id: string, path: string) =>
+    fetch('/api/host-files/to-container', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourcePath, id, path }),
+    }).then((r) => json<{ ok: true; id: string; path: string; size: number }>(r)),
+
+  hostBuildRun: (preset: string, id: string, path: string) =>
+    fetch('/api/host-builds/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ preset, id, path }),
+    }).then((r) => json<{ ok: true; preset: string; id: string; path: string; size: number }>(r)),
+
   usedPorts: () =>
     fetch('/api/system/used-ports').then((r) => json<{ ports: number[] }>(r)),
 

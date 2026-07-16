@@ -29,6 +29,9 @@ center** and reported continuously. Plus on-demand lambda functions.
 - **Buckets** — a single, persistent MinIO instance that Dockyard provisions
   and manages itself (like its own SQLite db). Create/delete S3-compatible
   buckets and browse, upload, download, or delete objects, all from the UI.
+- **Host file copies** — Ask Dockyard can copy one explicitly named host file
+  to a bucket or a running container after showing a confirmation. Transfers
+  preserve binary data and are limited to 200 MiB per file.
 - **Gateway** — named routes that map a clean URL (`/gw/<name>/...`) to a
   bucket (static file serving), a running container (full reverse proxy), or
   a lambda function (invoked with the request as structured input).
@@ -90,6 +93,8 @@ All optional — sensible defaults are used.
 | `DOCKER_TLS_VERIFY` / `DOCKER_CERT_PATH` | _(unset)_ | TLS for a remote engine (port 2376)     |
 | `HOST_DISK_PATH`  | `/`                       | Filesystem path measured by the disk gauge         |
 | `USAGE_POLL_MS`   | `5000`                    | Usage stream refresh interval                      |
+| `HOST_COMMAND_PRESETS` | `[]`                  | JSON array of fixed host-build presets              |
+| `HOST_BUILD_HELPER_SOCKET` | `/tmp/dockyard-host-build.sock` | Socket for the host build helper        |
 | `API_PROXY_TARGET`| `http://localhost:4300`   | Dev-only: where Vite proxies `/api`                |
 | `MINIO_ENDPOINT`  | _(auto-detected)_         | Override the S3 API URL used to reach the persistent MinIO instance |
 
@@ -101,6 +106,35 @@ Expose the remote Docker Engine over TCP (ideally with TLS), then:
 DOCKER_HOST=tcp://my-ec2-host:2376 DOCKER_TLS_VERIFY=1 \
   DOCKER_CERT_PATH=~/.docker/certs npm start
 ```
+
+  ### Host build presets
+
+  Run `scripts/host-build-helper.mjs` directly on the host to enable confirmed
+  assistant builds. The helper only accepts a preset name; it never accepts a
+  shell command or arguments from Dockyard.
+
+  ```bash
+  export HOST_COMMAND_PRESETS='[
+    {
+      "name": "frontend-build",
+      "cwd": "/home/me/projects/frontend",
+      "command": "npm",
+      "args": ["run", "build"],
+      "artifacts": "dist"
+    }
+  ]'
+  node scripts/host-build-helper.mjs
+  ```
+
+  Use the same `HOST_COMMAND_PRESETS` value for Dockyard itself. With the
+  provided Compose file, start the helper with
+  `HOST_BUILD_HELPER_SOCKET="$PWD/data/host-build-helper.sock"`; that directory
+  is already mounted into Dockyard at `/app/data`. Then run
+  `docker compose up --build`. Ask Dockyard to run `frontend-build` and deploy
+  it to a running container; it shows the preset, container, and destination
+  for confirmation before running. `cwd` is an absolute host path and
+  `artifacts` is a relative directory within it. The generated artifact tree is
+  limited to 200 MiB and excludes symlinks.
 
 ## REST API
 
@@ -124,6 +158,10 @@ DOCKER_HOST=tcp://my-ec2-host:2376 DOCKER_TLS_VERIFY=1 \
 | `PUT  /api/buckets/:name/objects/*`  | Upload an object (raw body)          |
 | `GET  /api/buckets/:name/objects/*`  | Download an object                   |
 | `DELETE /api/buckets/:name/objects/*`| Delete an object                     |
+| `POST /api/host-files/to-bucket`     | Copy a confirmed host file to a bucket (`{ sourcePath, bucket, key, contentType? }`) |
+| `POST /api/host-files/to-container`  | Copy a confirmed host file to a container (`{ sourcePath, id, path }`) |
+| `GET  /api/host-builds/presets`      | List configured host build presets             |
+| `POST /api/host-builds/run`          | Run a preset and deploy its artifacts (`{ preset, id, path }`) |
 | `GET  /api/gateway`                  | List gateway routes                  |
 | `POST /api/gateway`                  | Create a route (`{ name, targetType, targetId, targetPort? }`) |
 | `DELETE /api/gateway/:id`            | Delete a route                       |
@@ -163,6 +201,10 @@ Each route lives at `/gw/<name>/...` and maps to one of three target types:
 
 - This console has **full control of the Docker daemon** it connects to — run
   it somewhere trusted and don't expose it publicly without auth in front.
+- Host-file transfers use the directory mounted at `HOST_DISK_PATH` (`/host`
+  in the supplied Docker Compose configuration). They can read any regular
+  host file visible through that mount, so confirm the exact source and
+  destination carefully.
 - Presets are a starting point; edit `server/src/presets.ts` to add your own.
 - The `dockyard-minio` container is system-managed (labeled `iaas.system=minio`)
   and hidden from the Containers page's Remove action; it's provisioned

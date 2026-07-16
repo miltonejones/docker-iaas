@@ -9,6 +9,8 @@ services:
       # container, mount the host root read-only (below) and point here.
       HOST_DISK_PATH: /host
       USAGE_POLL_MS: '5000'
+      HOST_COMMAND_PRESETS: "${HOST_COMMAND_PRESETS:-[]}"
+      HOST_BUILD_HELPER_SOCKET: /app/data/host-build-helper.sock
     labels:
       iaas.system: 'true'
     volumes:
