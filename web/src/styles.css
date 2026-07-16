@@ -1134,6 +1134,7 @@ textarea:focus {
 .function-assistant {
   display: flex;
   align-self: stretch;
+  max-height: calc(100vh - 180px);
   min-width: 0;
   overflow: hidden;
   border-left: 1px solid var(--border);
