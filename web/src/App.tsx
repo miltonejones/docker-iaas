@@ -146,6 +146,15 @@ export function App() {
     setAssistantModal({ sessionId: id });
   }
 
+  async function deleteSavedSession(id: string) {
+    try {
+      await api.assistantDeleteSession(id);
+      setSessionsList((list) => list.filter((s) => s.id !== id));
+    } catch (err) {
+      console.error('delete session', err);
+    }
+  }
+
   async function toggleSessionsOffcanvas() {
     if (sessionsOpen) {
       setSessionsOpen(false);
@@ -274,16 +283,21 @@ export function App() {
                   <p className="muted empty-sm">No saved sessions yet.</p>
                 )}
                 {sessionsList.map((s) => (
-                  <button
-                    key={s.id}
-                    className="offcanvas-session-row"
-                    onClick={() => openSessionInAssistant(s.id)}
-                  >
-                    <span className="offcanvas-session-row__name">{s.name}</span>
-                    <span className="offcanvas-session-row__time muted">
-                      {timeAgo(new Date(s.updatedAt).getTime() / 1000)}
-                    </span>
-                  </button>
+                  <div key={s.id} className="offcanvas-session-row-wrap">
+                    <button className="offcanvas-session-row" onClick={() => openSessionInAssistant(s.id)}>
+                      <span className="offcanvas-session-row__name">{s.name}</span>
+                      <span className="offcanvas-session-row__time muted">
+                        {timeAgo(new Date(s.updatedAt).getTime() / 1000)}
+                      </span>
+                    </button>
+                    <button
+                      className="btn btn--ghost btn--sm offcanvas-session-row__delete"
+                      title="Delete session"
+                      onClick={() => deleteSavedSession(s.id)}
+                    >
+                      ×
+                    </button>
+                  </div>
                 ))}
               </div>
             </aside>

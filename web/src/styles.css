@@ -1693,8 +1693,19 @@ textarea:focus {
   overflow-y: auto;
   padding: 8px 0;
 }
+.offcanvas-session-row-wrap {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px 0 0;
+}
+.offcanvas-session-row-wrap:hover {
+  background: var(--bg-elev-2);
+}
 .offcanvas-session-row {
   display: flex;
+  flex: 1;
+  min-width: 0;
   flex-direction: column;
   align-items: flex-start;
   width: 100%;
@@ -1706,8 +1717,8 @@ textarea:focus {
   transition: background 0.12s var(--ease);
   gap: 2px;
 }
-.offcanvas-session-row:hover {
-  background: var(--bg-elev-2);
+.offcanvas-session-row__delete {
+  flex-shrink: 0;
 }
 .offcanvas-session-row__name {
   font-size: 13px;
