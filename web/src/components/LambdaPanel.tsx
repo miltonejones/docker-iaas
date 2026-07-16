@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { Container, LambdaFunction, LambdaResult, LambdaRuntime } from '../types';
+import type { Container, LambdaFile, LambdaFunction, LambdaResult, LambdaRuntime } from '../types';
 import { api } from '../api';
 
 const PLACEHOLDERS: Record<string, string> = {
@@ -8,13 +8,18 @@ const PLACEHOLDERS: Record<string, string> = {
   sh: 'echo "hello from shell" && uname -a',
 };
 
+const DEFAULT_ENTRY: Record<string, string> = {
+  node: 'index.js',
+  python: 'index.py',
+  sh: 'index.sh',
+};
+
 export function LambdaPanel() {
   const [runtimes, setRuntimes] = useState<LambdaRuntime[]>([]);
   const [functions, setFunctions] = useState<LambdaFunction[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [runtime, setRuntime] = useState('node');
-  const [code, setCode] = useState('');
   const [packages, setPackages] = useState('');
   const [running, setRunning] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -23,8 +28,26 @@ export function LambdaPanel() {
   const [history, setHistory] = useState<LambdaResult[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [containers, setContainers] = useState<Container[]>([]);
+  const [env, setEnv] = useState<{ key: string; value: string }[]>([]);
+  const [revealed, setRevealed] = useState<Set<number>>(new Set());
+  const [savingEnv, setSavingEnv] = useState(false);
+  const [envError, setEnvError] = useState<string | null>(null);
+  const [showEnv, setShowEnv] = useState(false);
+
+  // Multi-file editing: the entry point plus any number of additional
+  // modules (barrel files, lib code, etc), all addressed by their real
+  // relative path so imports/requires resolve like a normal project.
+  // `filePaths` is the ordered tab list (entry point always first);
+  // `contents` holds every file's text, keyed by path.
+  const [entryPoint, setEntryPoint] = useState('index.js');
+  const [filePaths, setFilePaths] = useState<string[]>(['index.js']);
+  const [contents, setContents] = useState<Record<string, string>>({ 'index.js': '' });
+  const [activePath, setActivePath] = useState('index.js');
+  const [newFileName, setNewFileName] = useState('');
+  const [newPackageName, setNewPackageName] = useState('');
 
   const isSaved = activeId !== null;
+  const code = contents[activePath] ?? '';
 
   // Load runtimes, saved functions, and running containers on mount.
   useEffect(() => {
@@ -49,32 +72,143 @@ export function LambdaPanel() {
     }
   }, []);
 
-  // Set placeholder when runtime changes (only if editor is empty).
+  // Reset to a single-file layout with a fresh placeholder when the runtime
+  // changes and the editor is otherwise empty.
   useEffect(() => {
-    if (!code.trim()) {
-      setCode(PLACEHOLDERS[runtime] || '');
+    if (!code.trim() && filePaths.length === 1) {
+      const entry = DEFAULT_ENTRY[runtime] || 'index.js';
+      setEntryPoint(entry);
+      setFilePaths([entry]);
+      setContents({ [entry]: PLACEHOLDERS[runtime] || '' });
+      setActivePath(entry);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runtime]);
+
+  function setCode(value: string) {
+    setContents((prev) => ({ ...prev, [activePath]: value }));
+  }
 
   function selectFunction(fn: LambdaFunction) {
     setActiveId(fn.id);
     setName(fn.name);
     setRuntime(fn.runtime);
-    setCode(fn.code);
     setPackages(fn.packages || '');
+    const entry = fn.entryPoint || DEFAULT_ENTRY[fn.runtime] || 'index.js';
+    const extra = fn.files || [];
+    setEntryPoint(entry);
+    setFilePaths([entry, ...extra.map((f) => f.path)]);
+    setContents({
+      [entry]: fn.code,
+      ...Object.fromEntries(extra.map((f) => [f.path, f.content])),
+    });
+    setActivePath(entry);
     setResult(null);
     setError(null);
+    setRevealed(new Set());
+    setEnvError(null);
+    setShowEnv(false);
+    api
+      .lambdaGetEnv(fn.id)
+      .then((e) => setEnv(Object.entries(e).map(([key, value]) => ({ key, value }))))
+      .catch(() => setEnv([]));
   }
 
   function newFunction() {
     setActiveId(null);
     setName(`fn-${Math.random().toString(36).slice(2, 8)}`);
     setRuntime('node');
-    setCode(PLACEHOLDERS.node);
+    setEntryPoint('index.js');
+    setFilePaths(['index.js']);
+    setContents({ 'index.js': PLACEHOLDERS.node });
+    setActivePath('index.js');
     setPackages('');
     setResult(null);
     setError(null);
+    setEnv([]);
+    setRevealed(new Set());
+    setEnvError(null);
+    setShowEnv(false);
+  }
+
+  function addFile() {
+    const path = newFileName.trim();
+    if (!path || filePaths.includes(path)) return;
+    setFilePaths((prev) => [...prev, path]);
+    setContents((prev) => ({ ...prev, [path]: '' }));
+    setActivePath(path);
+    setNewFileName('');
+  }
+
+  function removeFile(path: string) {
+    if (path === entryPoint) return; // entry point can't be removed
+    setFilePaths((prev) => prev.filter((p) => p !== path));
+    setContents((prev) => {
+      const next = { ...prev };
+      delete next[path];
+      return next;
+    });
+    if (activePath === path) setActivePath(entryPoint);
+  }
+
+  function addPackage() {
+    const additions = newPackageName.split(/[\s,]+/).map((p) => p.trim()).filter(Boolean);
+    if (additions.length === 0) return;
+    const current = packages.trim().split(/\s+/).filter(Boolean);
+    const merged = [...current];
+    for (const pkg of additions) {
+      if (!merged.includes(pkg)) merged.push(pkg);
+    }
+    setPackages(merged.join(' '));
+    setNewPackageName('');
+  }
+
+  function removePackage(pkg: string) {
+    const current = packages.trim().split(/\s+/).filter(Boolean);
+    setPackages(current.filter((p) => p !== pkg).join(' '));
+  }
+
+  function addEnvRow() {
+    setEnv((prev) => [...prev, { key: '', value: '' }]);
+  }
+
+  function updateEnvRow(i: number, field: 'key' | 'value', value: string) {
+    setEnv((prev) => prev.map((row, idx) => (idx === i ? { ...row, [field]: value } : row)));
+  }
+
+  function removeEnvRow(i: number) {
+    setEnv((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
+  function toggleReveal(i: number) {
+    setRevealed((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      return next;
+    });
+  }
+
+  async function saveEnv() {
+    if (!activeId) return;
+    setSavingEnv(true);
+    setEnvError(null);
+    try {
+      const record = Object.fromEntries(
+        env.filter((row) => row.key.trim()).map((row) => [row.key.trim(), row.value]),
+      );
+      await api.lambdaSetEnv(activeId, record);
+    } catch (err) {
+      setEnvError((err as Error).message);
+    } finally {
+      setSavingEnv(false);
+    }
+  }
+
+  function extraFilesPayload(): LambdaFile[] {
+    return filePaths
+      .filter((p) => p !== entryPoint)
+      .map((path) => ({ path, content: contents[path] ?? '' }));
   }
 
   async function save() {
@@ -82,12 +216,15 @@ export function LambdaPanel() {
     setSaving(true);
     setError(null);
     try {
+      const entryContent = contents[entryPoint] ?? '';
       if (isSaved) {
         const updated = await api.lambdaUpdateFunction(activeId!, {
           name: name.trim(),
           runtime,
-          code,
+          code: entryContent,
           packages: packages.trim(),
+          entryPoint,
+          files: extraFilesPayload(),
         });
         setFunctions((prev) =>
           prev.map((f) => (f.id === updated.id ? updated : f)),
@@ -96,8 +233,10 @@ export function LambdaPanel() {
         const created = await api.lambdaCreateFunction(
           name.trim(),
           runtime,
-          code,
+          entryContent,
           packages.trim(),
+          entryPoint,
+          extraFilesPayload(),
         );
         setActiveId(created.id);
         setFunctions((prev) => [created, ...prev]);
@@ -127,7 +266,15 @@ export function LambdaPanel() {
     setError(null);
     setResult(null);
     try {
-      const res = await api.lambdaRun(runtime, code, packages.trim() || undefined);
+      const entryContent = contents[entryPoint] ?? '';
+      const res = await api.lambdaRun(
+        runtime,
+        entryContent,
+        packages.trim() || undefined,
+        activeId ?? undefined,
+        extraFilesPayload(),
+        entryPoint,
+      );
       setResult(res);
       loadHistory();
     } catch (err) {
@@ -139,11 +286,13 @@ export function LambdaPanel() {
 
   function selectHistory(entry: LambdaResult) {
     setRuntime(entry.runtime);
-    setCode(
-      entry.stdout ||
-        entry.stderr ||
-        (entry.error ? `// error: ${entry.error}` : ''),
-    );
+    const historyEntry = DEFAULT_ENTRY[entry.runtime] || 'index.js';
+    setEntryPoint(historyEntry);
+    setFilePaths([historyEntry]);
+    setContents({
+      [historyEntry]: entry.stdout || entry.stderr || (entry.error ? `// error: ${entry.error}` : ''),
+    });
+    setActivePath(historyEntry);
     setResult(entry);
     setShowHistory(false);
   }
@@ -158,23 +307,23 @@ export function LambdaPanel() {
         </h2>
       </div>
 
-      <div className="lambda-layout">
+      <div className="panel-layout">
         {/* Sidebar — function list */}
-        <aside className="lambda-sidebar">
-          <button className="btn btn--primary lambda-new-btn" onClick={newFunction}>
+        <aside className="panel-sidebar">
+          <button className="btn btn--primary panel-new-btn" onClick={newFunction}>
             + New function
           </button>
-          <div className="lambda-fn-list">
+          <div className="panel-item-list">
             {functions.length === 0 ? (
               <p className="muted empty-sm">No saved functions yet.</p>
             ) : (
               functions.map((fn) => (
                 <button
                   key={fn.id}
-                  className={`lambda-fn-item${fn.id === activeId ? ' lambda-fn-item--active' : ''}`}
+                  className={`panel-item${fn.id === activeId ? ' panel-item--active' : ''}`}
                   onClick={() => selectFunction(fn)}
                 >
-                  <span className="lambda-fn-name">{fn.name}</span>
+                  <span className="panel-item-name">{fn.name}</span>
                   <span className="chip" style={{ fontSize: '10px', padding: '1px 7px' }}>
                     {fn.runtime}
                   </span>
@@ -214,42 +363,104 @@ export function LambdaPanel() {
         </aside>
 
         {/* Main — editor + output */}
-        <div className="lambda-main">
-          {/* Name + runtime */}
+        <div className="panel-main">
+          {/* Name + runtime + dependencies — single row */}
           <div className="lambda-meta">
-            <input
-              className="lambda-name-input"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Function name"
-              spellCheck={false}
-            />
-            <div className="chips">
-              {runtimes.map((r) => (
-                <button
-                  key={r.id}
-                  className={`chip ${runtime === r.id ? 'chip--on' : ''}`}
-                  onClick={() => setRuntime(r.id)}
-                >
-                  {r.icon} {r.name}
-                </button>
+            {isSaved ? (
+              <span className="lambda-name-static">{name}</span>
+            ) : (
+              <input
+                className="lambda-name-input"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Function name"
+                spellCheck={false}
+              />
+            )}
+            {!isSaved && (
+              <div className="chips">
+                {runtimes.map((r) => (
+                  <button
+                    key={r.id}
+                    className={`chip ${runtime === r.id ? 'chip--on' : ''}`}
+                    onClick={() => setRuntime(r.id)}
+                  >
+                    {r.icon} {r.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="lambda-package-pills">
+              {packages.trim().split(/\s+/).filter(Boolean).map((pkg) => (
+                <span className="lambda-package-pill" key={pkg}>
+                  <span className="mono">{pkg}</span>
+                  <span
+                    className="lambda-package-pill__close"
+                    onClick={() => removePackage(pkg)}
+                    title={`Remove ${pkg}`}
+                  >
+                    ×
+                  </span>
+                </span>
               ))}
+              <input
+                className="lambda-package-pill-add"
+                value={newPackageName}
+                onChange={(e) => setNewPackageName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addPackage();
+                  }
+                }}
+                placeholder={
+                  runtime === 'node'
+                    ? '+ mysql2, axios…'
+                    : runtime === 'python'
+                      ? '+ requests, flask…'
+                      : '+ curl, jq…'
+                }
+                spellCheck={false}
+              />
             </div>
           </div>
 
-          <input
-            className="lambda-packages-input"
-            value={packages}
-            onChange={(e) => setPackages(e.target.value)}
-            placeholder={
-              runtime === 'node'
-                ? 'mysql2 axios lodash'
-                : runtime === 'python'
-                  ? 'requests flask sqlalchemy'
-                  : 'curl jq git'
-            }
-            spellCheck={false}
-          />
+          {/* File tabs — entry point plus any additional modules */}
+          <div className="lambda-file-tabs">
+            {filePaths.map((path) => (
+              <button
+                key={path}
+                className={`lambda-file-tab${path === activePath ? ' lambda-file-tab--active' : ''}`}
+                onClick={() => setActivePath(path)}
+                title={path === entryPoint ? `${path} (entry point)` : path}
+              >
+                <span className="mono">{path}</span>
+                {path === entryPoint ? (
+                  <span className="lambda-file-tab__badge">entry</span>
+                ) : (
+                  <span
+                    className="lambda-file-tab__close"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeFile(path);
+                    }}
+                  >
+                    ×
+                  </span>
+                )}
+              </button>
+            ))}
+            <input
+              className="lambda-file-tab-add"
+              value={newFileName}
+              onChange={(e) => setNewFileName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') addFile();
+              }}
+              placeholder="+ lib/util.js"
+              spellCheck={false}
+            />
+          </div>
 
           {/* Editor */}
           <div className="lambda-editor-wrap">
@@ -258,8 +469,8 @@ export function LambdaPanel() {
               value={code}
               onChange={(e) => setCode(e.target.value)}
               spellCheck={false}
-              placeholder={PLACEHOLDERS[runtime] || ''}
-              rows={10}
+              placeholder={activePath === entryPoint ? PLACEHOLDERS[runtime] || '' : ''}
+              rows={22}
             />
             <div className="lambda-editor-foot">
               <span className="muted mono" style={{ fontSize: '11px' }}>
@@ -274,6 +485,13 @@ export function LambdaPanel() {
                     Delete
                   </button>
                 )}
+                <button
+                  className="btn btn--sm"
+                  onClick={() => setShowEnv(true)}
+                  title={isSaved ? 'Environment variables' : 'Save the function first to add environment variables'}
+                >
+                  Env{env.length > 0 ? ` (${env.length})` : ''}
+                </button>
                 <button
                   className="btn btn--sm"
                   onClick={() => {
@@ -292,7 +510,7 @@ export function LambdaPanel() {
                 </button>
                 <button
                   className="btn btn--primary"
-                  disabled={running || !code.trim()}
+                  disabled={running || !(contents[entryPoint] || '').trim()}
                   onClick={run}
                 >
                   {running ? 'Running…' : 'Run'}
@@ -332,8 +550,60 @@ export function LambdaPanel() {
               )}
             </div>
           )}
+
         </div>
       </div>
+
+      {/* Environment variables modal — stored separately from code, masked by default. */}
+      {showEnv && (
+        <div className="modal-backdrop" onClick={() => setShowEnv(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal__head">
+              <h3>Environment variables</h3>
+              <button className="btn btn--ghost" onClick={() => setShowEnv(false)}>Close</button>
+            </div>
+            {isSaved ? (
+              <>
+                {env.length === 0 && <p className="muted empty-sm">No environment variables set.</p>}
+                {env.map((row, i) => (
+                  <div className="env-row" key={i}>
+                    <input
+                      value={row.key}
+                      placeholder="KEY"
+                      spellCheck={false}
+                      onChange={(e) => updateEnvRow(i, 'key', e.target.value)}
+                    />
+                    <input
+                      type={revealed.has(i) ? 'text' : 'password'}
+                      value={row.value}
+                      placeholder="value"
+                      spellCheck={false}
+                      onChange={(e) => updateEnvRow(i, 'value', e.target.value)}
+                    />
+                    <button className="btn btn--sm btn--ghost" onClick={() => toggleReveal(i)}>
+                      {revealed.has(i) ? 'Hide' : 'Show'}
+                    </button>
+                    <button className="btn btn--sm btn--danger" onClick={() => removeEnvRow(i)}>
+                      Remove
+                    </button>
+                  </div>
+                ))}
+                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                  <button className="btn btn--sm" onClick={addEnvRow}>
+                    + Add variable
+                  </button>
+                  <button className="btn btn--sm btn--primary" disabled={savingEnv} onClick={saveEnv}>
+                    {savingEnv ? 'Saving…' : 'Save variables'}
+                  </button>
+                </div>
+                {envError && <p className="muted empty-sm">{envError}</p>}
+              </>
+            ) : (
+              <p className="muted empty-sm">Save the function first to add environment variables.</p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* History */}
       {showHistory && (

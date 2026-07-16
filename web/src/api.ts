@@ -1,4 +1,4 @@
-import type { Container, ContainerDetail, LambdaFunction, LambdaResult, LambdaRuntime, Preset, UsageSnapshot } from './types';
+import type { Bucket, BucketListing, BuildCacheEntry, Container, ContainerDetail, DockerImage, DockerVolume, GatewayRoute, LambdaFile, LambdaFunction, LambdaResult, LambdaRuntime, Preset, UsageSnapshot } from './types';
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -59,11 +59,18 @@ export const api = {
   lambdaRuntimes: () =>
     fetch('/api/lambda/runtimes').then((r) => json<LambdaRuntime[]>(r)),
 
-  lambdaRun: (runtime: string, code: string, packages?: string) =>
+  lambdaRun: (
+    runtime: string,
+    code: string,
+    packages?: string,
+    functionId?: string,
+    files?: LambdaFile[],
+    entryPoint?: string,
+  ) =>
     fetch('/api/lambda/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ runtime, code, packages }),
+      body: JSON.stringify({ runtime, code, packages, functionId, files, entryPoint }),
     }).then((r) => json<LambdaResult>(r)),
 
   lambdaHistory: () =>
@@ -72,16 +79,30 @@ export const api = {
   lambdaListFunctions: () =>
     fetch('/api/lambda/functions').then((r) => json<LambdaFunction[]>(r)),
 
-  lambdaCreateFunction: (name: string, runtime: string, code: string, packages?: string) =>
+  lambdaCreateFunction: (
+    name: string,
+    runtime: string,
+    code: string,
+    packages?: string,
+    entryPoint?: string,
+    files?: LambdaFile[],
+  ) =>
     fetch('/api/lambda/functions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, runtime, code, packages }),
+      body: JSON.stringify({ name, runtime, code, packages, entryPoint, files }),
     }).then((r) => json<LambdaFunction>(r)),
 
   lambdaUpdateFunction: (
     id: string,
-    fields: { name?: string; runtime?: string; code?: string; packages?: string },
+    fields: {
+      name?: string;
+      runtime?: string;
+      code?: string;
+      packages?: string;
+      entryPoint?: string;
+      files?: LambdaFile[];
+    },
   ) =>
     fetch(`/api/lambda/functions/${id}`, {
       method: 'PUT',
@@ -94,10 +115,90 @@ export const api = {
       json<{ ok: true }>(r),
     ),
 
+  lambdaGetEnv: (id: string) =>
+    fetch(`/api/lambda/functions/${id}/env`).then((r) => json<Record<string, string>>(r)),
+
+  lambdaSetEnv: (id: string, env: Record<string, string>) =>
+    fetch(`/api/lambda/functions/${id}/env`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ env }),
+    }).then((r) => json<Record<string, string>>(r)),
+
+  images: () => fetch('/api/images').then((r) => json<DockerImage[]>(r)),
+
+  removeImage: (id: string, force = false) =>
+    fetch(`/api/images/${encodeURIComponent(id)}?force=${force}`, { method: 'DELETE' }).then((r) =>
+      json<{ ok: true }>(r),
+    ),
+
+  volumes: () => fetch('/api/volumes').then((r) => json<DockerVolume[]>(r)),
+
+  buildCache: () => fetch('/api/system/build-cache').then((r) => json<BuildCacheEntry[]>(r)),
+
+  pruneBuildCache: () =>
+    fetch('/api/system/build-cache/prune', { method: 'POST' }).then((r) =>
+      json<{ ok: true; reclaimedBytes: number; cachesDeleted: number }>(r),
+    ),
+
   prune: () =>
     fetch('/api/images/prune', { method: 'POST' }).then((r) =>
       json<{ ok: true; reclaimedBytes: number }>(r),
     ),
+
+  bucketList: () => fetch('/api/buckets').then((r) => json<Bucket[]>(r)),
+
+  bucketCreate: (name: string) =>
+    fetch('/api/buckets', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    }).then((r) => json<{ name: string }>(r)),
+
+  bucketDelete: (name: string) =>
+    fetch(`/api/buckets/${encodeURIComponent(name)}`, { method: 'DELETE' }).then((r) =>
+      json<{ ok: true }>(r),
+    ),
+
+  bucketObjects: (name: string, prefix = '') =>
+    fetch(`/api/buckets/${encodeURIComponent(name)}/objects?prefix=${encodeURIComponent(prefix)}`).then(
+      (r) => json<BucketListing>(r),
+    ),
+
+  bucketUpload: (name: string, key: string, file: File) =>
+    fetch(`/api/buckets/${encodeURIComponent(name)}/objects/${key.split('/').map(encodeURIComponent).join('/')}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+      body: file,
+    }).then((r) => json<{ key: string }>(r)),
+
+  bucketObjectUrl: (name: string, key: string) =>
+    `/api/buckets/${encodeURIComponent(name)}/objects/${key.split('/').map(encodeURIComponent).join('/')}`,
+
+  bucketDeleteObject: (name: string, key: string) =>
+    fetch(
+      `/api/buckets/${encodeURIComponent(name)}/objects/${key.split('/').map(encodeURIComponent).join('/')}`,
+      { method: 'DELETE' },
+    ).then((r) => json<{ ok: true }>(r)),
+
+  gatewayList: () => fetch('/api/gateway').then((r) => json<GatewayRoute[]>(r)),
+
+  gatewayCreate: (route: {
+    name: string;
+    targetType: string;
+    targetId: string;
+    targetPort?: number;
+    method?: string;
+    pathPattern?: string;
+  }) =>
+    fetch('/api/gateway', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(route),
+    }).then((r) => json<GatewayRoute>(r)),
+
+  gatewayDelete: (id: string) =>
+    fetch(`/api/gateway/${id}`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r)),
 };
 
 /** Subscribe to the live usage stream. Returns an unsubscribe function. */

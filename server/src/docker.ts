@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import Docker from 'dockerode';
 
 /**
@@ -55,6 +56,35 @@ export function dockyardNetworkConfig(): { NetworkingConfig: { EndpointsConfig: 
       },
     },
   };
+}
+
+/** Pull an image if it isn't present locally yet. */
+export async function ensureImage(image: string): Promise<void> {
+  const tagged = image.includes(':') ? image : `${image}:latest`;
+  const images = await docker.listImages();
+  const present = images.some((img) => (img.RepoTags || []).includes(tagged));
+  if (present) return;
+
+  await new Promise<void>((resolve, reject) => {
+    docker.pull(tagged, (err: unknown, stream: NodeJS.ReadableStream) => {
+      if (err) return reject(err);
+      docker.modem.followProgress(stream, (doneErr: unknown) =>
+        doneErr ? reject(doneErr) : resolve(),
+      );
+    });
+  });
+}
+
+/** True when Dockyard's own server process is itself running inside a container. */
+export function isSelfContainerized(): boolean {
+  return fs.existsSync('/.dockerenv');
+}
+
+/** Hostname of a remote Docker Engine, if DOCKER_HOST points at one over TCP. */
+export function remoteDockerHost(): string | null {
+  const host = process.env.DOCKER_HOST;
+  if (host && /^tcp:\/\//i.test(host)) return new URL(host).hostname;
+  return null;
 }
 
 export async function pingDocker(): Promise<DockerReachability> {

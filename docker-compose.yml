@@ -15,3 +15,14 @@ services:
       # Report the host's real disk usage rather than the container's overlay.
       - /:/host:ro
     restart: unless-stopped
+    networks:
+      # Shares dockyard-net with the containers/functions it manages (including
+      # the persistent MinIO instance), so it can reach them by name.
+      - dockyard-net
+
+networks:
+  dockyard-net:
+    # Fixed name (not project-prefixed) — must match the network Dockyard's
+    # own server creates/looks up at runtime via the Docker API.
+    name: dockyard-net
+    driver: bridge

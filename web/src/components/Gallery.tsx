@@ -5,11 +5,11 @@ import { diskImpact } from '../format';
 interface Props {
   presets: Preset[];
   onLaunch: (preset: Preset) => void;
-  freeBytes: number | null;
+  freeBytes?: number | null;
 }
 
-export function Gallery({ presets, onLaunch, freeBytes }: Props) {
-  const [filter, setFilter] = useState<string>('All');
+export function Gallery({ presets, onLaunch, freeBytes = null }: Props) {
+  const [filter, setFilter] = useState<string>('OS');
   const categories = useMemo(
     () => ['All', ...Array.from(new Set(presets.map((p) => p.category)))],
     [presets],

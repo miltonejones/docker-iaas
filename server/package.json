@@ -10,10 +10,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1087.0",
     "better-sqlite3": "^12.11.1",
     "cors": "^2.8.5",
     "dockerode": "^4.0.2",
     "express": "^4.19.2",
+    "http-proxy-middleware": "^3.0.7",
+    "tar-stream": "^2.2.0",
     "ws": "^8.21.1"
   },
   "devDependencies": {
@@ -22,6 +25,7 @@
     "@types/dockerode": "^3.3.29",
     "@types/express": "^4.17.21",
     "@types/node": "^20.14.9",
+    "@types/tar-stream": "^3.1.4",
     "@types/ws": "^8.18.1",
     "tsx": "^4.16.2",
     "typescript": "^5.5.3"

@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import type Docker from 'dockerode';
-import { docker, dockyardNetworkConfig } from '../docker.js';
+import { docker, dockyardNetworkConfig, ensureImage } from '../docker.js';
 import { findPreset } from '../presets.js';
 
 export const containersRouter = Router();
@@ -16,6 +16,8 @@ interface ContainerView {
   sizeRw: number;
   sizeRootFs: number;
   presetId?: string;
+  /** System-managed containers (e.g. the persistent MinIO instance) can't be removed from the UI. */
+  system?: boolean;
 }
 
 function toView(c: Docker.ContainerInfo): ContainerView {
@@ -34,6 +36,7 @@ function toView(c: Docker.ContainerInfo): ContainerView {
     sizeRw: (c as unknown as { SizeRw?: number }).SizeRw ?? 0,
     sizeRootFs: (c as unknown as { SizeRootFs?: number }).SizeRootFs ?? 0,
     presetId: c.Labels?.['iaas.preset'],
+    system: !!c.Labels?.['iaas.system'],
   };
 }
 
@@ -125,22 +128,6 @@ containersRouter.post('/', async (req: Request, res: Response) => {
   }
 });
 
-async function ensureImage(image: string): Promise<void> {
-  const tagged = image.includes(':') ? image : `${image}:latest`;
-  const images = await docker.listImages();
-  const present = images.some((img) => (img.RepoTags || []).includes(tagged));
-  if (present) return;
-
-  await new Promise<void>((resolve, reject) => {
-    docker.pull(tagged, (err: unknown, stream: NodeJS.ReadableStream) => {
-      if (err) return reject(err);
-      docker.modem.followProgress(stream, (doneErr: unknown) =>
-        doneErr ? reject(doneErr) : resolve(),
-      );
-    });
-  });
-}
-
 // Lifecycle actions -----------------------------------------------------------
 
 async function lifecycle(
@@ -167,7 +154,13 @@ for (const action of ['start', 'stop', 'restart'] as const) {
 containersRouter.delete('/:id', async (req: Request, res: Response) => {
   const force = req.query.force === 'true';
   try {
-    await docker.getContainer(req.params.id).remove({ force, v: true });
+    const container = docker.getContainer(req.params.id);
+    const info = await container.inspect();
+    if (info.Config?.Labels?.['iaas.system']) {
+      res.status(403).json({ error: 'This container is system-managed and cannot be removed here.' });
+      return;
+    }
+    await container.remove({ force, v: true });
     res.json({ ok: true });
   } catch (err) {
     res.status(502).json({ error: (err as Error).message });

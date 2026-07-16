@@ -8,6 +8,7 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
+    allowedHosts: ['dockyard.test', 'minio.test', 'minio-console.test'],
     proxy: {
       '/api': {
         target: process.env.API_PROXY_TARGET || 'http://localhost:4300',

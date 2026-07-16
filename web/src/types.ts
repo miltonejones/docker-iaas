@@ -47,6 +47,7 @@ export interface Container {
   sizeRw: number;
   sizeRootFs: number;
   presetId?: string;
+  system?: boolean;
 }
 
 export interface HostDisk {
@@ -95,12 +96,19 @@ export interface ContainerDetail {
   sizeRootFs: number;
 }
 
+export interface LambdaFile {
+  path: string;
+  content: string;
+}
+
 export interface LambdaFunction {
   id: string;
   name: string;
   runtime: string;
   code: string;
   packages: string;
+  entryPoint: string;
+  files: LambdaFile[];
   createdAt: string;
   updatedAt: string;
 }
@@ -127,4 +135,58 @@ export interface UsageSnapshot {
   host: HostDisk | null;
   docker: DockerUsage | null;
   error?: string;
+}
+
+export interface Bucket {
+  name: string;
+  creationDate: string;
+}
+
+export interface BucketObject {
+  key: string;
+  size: number;
+  lastModified: string;
+}
+
+export interface BucketListing {
+  prefixes: string[];
+  objects: BucketObject[];
+}
+
+export interface GatewayRoute {
+  id: string;
+  name: string;
+  targetType: 'bucket' | 'container' | 'lambda';
+  targetId: string;
+  targetPort: number | null;
+  method: string | null;
+  pathPattern: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DockerImage {
+  id: string;
+  tags: string[];
+  size: number;
+  created: number;
+}
+
+export interface DockerVolume {
+  name: string;
+  driver: string;
+  mountpoint: string;
+  createdAt: string;
+  size: number;
+  refCount: number;
+}
+
+export interface BuildCacheEntry {
+  id: string;
+  type: string;
+  description: string;
+  size: number;
+  created: string;
+  inUse: boolean;
+  shared: boolean;
 }

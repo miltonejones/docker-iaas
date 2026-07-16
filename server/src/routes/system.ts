@@ -22,6 +22,49 @@ systemRouter.get('/usage', async (_req: Request, res: Response) => {
 
 // Return host ports currently published by running containers, so the launch
 // flow can warn about conflicts before creating a new container.
+// Build-cache detail extracted from docker system df.
+systemRouter.get('/build-cache', async (_req: Request, res: Response) => {
+  try {
+    const data: any = await new Promise((resolve, reject) => {
+      (docker as any).modem.dial(
+        { method: 'GET', path: '/system/df', statusCodes: { 200: true } },
+        (err: unknown, result: any) => (err ? reject(err) : resolve(result)),
+      );
+    });
+    const entries = (data?.BuildCache || []).map((e: any) => ({
+      id: e.ID?.slice(0, 12) || '',
+      type: e.Type || '',
+      description: e.Description || '',
+      size: e.Size || 0,
+      created: e.CreatedAt || '',
+      inUse: e.InUse || false,
+      shared: e.Shared || false,
+    }));
+    res.json(entries);
+  } catch (err) {
+    res.status(502).json({ error: (err as Error).message });
+  }
+});
+
+// Prune build cache.
+systemRouter.post('/build-cache/prune', async (_req: Request, res: Response) => {
+  try {
+    const data: any = await new Promise((resolve, reject) => {
+      (docker as any).modem.dial(
+        { method: 'POST', path: '/build/prune?all=true', statusCodes: { 200: true } },
+        (err: unknown, result: any) => (err ? reject(err) : resolve(result)),
+      );
+    });
+    res.json({
+      ok: true,
+      reclaimedBytes: data?.SpaceReclaimed || 0,
+      cachesDeleted: data?.CachesDeleted?.length || 0,
+    });
+  } catch (err) {
+    res.status(502).json({ error: (err as Error).message });
+  }
+});
+
 systemRouter.get('/used-ports', async (_req: Request, res: Response) => {
   try {
     const list = await docker.listContainers({ all: true });

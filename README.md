@@ -26,6 +26,12 @@ center** and reported continuously. Plus on-demand lambda functions.
 - **Reported regularly** — usage streams to the browser over Server-Sent
   Events and refreshes every few seconds (`USAGE_POLL_MS`), with a live/stale
   indicator. No manual refresh.
+- **Buckets** — a single, persistent MinIO instance that Dockyard provisions
+  and manages itself (like its own SQLite db). Create/delete S3-compatible
+  buckets and browse, upload, download, or delete objects, all from the UI.
+- **Gateway** — named routes that map a clean URL (`/gw/<name>/...`) to a
+  bucket (static file serving), a running container (full reverse proxy), or
+  a lambda function (invoked with the request as structured input).
 
 ## Architecture
 
@@ -85,6 +91,7 @@ All optional — sensible defaults are used.
 | `HOST_DISK_PATH`  | `/`                       | Filesystem path measured by the disk gauge         |
 | `USAGE_POLL_MS`   | `5000`                    | Usage stream refresh interval                      |
 | `API_PROXY_TARGET`| `http://localhost:4300`   | Dev-only: where Vite proxies `/api`                |
+| `MINIO_ENDPOINT`  | _(auto-detected)_         | Override the S3 API URL used to reach the persistent MinIO instance |
 
 ### Managing a remote host (EC2, another server)
 
@@ -110,11 +117,56 @@ DOCKER_HOST=tcp://my-ec2-host:2376 DOCKER_TLS_VERIFY=1 \
 | `GET  /api/containers/:id/logs`      | Recent logs                          |
 | `GET  /api/images`                   | List images                          |
 | `POST /api/images/prune`            | Reclaim dangling images + stopped containers |
+| `GET  /api/buckets`                  | List buckets                         |
+| `POST /api/buckets`                  | Create a bucket (`{ name }`)         |
+| `DELETE /api/buckets/:name`          | Delete an (empty) bucket             |
+| `GET  /api/buckets/:name/objects?prefix=` | List objects under a prefix     |
+| `PUT  /api/buckets/:name/objects/*`  | Upload an object (raw body)          |
+| `GET  /api/buckets/:name/objects/*`  | Download an object                   |
+| `DELETE /api/buckets/:name/objects/*`| Delete an object                     |
+| `GET  /api/gateway`                  | List gateway routes                  |
+| `POST /api/gateway`                  | Create a route (`{ name, targetType, targetId, targetPort? }`) |
+| `DELETE /api/gateway/:id`            | Delete a route                       |
+| `*  /gw/:name/*`                     | The route itself — see below         |
+
+### Gateway routes
+
+Each route lives at `/gw/<name>/...` and maps to one of three target types:
+
+- **`bucket`** — read-only static serving. The remaining path is used as the
+  object key; a path ending in `/` (or the route root) serves `index.html`.
+- **`container`** — a full reverse proxy (any method, headers, body streamed
+  through) to `targetPort` on the target container.
+- **`lambda`** — invokes the saved function on every request, using the same
+  event/response shape as a real **AWS API Gateway → Lambda proxy
+  integration**, so code written against it should run on actual Lambda
+  with little to no change. The event is passed in as JSON via a
+  `DOCKYARD_REQUEST` environment variable — readable as
+  `process.env.DOCKYARD_REQUEST` (Node), `os.environ['DOCKYARD_REQUEST']`
+  (Python), or `$DOCKYARD_REQUEST` (Shell):
+  ```ts
+  { httpMethod, path, headers, queryStringParameters, pathParameters, body, isBase64Encoded }
+  ```
+  `body` is always a raw string (or `null`) — never pre-parsed, just like the
+  real event. The function must print a matching proxy **response** to
+  stdout:
+  ```ts
+  { statusCode, headers?, body?, isBase64Encoded? }
+  ```
+  e.g. in Node: `console.log(JSON.stringify({ statusCode: 200, body: JSON.stringify({ ok: true }) }))`.
+  If stdout isn't valid JSON or is missing a numeric `statusCode`, the
+  gateway returns `502` — the same "malformed Lambda proxy response"
+  failure mode real API Gateway produces, so a broken handler fails the
+  same way locally as it would in AWS.
 
 ## Notes & safety
 
 - This console has **full control of the Docker daemon** it connects to — run
   it somewhere trusted and don't expose it publicly without auth in front.
 - Presets are a starting point; edit `server/src/presets.ts` to add your own.
+- The `dockyard-minio` container is system-managed (labeled `iaas.system=minio`)
+  and hidden from the Containers page's Remove action; it's provisioned
+  automatically on first start and its root credentials are generated once
+  and persisted in the SQLite db.
 - Adding auth, volume management UI, and container stats (CPU/mem) streaming
   are natural next steps.

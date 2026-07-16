@@ -119,16 +119,22 @@ export function Instances({ containers, busy, onChanged, onSelect }: Props) {
                       <button className="btn btn--sm" onClick={() => showLogs(c)}>
                         Logs
                       </button>
-                      <button
-                        className="btn btn--sm btn--danger"
-                        disabled={isPending}
-                        onClick={() => {
-                          if (confirm(`Remove ${c.name || c.id.slice(0, 12)}?`))
-                            run(c.id, () => api.remove(c.id, true));
-                        }}
-                      >
-                        Remove
-                      </button>
+                      {c.system ? (
+                        <span className="chip" title="System-managed — can't be removed here">
+                          Protected
+                        </span>
+                      ) : (
+                        <button
+                          className="btn btn--sm btn--danger"
+                          disabled={isPending}
+                          onClick={() => {
+                            if (confirm(`Remove ${c.name || c.id.slice(0, 12)}?`))
+                              run(c.id, () => api.remove(c.id, true));
+                          }}
+                        >
+                          Remove
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );

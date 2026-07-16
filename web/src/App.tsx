@@ -1,11 +1,56 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { BrowserRouter, NavLink, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Link, NavLink, Route, Routes, useLocation } from 'react-router-dom';
 import type { Container, Preset, UsageSnapshot } from './types';
 import { api, subscribeUsage } from './api';
 import { bytes } from './format';
 import { HomePage } from './pages/Home';
 import { ContainersPage } from './pages/Containers';
 import { FunctionsPage } from './pages/Functions';
+import { BucketsPage } from './pages/Buckets';
+import { GatewayPage } from './pages/Gateway';
+
+const SERVICES = [
+  { path: '/', label: '◈ Home' },
+  { path: '/containers', label: '📦 Containers' },
+  { path: '/functions', label: '⚡ Functions' },
+  { path: '/buckets', label: '🪣 Buckets' },
+  { path: '/gateway', label: '🌉 Gateway' },
+] as const;
+
+function ServiceNav() {
+  return (
+    <nav className="service-nav">
+      {SERVICES.map((s) => (
+        <NavLink
+          key={s.path}
+          to={s.path}
+          end={s.path === '/'}
+          className={({ isActive }) => `service-nav__btn${isActive ? ' service-nav__btn--active' : ''}`}
+        >
+          {s.label}
+        </NavLink>
+      ))}
+    </nav>
+  );
+}
+
+function Breadcrumbs() {
+  const location = useLocation();
+  const current = SERVICES.find((s) => s.path === location.pathname);
+  const currentLabel = current && current.path !== '/' ? current.label.replace(/^\S+\s/, '') : null;
+
+  return (
+    <nav className="breadcrumbs" aria-label="Breadcrumb">
+      <Link to="/" className="breadcrumbs__link">Home</Link>
+      {currentLabel && (
+        <>
+          <span className="breadcrumbs__sep">/</span>
+          <span className="breadcrumbs__current">{currentLabel}</span>
+        </>
+      )}
+    </nav>
+  );
+}
 
 export function App() {
   const [presets, setPresets] = useState<Preset[]>([]);
@@ -76,12 +121,15 @@ export function App() {
     <BrowserRouter>
       <div className="app">
         <header className="topbar">
-          <div className="brand">
-            <span className="brand__mark">◈</span>
-            <div>
-              <h1>Dockyard</h1>
-              <p className="brand__sub">Personal container management, EC2-style.</p>
-            </div>
+          <div className="topbar__left">
+            <Link to="/" className="brand">
+              <span className="brand__mark">◈</span>
+              <div>
+                <h1>Dockyard</h1>
+                <p className="brand__sub">Personal container management, EC2-style.</p>
+              </div>
+            </Link>
+            <ServiceNav />
           </div>
           <div className="topbar__stats">
             <span>
@@ -93,24 +141,10 @@ export function App() {
           </div>
         </header>
 
-        <div className="app-body">
-          <nav className="sidebar">
-            <NavLink to="/" end className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`}>
-              <span className="sidebar__icon">◈</span>
-              Home
-            </NavLink>
-            <NavLink to="/containers" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`}>
-              <span className="sidebar__icon">📦</span>
-              Containers
-            </NavLink>
-            <NavLink to="/functions" className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`}>
-              <span className="sidebar__icon">⚡</span>
-              Functions
-            </NavLink>
-          </nav>
+        <Breadcrumbs />
 
-          <main className="content">
-            <Routes>
+        <main className="content">
+          <Routes>
               <Route
                 path="/"
                 element={
@@ -136,9 +170,10 @@ export function App() {
                 }
               />
               <Route path="/functions" element={<FunctionsPage />} />
+              <Route path="/buckets" element={<BucketsPage />} />
+              <Route path="/gateway" element={<GatewayPage />} />
             </Routes>
           </main>
-        </div>
       </div>
     </BrowserRouter>
   );

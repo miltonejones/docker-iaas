@@ -1,5 +1,9 @@
+import { useState } from 'react';
 import type { UsageSnapshot } from '../types';
 import { bytes } from '../format';
+import { FootprintDetail } from './FootprintDetail';
+
+type Category = 'Images' | 'Containers' | 'Volumes' | 'Build cache';
 
 interface Props {
   snapshot: UsageSnapshot | null;
@@ -15,6 +19,7 @@ function level(pct: number): 'ok' | 'warn' | 'crit' {
 }
 
 export function UsageHeader({ snapshot, live, onPrune, pruning }: Props) {
+  const [detail, setDetail] = useState<Category | null>(null);
   const host = snapshot?.host ?? null;
   const docker = snapshot?.docker ?? null;
   const pct = host ? host.usedPercent : 0;
@@ -64,17 +69,22 @@ export function UsageHeader({ snapshot, live, onPrune, pruning }: Props) {
           </button>
         </div>
         <div className="breakdown">
-          {[
+          {([
             ['Images', docker?.images],
             ['Containers', docker?.containers],
             ['Volumes', docker?.volumes],
             ['Build cache', docker?.buildCache],
-          ].map(([label, cat]) => (
-            <div className="breakdown__item" key={label as string}>
-              <span className="breakdown__label">{label as string}</span>
-              <span className="breakdown__val">{bytes((cat as any)?.size)}</span>
-              <span className="breakdown__count">{(cat as any)?.count ?? 0} items</span>
-            </div>
+          ] as [Category, any][]).map(([label, cat]) => (
+            <button
+              className="breakdown__item breakdown__item--clickable"
+              key={label}
+              onClick={() => setDetail(label)}
+              title={`View ${label.toLowerCase()} details`}
+            >
+              <span className="breakdown__label">{label}</span>
+              <span className="breakdown__val">{bytes(cat?.size)}</span>
+              <span className="breakdown__count">{cat?.count ?? 0} items</span>
+            </button>
           ))}
         </div>
         <div className="usage__totals">
@@ -88,6 +98,8 @@ export function UsageHeader({ snapshot, live, onPrune, pruning }: Props) {
       </div>
 
       {snapshot?.error && <p className="usage__error">⚠ {snapshot.error}</p>}
+
+      {detail && <FootprintDetail category={detail} onClose={() => setDetail(null)} />}
     </section>
   );
 }
