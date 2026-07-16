@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import type { Bucket, BucketListing } from '../types';
 import { api } from '../api';
 import { bytes } from '../format';
+import { onRefresh } from '../refresh';
 
 export function BucketList() {
   const navigate = useNavigate();
@@ -22,6 +23,9 @@ export function BucketList() {
   useEffect(() => {
     loadBuckets();
   }, [loadBuckets]);
+
+  // Reload when the assistant mutates buckets (create/delete/write).
+  useEffect(() => onRefresh(loadBuckets), [loadBuckets]);
 
   async function createBucket() {
     const name = newName.trim();
@@ -122,6 +126,9 @@ export function BucketDetail({ name }: { name: string }) {
     setPrefix('');
     loadObjects('');
   }, [name, loadObjects]);
+
+  // Reload the current prefix when the assistant writes/deletes objects here.
+  useEffect(() => onRefresh(() => loadObjects(prefix)), [loadObjects, prefix]);
 
   function openPrefix(next: string) {
     setPrefix(next);

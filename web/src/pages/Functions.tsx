@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { LambdaFunction } from '../types';
 import { api } from '../api';
+import { onRefresh } from '../refresh';
 import { LambdaPanel } from '../components/LambdaPanel';
 
 export function FunctionsPage() {
@@ -36,6 +37,9 @@ function FunctionList() {
   }, []);
 
   useEffect(() => { loadFunctions(); }, [loadFunctions]);
+
+  // Reload when the assistant mutates functions (create/delete/edit).
+  useEffect(() => onRefresh(loadFunctions), [loadFunctions]);
 
   return (
     <section className="panel">

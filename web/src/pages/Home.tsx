@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import type { UsageSnapshot } from '../types';
 import { UsageHeader } from '../components/UsageHeader';
 import { api } from '../api';
+import { onRefresh } from '../refresh';
 
 interface Props {
   snapshot: UsageSnapshot | null;
@@ -19,11 +20,19 @@ export function HomePage({ snapshot, live, onPrune, pruning, runningCount, total
   const [bucketCount, setBucketCount] = useState(0);
   const [routeCount, setRouteCount] = useState(0);
 
-  useEffect(() => {
+  function loadCounts() {
     api.lambdaListFunctions().then((list) => setFnCount(list.length)).catch(() => {});
     api.bucketList().then((list) => setBucketCount(list.length)).catch(() => {});
     api.gatewayList().then((list) => setRouteCount(list.length)).catch(() => {});
+  }
+
+  useEffect(() => {
+    loadCounts();
   }, []);
+
+  // Container counts come from App props (refreshed on emit); reload the
+  // function/bucket/route counts when the assistant mutates any of them.
+  useEffect(() => onRefresh(loadCounts), []);
 
   return (
     <div>

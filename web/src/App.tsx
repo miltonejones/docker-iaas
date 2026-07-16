@@ -9,6 +9,7 @@ import { FunctionsPage } from './pages/Functions';
 import { BucketsPage } from './pages/Buckets';
 import { GatewayPage } from './pages/Gateway';
 import { AssistantBar } from './components/AssistantBar';
+import { emitRefresh } from './refresh';
 
 const SERVICES = [
   { path: '/', label: '◈ Home' },
@@ -295,7 +296,13 @@ export function App() {
             initialPrompt={assistantModal.prompt}
             initialSessionId={assistantModal.sessionId}
             onClose={() => setAssistantModal(null)}
-            onChanged={refreshContainers}
+            onChanged={() => {
+              // App holds container state (header/Home/Containers all read it),
+              // so refresh that here, then broadcast so whichever page is
+              // mounted (Functions/Buckets/Gateway/Home) reloads its own data.
+              refreshContainers();
+              emitRefresh();
+            }}
           />
         )}
 

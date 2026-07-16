@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Bucket, Container, GatewayRoute, LambdaFunction } from '../types';
 import { api } from '../api';
+import { onRefresh } from '../refresh';
 
 const TARGET_ICON: Record<string, string> = { bucket: '🪣', container: '📦', lambda: '⚡' };
 
@@ -19,6 +20,13 @@ export function GatewayList() {
     api.containers().then(setContainers).catch(() => {});
     api.lambdaListFunctions().then(setFunctions).catch(() => {});
   }, []);
+
+  // Reload when the assistant mutates gateway routes, containers, or functions.
+  useEffect(() => onRefresh(() => {
+    loadRoutes();
+    api.containers().then(setContainers).catch(() => {});
+    api.lambdaListFunctions().then(setFunctions).catch(() => {});
+  }), []);
 
   async function loadRoutes() {
     try {
@@ -162,6 +170,14 @@ export function GatewayDetail({ name }: { name: string }) {
     api.containers().then(setContainers).catch(() => {});
     api.lambdaListFunctions().then(setFunctions).catch(() => {});
   }, [name]);
+
+  // Reload when the assistant mutates routes or their target resources.
+  useEffect(() => onRefresh(() => {
+    loadRoutes();
+    api.bucketList().then(setBuckets).catch(() => {});
+    api.containers().then(setContainers).catch(() => {});
+    api.lambdaListFunctions().then(setFunctions).catch(() => {});
+  }), [name]);
 
   async function loadRoutes() {
     try {
