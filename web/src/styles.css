@@ -1133,11 +1133,7 @@ textarea:focus {
 }
 .function-assistant {
   display: flex;
-  position: sticky;
-  top: 16px;
-  align-self: start;
-  height: calc(100vh - 180px);
-  max-height: calc(100vh - 180px);
+  align-self: stretch;
   min-width: 0;
   overflow: hidden;
   border-left: 1px solid var(--border);
