@@ -59,6 +59,20 @@ function Breadcrumbs() {
   }, [functionId]);
 
   const isNewContainer = pathname === '/containers/new';
+  const containerId = pathname.match(/^\/containers\/(.+)$/)?.[1];
+  const [containerName, setContainerName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!containerId || containerId === 'new') {
+      setContainerName(null);
+      return;
+    }
+    api
+      .containers()
+      .then((list) => setContainerName(list.find((c) => c.id === containerId)?.name ?? null))
+      .catch(() => setContainerName(null));
+  }, [containerId]);
+
   const gatewayName = pathname.match(/^\/gateway\/(.+)$/)?.[1];
   const bucketName = pathname.match(/^\/buckets\/(.+)$/)?.[1];
 
@@ -66,11 +80,13 @@ function Breadcrumbs() {
     ? (functionId === 'new' ? 'New function' : functionName ?? 'Function')
     : isNewContainer
       ? 'New instance'
-      : gatewayName
-        ? `/gw/${gatewayName}`
-        : bucketName
-          ? bucketName
-          : null;
+      : containerId && containerId !== 'new'
+        ? (containerName ?? 'Instance')
+        : gatewayName
+          ? `/gw/${gatewayName}`
+          : bucketName
+            ? bucketName
+            : null;
 
   if (pathname === '/') return null;
 
@@ -302,6 +318,17 @@ export function App() {
               />
               <Route
                 path="/containers/new"
+                element={
+                  <ContainersPage
+                    containers={containers}
+                    presets={presets}
+                    busy={busy}
+                    onChanged={onChanged}
+                  />
+                }
+              />
+              <Route
+                path="/containers/:id"
                 element={
                   <ContainersPage
                     containers={containers}
