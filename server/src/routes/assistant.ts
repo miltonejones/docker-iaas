@@ -670,6 +670,41 @@ assistantRouter.post('/confirm', async (req: Request, res: Response) => {
 // confirmations) and this layer just stores/returns it verbatim.
 // ---------------------------------------------------------------------------
 
+/** Ask Claude for a short, friendly title summarizing a conversation. Used
+ *  to name a new session instead of truncating the user's first message. Runs
+ *  on Haiku (cheap/fast) with a tight token cap; any failure is caught by the
+ *  caller, which falls back to the truncated-first-message heuristic. */
+assistantRouter.post('/title', async (req: Request, res: Response) => {
+  const { prompt, reply } = req.body as { prompt?: string; reply?: string };
+  const userText = (prompt || '').trim();
+  if (!userText) {
+    res.status(400).json({ error: 'A prompt is required.' });
+    return;
+  }
+  try {
+    const out = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 24,
+      system:
+        'Generate a short, descriptive title (3-6 words, title case, no quotes, no trailing punctuation, no emoji) summarizing what the user asked for. Reply with only the title.',
+      messages: [
+        {
+          role: 'user',
+          content: `User asked: ${userText}\n\nAssistant replied: ${(reply || '').slice(0, 600)}`,
+        },
+      ],
+    });
+    const title = extractText(out.content)
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/^["'“”]+|["'“”]+$/g, '')
+      .slice(0, 80);
+    res.json({ name: title || userText.slice(0, 60) });
+  } catch (err) {
+    res.status(502).json({ error: (err as Error).message });
+  }
+});
+
 function toSessionSummary(r: { id: string; name: string; created_at: string; updated_at: string }) {
   return { id: r.id, name: r.name, createdAt: r.created_at, updatedAt: r.updated_at };
 }

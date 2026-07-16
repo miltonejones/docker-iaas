@@ -98,6 +98,16 @@ export function AssistantBar({ onClose, onChanged, initialPrompt, initialSession
   const [resolved, setResolved] = useState<ResolvedResult[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Auto-scroll the conversation to the bottom as new text streams in, but
+  // only when the reader is already near the bottom — so scrolling up to reread
+  // earlier output isn't hijacked by each incoming token.
+  const logRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = logRef.current;
+    if (!el) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    if (nearBottom) el.scrollTop = el.scrollHeight;
+  }, [log, error, pending]);
   // Guards the initial-prompt effect below against React StrictMode's
   // dev-only double-invoke of effects (mount → cleanup → mount) — without
   // this, the same prompt gets submitted twice and comes back with two
@@ -127,11 +137,30 @@ export function AssistantBar({ onClose, onChanged, initialPrompt, initialSession
       const state: AssistantSessionState = { messages: rawMessages, log, pending, resolved };
       try {
         if (!sessionId) {
-          const name = sessionName.trim() || deriveSessionName(log);
+          const custom = sessionName.trim();
+          const name = custom || deriveSessionName(log);
           const created = await api.assistantCreateSession(name, state);
           if (cancelled) return;
           setSessionId(created.id);
           setSessionName(created.name);
+          // If the user didn't name it themselves, ask Claude for a friendly
+          // title and rename the session once. Best-effort and non-blocking —
+          // saving already completed with the placeholder name, so a failure
+          // here just leaves the truncated-first-message heuristic in place.
+          if (!custom) {
+            const firstUser = log.find((e) => e.kind === 'user')?.text ?? '';
+            const lastAssistant = [...log].reverse().find((e) => e.kind === 'assistant')?.text ?? '';
+            api
+              .assistantGenerateTitle(firstUser, lastAssistant)
+              .then(({ name: title }) => {
+                if (cancelled || !title) return;
+                setSessionName(title);
+                return api.assistantUpdateSession(created.id, { name: title });
+              })
+              .catch(() => {
+                /* best-effort: keep the placeholder name */
+              });
+          }
         } else {
           await api.assistantUpdateSession(sessionId, { state });
         }
@@ -533,7 +562,7 @@ export function AssistantBar({ onClose, onChanged, initialPrompt, initialSession
           </div>
         )}
 
-        <div className="assistant-log">
+        <div className="assistant-log" ref={logRef}>
           {log.length === 0 && (
             <p className="muted empty-sm">
               Try: "create a lambda function that sorts strings and attach a gateway endpoint to it"

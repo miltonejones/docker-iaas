@@ -291,6 +291,15 @@ export const api = {
   assistantListSessions: () =>
     fetch('/api/assistant/sessions').then((r) => json<AssistantSessionSummary[]>(r)),
 
+  /** Ask Claude for a short friendly title summarizing a conversation. Best
+   *  effort — callers fall back to a local heuristic if this fails. */
+  assistantGenerateTitle: (prompt: string, reply: string) =>
+    fetch('/api/assistant/title', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, reply }),
+    }).then((r) => json<{ name: string }>(r)),
+
   assistantGetSession: (id: string) =>
     fetch(`/api/assistant/sessions/${id}`).then((r) => json<AssistantSession>(r)),
 
