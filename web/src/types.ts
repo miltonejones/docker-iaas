@@ -181,6 +181,51 @@ export interface DockerVolume {
   refCount: number;
 }
 
+export interface AssistantPendingAction {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+}
+
+export interface AssistantResolvedResult {
+  toolUseId: string;
+  ok: boolean;
+  content: unknown;
+}
+
+export interface AssistantLogEntry {
+  kind: 'user' | 'assistant' | 'action' | 'error';
+  text: string;
+}
+
+/** Everything needed to resume an Ask Dockyard conversation exactly where it
+ *  left off. Opaque to the server — it just stores/returns this verbatim. */
+export interface AssistantSessionState {
+  messages: unknown[];
+  log: AssistantLogEntry[];
+  pending: AssistantPendingAction[];
+  resolved: AssistantResolvedResult[];
+}
+
+export interface AssistantSessionSummary {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AssistantSession extends AssistantSessionSummary {
+  state: AssistantSessionState;
+}
+
+export interface AssistantTurn {
+  messages: unknown[];
+  pending: AssistantPendingAction[];
+  autoResolved: AssistantResolvedResult[];
+  done: boolean;
+  text: string;
+}
+
 export interface BuildCacheEntry {
   id: string;
   type: string;

@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { BrowserRouter, Link, NavLink, Route, Routes, useLocation } from 'react-router-dom';
-import type { Container, Preset, UsageSnapshot } from './types';
+import type { AssistantSessionSummary, Container, Preset, UsageSnapshot } from './types';
 import { api, subscribeUsage } from './api';
-import { bytes } from './format';
+import { bytes, timeAgo } from './format';
 import { HomePage } from './pages/Home';
 import { ContainersPage } from './pages/Containers';
 import { FunctionsPage } from './pages/Functions';
 import { BucketsPage } from './pages/Buckets';
 import { GatewayPage } from './pages/Gateway';
+import { AssistantBar } from './components/AssistantBar';
 
 const SERVICES = [
   { path: '/', label: '◈ Home' },
@@ -59,6 +60,7 @@ function Breadcrumbs() {
 
   const isNewContainer = pathname === '/containers/new';
   const gatewayName = pathname.match(/^\/gateway\/(.+)$/)?.[1];
+  const bucketName = pathname.match(/^\/buckets\/(.+)$/)?.[1];
 
   const detailLabel = functionId
     ? (functionId === 'new' ? 'New function' : functionName ?? 'Function')
@@ -66,7 +68,11 @@ function Breadcrumbs() {
       ? 'New instance'
       : gatewayName
         ? `/gw/${gatewayName}`
-        : null;
+        : bucketName
+          ? bucketName
+          : null;
+
+  if (pathname === '/') return null;
 
   return (
     <nav className="breadcrumbs" aria-label="Breadcrumb">
@@ -98,7 +104,46 @@ export function App() {
   const [live, setLive] = useState(false);
   const [busy, setBusy] = useState(false);
   const [pruning, setPruning] = useState(false);
+  const [assistantQuery, setAssistantQuery] = useState('');
+  const [assistantModal, setAssistantModal] = useState<{
+    prompt?: string;
+    sessionId?: string;
+  } | null>(null);
+  const [modalKey, setModalKey] = useState(0);
+  const [sessionsOpen, setSessionsOpen] = useState(false);
+  const [sessionsList, setSessionsList] = useState<AssistantSessionSummary[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
   const lastBeat = useRef<number>(0);
+
+  function submitAssistantQuery() {
+    const q = assistantQuery.trim();
+    if (!q) return;
+    setModalKey((k) => k + 1);
+    setAssistantModal({ prompt: q });
+    setAssistantQuery('');
+  }
+
+  function openSessionInAssistant(id: string) {
+    setSessionsOpen(false);
+    setModalKey((k) => k + 1);
+    setAssistantModal({ sessionId: id });
+  }
+
+  async function toggleSessionsOffcanvas() {
+    if (sessionsOpen) {
+      setSessionsOpen(false);
+      return;
+    }
+    setSessionsOpen(true);
+    setSessionsLoading(true);
+    try {
+      setSessionsList(await api.assistantListSessions());
+    } catch (err) {
+      console.error('sessions', err);
+    } finally {
+      setSessionsLoading(false);
+    }
+  }
 
   const refreshContainers = useCallback(async () => {
     try {
@@ -161,14 +206,30 @@ export function App() {
       <div className="app">
         <header className="topbar">
           <div className="topbar__left">
+            <button
+              className="hamburger"
+              onClick={toggleSessionsOffcanvas}
+              title="Saved sessions"
+              aria-label="Open saved sessions"
+            >
+              ☰
+            </button>
             <Link to="/" className="brand">
               <span className="brand__mark">◈</span>
               <div>
-                <h1>Dockyard</h1>
-                <p className="brand__sub">Personal container management, EC2-style.</p>
+                <h1>Dockyard.ai</h1>
               </div>
             </Link>
             <ServiceNav />
+            <label className="assistant-search">
+              <span className="assistant-search__icon">✨</span>
+              <input
+                value={assistantQuery}
+                onChange={(e) => setAssistantQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && submitAssistantQuery()}
+                placeholder="Ask Dockyard.ai to do something..."
+              />
+            </label>
           </div>
           <div className="topbar__stats">
             <span>
@@ -179,6 +240,48 @@ export function App() {
             </span>
           </div>
         </header>
+
+        {/* Saved sessions offcanvas */}
+        {sessionsOpen && (
+          <div className="offcanvas-backdrop" onClick={() => setSessionsOpen(false)}>
+            <aside className="offcanvas offcanvas--left" onClick={(e) => e.stopPropagation()}>
+              <div className="offcanvas__head">
+                <h3>Saved sessions</h3>
+                <button className="btn btn--ghost" onClick={() => setSessionsOpen(false)}>
+                  Close
+                </button>
+              </div>
+              <div className="offcanvas__body">
+                {sessionsLoading && <p className="muted empty-sm">Loading…</p>}
+                {!sessionsLoading && sessionsList.length === 0 && (
+                  <p className="muted empty-sm">No saved sessions yet.</p>
+                )}
+                {sessionsList.map((s) => (
+                  <button
+                    key={s.id}
+                    className="offcanvas-session-row"
+                    onClick={() => openSessionInAssistant(s.id)}
+                  >
+                    <span className="offcanvas-session-row__name">{s.name}</span>
+                    <span className="offcanvas-session-row__time muted">
+                      {timeAgo(new Date(s.updatedAt).getTime() / 1000)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </aside>
+          </div>
+        )}
+
+        {assistantModal && (
+          <AssistantBar
+            key={modalKey}
+            initialPrompt={assistantModal.prompt}
+            initialSessionId={assistantModal.sessionId}
+            onClose={() => setAssistantModal(null)}
+            onChanged={refreshContainers}
+          />
+        )}
 
         <Breadcrumbs />
 
@@ -221,11 +324,24 @@ export function App() {
               />
               <Route path="/functions/:id" element={<FunctionsPage />} />
               <Route path="/functions" element={<FunctionsPage />} />
+              <Route path="/buckets/:name" element={<BucketsPage />} />
               <Route path="/buckets" element={<BucketsPage />} />
               <Route path="/gateway/:name" element={<GatewayPage />} />
               <Route path="/gateway" element={<GatewayPage />} />
             </Routes>
           </main>
+
+        <footer className="app-footer">
+          <span className="muted">Deploy anything. Ask for the rest.</span>
+          <a
+            href="https://github.com/miltonejones/docker-iaas"
+            target="_blank"
+            rel="noreferrer"
+            className="app-footer__link"
+          >
+            GitHub ↗
+          </a>
+        </footer>
       </div>
     </BrowserRouter>
   );

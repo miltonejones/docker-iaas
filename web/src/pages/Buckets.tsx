@@ -1,5 +1,8 @@
-import { BucketPanel } from '../components/BucketPanel';
+import { useParams } from 'react-router-dom';
+import { BucketList, BucketDetail } from '../components/BucketPanel';
 
 export function BucketsPage() {
-  return <BucketPanel />;
+  const { name } = useParams<{ name: string }>();
+  if (name) return <BucketDetail name={name} />;
+  return <BucketList />;
 }

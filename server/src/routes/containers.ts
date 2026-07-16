@@ -143,6 +143,12 @@ async function lifecycle(
 for (const action of ['start', 'stop', 'restart'] as const) {
   containersRouter.post(`/:id/${action}`, async (req: Request, res: Response) => {
     try {
+      const container = docker.getContainer(req.params.id);
+      const info = await container.inspect();
+      if (info.Config?.Labels?.['iaas.system']) {
+        res.status(403).json({ error: 'This container is system-managed and cannot be controlled here.' });
+        return;
+      }
       await lifecycle(req.params.id, action);
       res.json({ ok: true });
     } catch (err) {

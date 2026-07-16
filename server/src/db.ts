@@ -121,6 +121,19 @@ export function initDb(): void {
   // Migration: entry_point column names which file (by path) is the one
   // actually executed. NULL means "use the legacy `code` column as-is".
   try { db.exec("ALTER TABLE functions ADD COLUMN entry_point TEXT"); } catch { /* ok */ }
+
+  // Ask Dockyard sessions — `state` is an opaque JSON blob owned entirely by
+  // the client (conversation history, action log, pending confirmations).
+  // The server never inspects it, just stores and returns it verbatim.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS assistant_sessions (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      state TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
 }
 
 // ---------------------------------------------------------------------------
@@ -315,4 +328,63 @@ export function setFunctionFiles(functionId: string, files: FunctionFileRow[]): 
     for (const row of rows) insert.run(functionId, row.path, row.content);
   });
   replace(files);
+}
+
+// ---------------------------------------------------------------------------
+// Ask Dockyard sessions — named, persisted assistant conversations.
+// ---------------------------------------------------------------------------
+
+export interface AssistantSessionRow {
+  id: string;
+  name: string;
+  state: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssistantSessionSummaryRow {
+  id: string;
+  name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export function listAssistantSessions(): AssistantSessionSummaryRow[] {
+  return db
+    .prepare('SELECT id, name, created_at, updated_at FROM assistant_sessions ORDER BY updated_at DESC')
+    .all() as AssistantSessionSummaryRow[];
+}
+
+export function getAssistantSession(id: string): AssistantSessionRow | undefined {
+  return db.prepare('SELECT * FROM assistant_sessions WHERE id = ?').get(id) as AssistantSessionRow | undefined;
+}
+
+export function createAssistantSession(id: string, name: string, state: string): AssistantSessionRow {
+  const now = new Date().toISOString();
+  db.prepare(
+    'INSERT INTO assistant_sessions (id, name, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+  ).run(id, name, state, now, now);
+  return getAssistantSession(id)!;
+}
+
+export function updateAssistantSession(
+  id: string,
+  fields: { name?: string; state?: string },
+): AssistantSessionRow | undefined {
+  const existing = getAssistantSession(id);
+  if (!existing) return undefined;
+
+  const now = new Date().toISOString();
+  db.prepare('UPDATE assistant_sessions SET name = ?, state = ?, updated_at = ? WHERE id = ?').run(
+    fields.name ?? existing.name,
+    fields.state ?? existing.state,
+    now,
+    id,
+  );
+  return getAssistantSession(id)!;
+}
+
+export function deleteAssistantSession(id: string): boolean {
+  const result = db.prepare('DELETE FROM assistant_sessions WHERE id = ?').run(id);
+  return result.changes > 0;
 }

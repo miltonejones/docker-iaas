@@ -72,6 +72,7 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch }: Pr
   }
 
   const running = RUNNING.has(detail?.state ?? container.state);
+  const locked = !!container.system;
   const shell = guessShell(detail?.image ?? container.image);
   const execCmd = `docker exec -it ${detail?.name || container.name || container.id.slice(0, 12)} ${shell}`;
 
@@ -238,11 +239,15 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch }: Pr
         {/* Actions */}
         <section className="detail-section">
           <h4 className="detail-section__title">Actions</h4>
+          {locked && (
+            <p className="muted empty-sm">System-managed — actions are disabled here.</p>
+          )}
           <div className="detail-actions">
             {running ? (
               <button
                 className="btn"
-                disabled={pending === container.id}
+                disabled={pending === container.id || locked}
+                title={locked ? "System-managed — can't be stopped here" : undefined}
                 onClick={() => run(container.id, () => api.action(container.id, 'stop'))}
               >
                 Stop
@@ -250,7 +255,8 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch }: Pr
             ) : (
               <button
                 className="btn"
-                disabled={pending === container.id}
+                disabled={pending === container.id || locked}
+                title={locked ? "System-managed — can't be started here" : undefined}
                 onClick={() => run(container.id, () => api.action(container.id, 'start'))}
               >
                 Start
@@ -258,15 +264,16 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch }: Pr
             )}
             <button
               className="btn"
-              disabled={pending === container.id}
+              disabled={pending === container.id || locked}
+              title={locked ? "System-managed — can't be restarted here" : undefined}
               onClick={() => run(container.id, () => api.action(container.id, 'restart'))}
             >
               Restart
             </button>
             <button
               className="btn btn--primary"
-              disabled={pending === container.id || !detail}
-              title="Remove and re-create with new settings (e.g. different ports)"
+              disabled={pending === container.id || !detail || locked}
+              title={locked ? "System-managed — can't be relaunched here" : 'Remove and re-create with new settings (e.g. different ports)'}
               onClick={() => {
                 if (detail) onRelaunch(detail);
               }}
@@ -275,7 +282,8 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch }: Pr
             </button>
             <button
               className="btn btn--danger"
-              disabled={pending === container.id}
+              disabled={pending === container.id || locked}
+              title={locked ? "System-managed — can't be removed here" : undefined}
               onClick={() => {
                 const name = detail?.name || container.name || container.id.slice(0, 12);
                 if (confirm(`Remove ${name}?`))

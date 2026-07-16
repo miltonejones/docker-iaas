@@ -11,6 +11,7 @@ import { lambdaRouter } from './routes/lambda.js';
 import { bucketsRouter } from './routes/buckets.js';
 import { gatewayRouter } from './routes/gateway.js';
 import { volumesRouter } from './routes/volumes.js';
+import { assistantRouter } from './routes/assistant.js';
 import { gatewayProxyRouter } from './gatewayProxy.js';
 import { initDb } from './db.js';
 import { connectToRelay } from './relay.js';
@@ -42,6 +43,7 @@ app.use('/api/system', systemRouter);
 app.use('/api/lambda', lambdaRouter);
 app.use('/api/gateway', gatewayRouter);
 app.use('/api/volumes', volumesRouter);
+app.use('/api/assistant', assistantRouter);
 
 // Serve the built frontend in production (web/dist), if present.
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -55,7 +57,7 @@ const port = Number(process.env.PORT || 4300);
 app.listen(port, '0.0.0.0', async () => {
   await ensureNetwork();
   const ping = await pingDocker();
-  console.log(`\n  Dockyard server listening on http://0.0.0.0:${port}`);
+  console.log(`\n  Dockyard.ai server listening on http://0.0.0.0:${port}`);
   console.log(
     ping.ok
       ? `  Docker daemon reachable (Engine v${ping.version}).`

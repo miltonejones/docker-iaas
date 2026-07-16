@@ -107,7 +107,17 @@ export function GatewayList() {
             <tbody>
               {groups.map((group) => (
                 <tr key={group[0].name} onClick={() => navigate(`/gateway/${group[0].name}`)}>
-                  <td className="mono">/gw/{group[0].name}/…</td>
+                  <td className="mono">
+                    <a
+                      href={`/gw/${group[0].name}/`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="instance-link"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      /gw/{group[0].name}/…
+                    </a>
+                  </td>
                   <td className="muted">{group.length}</td>
                   <td className="muted">
                     {group.map((r, i) => (
@@ -370,22 +380,29 @@ export function GatewayDetail({ name }: { name: string }) {
               </tr>
             </thead>
             <tbody>
-              {routes.map((r) => (
-                <tr key={r.id}>
-                  <td>
-                    <span className="chip">{r.method || 'ANY'}</span>
-                  </td>
-                  <td className="mono muted">{r.pathPattern || '*'}</td>
-                  <td className="muted">
-                    {TARGET_ICON[r.targetType]} {targetLabel(r)}
-                  </td>
-                  <td className="actions-col">
-                    <button className="btn btn--sm btn--danger" onClick={() => removeEndpoint(r.id)}>
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {routes.map((r) => {
+                const href = `/gw/${name}${r.pathPattern || '/'}`;
+                return (
+                  <tr key={r.id}>
+                    <td>
+                      <span className="chip">{r.method || 'ANY'}</span>
+                    </td>
+                    <td className="mono muted">
+                      <a href={href} target="_blank" rel="noreferrer" className="instance-link">
+                        {r.pathPattern || '*'}
+                      </a>
+                    </td>
+                    <td className="muted">
+                      {TARGET_ICON[r.targetType]} {targetLabel(r)}
+                    </td>
+                    <td className="actions-col">
+                      <button className="btn btn--sm btn--danger" onClick={() => removeEndpoint(r.id)}>
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

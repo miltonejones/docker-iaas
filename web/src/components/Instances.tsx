@@ -73,6 +73,7 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
               {containers.map((c) => {
                 const running = RUNNING.has(c.state);
                 const isPending = pending === c.id || busy;
+                const locked = !!c.system;
                 return (
                   <tr key={c.id}>
                     <td>
@@ -101,7 +102,8 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                       {running ? (
                         <button
                           className="btn btn--sm"
-                          disabled={isPending}
+                          disabled={isPending || locked}
+                          title={locked ? "System-managed — can't be stopped here" : undefined}
                           onClick={() => run(c.id, () => api.action(c.id, 'stop'))}
                         >
                           Stop
@@ -109,7 +111,8 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                       ) : (
                         <button
                           className="btn btn--sm"
-                          disabled={isPending}
+                          disabled={isPending || locked}
+                          title={locked ? "System-managed — can't be started here" : undefined}
                           onClick={() => run(c.id, () => api.action(c.id, 'start'))}
                         >
                           Start
@@ -117,7 +120,8 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                       )}
                       <button
                         className="btn btn--sm"
-                        disabled={isPending}
+                        disabled={isPending || locked}
+                        title={locked ? "System-managed — can't be restarted here" : undefined}
                         onClick={() => run(c.id, () => api.action(c.id, 'restart'))}
                       >
                         Restart
@@ -125,7 +129,7 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                       <button className="btn btn--sm" onClick={() => showLogs(c)}>
                         Logs
                       </button>
-                      {c.system ? (
+                      {locked ? (
                         <span className="chip" title="System-managed — can't be removed here">
                           Protected
                         </span>

@@ -26,8 +26,6 @@ export function ContainersPage({ containers, presets, busy, onChanged }: Props) 
     replaceId: string;
   } | null>(null);
 
-  const visibleContainers = containers.filter((c) => !c.system);
-
   if (isNew) {
     return (
       <div>
@@ -46,7 +44,7 @@ export function ContainersPage({ containers, presets, busy, onChanged }: Props) 
   return (
     <div>
       <Instances
-        containers={visibleContainers}
+        containers={containers}
         busy={busy}
         onChanged={onChanged}
         onSelect={setSelectedContainer}

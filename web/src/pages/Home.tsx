@@ -51,6 +51,34 @@ export function HomePage({ snapshot, live, onPrune, pruning, runningCount, total
           <span className="home-card__label">Gateway routes</span>
         </button>
       </div>
+
+      <section className="panel" style={{ marginTop: 20 }}>
+        <div className="panel__head">
+          <h2>Quick links</h2>
+        </div>
+        <div className="table-wrap">
+          <table className="table">
+            <tbody>
+              <tr>
+                <td className="mono"><a href="http://dockyard.test:4300/" target="_blank" rel="noreferrer">dockyard.test:4300</a></td>
+                <td className="muted">Dockyard.ai console (production)</td>
+              </tr>
+              <tr>
+                <td className="mono"><a href="http://dockyard.test:5173/" target="_blank" rel="noreferrer">dockyard.test:5173</a></td>
+                <td className="muted">Dockyard.ai console (dev / Vite)</td>
+              </tr>
+              <tr>
+                <td className="mono"><a href="http://minio.test:9000/" target="_blank" rel="noreferrer">minio.test:9000</a></td>
+                <td className="muted">MinIO S3 API</td>
+              </tr>
+              <tr>
+                <td className="mono"><a href="http://minio-console.test:9001/" target="_blank" rel="noreferrer">minio-console.test:9001</a></td>
+                <td className="muted">MinIO web console</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   );
 }

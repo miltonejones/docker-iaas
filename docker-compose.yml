@@ -18,6 +18,11 @@ services:
       - /:/host:ro
       # Persist the SQLite database (gateway routes, functions, settings).
       - ./data:/app/data
+    secrets:
+      # Mounted read-only at /run/secrets/anthropic_api_key inside the
+      # container — never exposed via `docker inspect`/env, unlike a plain
+      # `environment:` entry. Powers the "Ask Dockyard" assistant.
+      - anthropic_api_key
     restart: unless-stopped
     networks:
       # Shares dockyard-net with the containers/functions it manages (including
@@ -30,3 +35,9 @@ networks:
     # own server creates/looks up at runtime via the Docker API.
     name: dockyard-net
     driver: bridge
+
+secrets:
+  anthropic_api_key:
+    # This host's Anthropic API key lives outside the repo at ~/.antro.
+    # Override with ANTHROPIC_KEY_FILE if you keep it somewhere else.
+    file: ${ANTHROPIC_KEY_FILE:-/home/miltonejones/.antro}

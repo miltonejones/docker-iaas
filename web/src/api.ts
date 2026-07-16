@@ -1,4 +1,36 @@
-import type { Bucket, BucketListing, BuildCacheEntry, Container, ContainerDetail, DockerImage, DockerVolume, GatewayRoute, LambdaFile, LambdaFunction, LambdaResult, LambdaRuntime, Preset, UsageSnapshot } from './types';
+import type { AssistantSession, AssistantSessionState, AssistantSessionSummary, AssistantTurn, Bucket, BucketListing, BuildCacheEntry, Container, ContainerDetail, DockerImage, DockerVolume, GatewayRoute, LambdaFile, LambdaFunction, LambdaResult, LambdaRuntime, Preset, UsageSnapshot } from './types';
+
+/** Parse a Server-Sent Events stream from a fetch Response into an async
+ *  generator of JSON objects — one yield per `data:` line. */
+async function* parseSSE(response: Response): AsyncGenerator<Record<string, unknown>> {
+  if (!response.body) throw new Error('No response body');
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            yield JSON.parse(line.slice(6));
+          } catch {
+            // skip malformed JSON lines
+          }
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -78,6 +110,9 @@ export const api = {
 
   lambdaListFunctions: () =>
     fetch('/api/lambda/functions').then((r) => json<LambdaFunction[]>(r)),
+
+  lambdaGetFunction: (id: string) =>
+    fetch(`/api/lambda/functions/${id}`).then((r) => json<LambdaFunction>(r)),
 
   lambdaCreateFunction: (
     name: string,
@@ -172,6 +207,13 @@ export const api = {
       body: file,
     }).then((r) => json<{ key: string }>(r)),
 
+  bucketWriteObject: (name: string, key: string, content: string, contentType = 'text/plain') =>
+    fetch(`/api/buckets/${encodeURIComponent(name)}/objects/${key.split('/').map(encodeURIComponent).join('/')}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType },
+      body: content,
+    }).then((r) => json<{ key: string }>(r)),
+
   bucketObjectUrl: (name: string, key: string) =>
     `/api/buckets/${encodeURIComponent(name)}/objects/${key.split('/').map(encodeURIComponent).join('/')}`,
 
@@ -199,6 +241,75 @@ export const api = {
 
   gatewayDelete: (id: string) =>
     fetch(`/api/gateway/${id}`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r)),
+
+  assistantPlan: (prompt: string, messages?: unknown[]) =>
+    fetch('/api/assistant/plan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, messages }),
+    }).then((r) => json<AssistantTurn>(r)),
+
+  /** Streaming version of assistantPlan — returns an async generator that
+   *  yields SSE events as they arrive: {type:'text', delta} for incremental
+   *  text, {type:'turn', ...AssistantTurn} when the turn completes, or
+   *  {type:'error', message} on failure. `messages`, if given, is the prior
+   *  conversation so far — pass it on every follow-up prompt in the same
+   *  session so the model retains context (e.g. "the function" resolving to
+   *  whatever was just discussed), not just the latest message in isolation. */
+  assistantPlanStream: (prompt: string, messages?: unknown[]) =>
+    fetch('/api/assistant/plan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, messages }),
+    }).then((r) => {
+      if (!r.ok) throw new Error(`Assistant plan failed: ${r.statusText}`);
+      return parseSSE(r);
+    }),
+
+  assistantConfirm: (messages: unknown[], results: { toolUseId: string; ok: boolean; content: unknown }[]) =>
+    fetch('/api/assistant/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages, results }),
+    }).then((r) => json<AssistantTurn>(r)),
+
+  /** Streaming version of assistantConfirm — same SSE protocol as
+   *  assistantPlanStream. */
+  assistantConfirmStream: (
+    messages: unknown[],
+    results: { toolUseId: string; ok: boolean; content: unknown }[],
+  ) =>
+    fetch('/api/assistant/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages, results }),
+    }).then((r) => {
+      if (!r.ok) throw new Error(`Assistant confirm failed: ${r.statusText}`);
+      return parseSSE(r);
+    }),
+
+  assistantListSessions: () =>
+    fetch('/api/assistant/sessions').then((r) => json<AssistantSessionSummary[]>(r)),
+
+  assistantGetSession: (id: string) =>
+    fetch(`/api/assistant/sessions/${id}`).then((r) => json<AssistantSession>(r)),
+
+  assistantCreateSession: (name: string, state: AssistantSessionState) =>
+    fetch('/api/assistant/sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, state }),
+    }).then((r) => json<AssistantSession>(r)),
+
+  assistantUpdateSession: (id: string, fields: { name?: string; state?: AssistantSessionState }) =>
+    fetch(`/api/assistant/sessions/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields),
+    }).then((r) => json<AssistantSession>(r)),
+
+  assistantDeleteSession: (id: string) =>
+    fetch(`/api/assistant/sessions/${id}`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r)),
 };
 
 /** Subscribe to the live usage stream. Returns an unsubscribe function. */
