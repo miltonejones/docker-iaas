@@ -115,26 +115,21 @@ code,
 .service-nav__btn {
   display: inline-flex;
   align-items: center;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
+  background: none;
+  border: none;
   color: var(--muted);
-  border-radius: var(--r-sm);
-  padding: 7px 12px;
+  padding: 6px 10px;
   font-size: 13px;
   font-weight: 500;
   text-decoration: none;
   cursor: pointer;
-  transition: border-color 0.15s var(--ease), color 0.15s var(--ease), background 0.15s var(--ease);
+  transition: color 0.15s var(--ease);
 }
 .service-nav__btn:hover {
-  border-color: var(--border-strong);
   color: var(--text);
-  background: var(--bg-elev-2);
 }
 .service-nav__btn--active {
-  background: var(--accent-dim);
-  border-color: var(--accent);
-  color: var(--accent-text);
+  color: var(--accent);
   font-weight: 600;
 }
 .topbar__stats {
@@ -1023,6 +1018,9 @@ select:focus {
   grid-template-columns: 220px 1fr;
   gap: 18px;
   min-height: 300px;
+}
+.panel-layout--full {
+  grid-template-columns: 1fr;
 }
 
 /* Sidebar */

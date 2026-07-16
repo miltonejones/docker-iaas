@@ -9,11 +9,15 @@ services:
       # container, mount the host root read-only (below) and point here.
       HOST_DISK_PATH: /host
       USAGE_POLL_MS: '5000'
+    labels:
+      iaas.system: 'true'
     volumes:
       # Manage the host's Docker daemon.
       - /var/run/docker.sock:/var/run/docker.sock
       # Report the host's real disk usage rather than the container's overlay.
       - /:/host:ro
+      # Persist the SQLite database (gateway routes, functions, settings).
+      - ./data:/app/data
     restart: unless-stopped
     networks:
       # Shares dockyard-net with the containers/functions it manages (including

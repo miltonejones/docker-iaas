@@ -8,11 +8,12 @@ interface Props {
   busy: boolean;
   onChanged: () => void;
   onSelect: (c: Container) => void;
+  onNewInstance?: () => void;
 }
 
 const RUNNING = new Set(['running', 'restarting']);
 
-export function Instances({ containers, busy, onChanged, onSelect }: Props) {
+export function Instances({ containers, busy, onChanged, onSelect, onNewInstance }: Props) {
   const [pending, setPending] = useState<string | null>(null);
   const [logsFor, setLogsFor] = useState<Container | null>(null);
   const [logText, setLogText] = useState<string>('');
@@ -45,10 +46,15 @@ export function Instances({ containers, busy, onChanged, onSelect }: Props) {
         <h2>
           Instances <span className="count">{containers.length}</span>
         </h2>
+        {onNewInstance && (
+          <button className="btn btn--primary btn--sm" onClick={onNewInstance}>
+            + New instance
+          </button>
+        )}
       </div>
 
       {containers.length === 0 ? (
-        <p className="empty">No instances yet. Launch one from the gallery above.</p>
+        <p className="empty">No instances yet.</p>
       ) : (
         <div className="table-wrap">
           <table className="table">

@@ -36,8 +36,37 @@ function ServiceNav() {
 
 function Breadcrumbs() {
   const location = useLocation();
-  const current = SERVICES.find((s) => s.path === location.pathname);
-  const currentLabel = current && current.path !== '/' ? current.label.replace(/^\S+\s/, '') : null;
+  const pathname = location.pathname;
+
+  // Detail routes (e.g. /functions/:id) live one level under a service path —
+  // match by prefix so the trail stays populated while drilled in.
+  const current = SERVICES.find((s) => s.path !== '/' && pathname.startsWith(s.path));
+  const currentLabel = current ? current.label.replace(/^\S+\s/, '') : null;
+
+  const functionId = pathname.match(/^\/functions\/(.+)$/)?.[1];
+  const [functionName, setFunctionName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!functionId || functionId === 'new') {
+      setFunctionName(null);
+      return;
+    }
+    api
+      .lambdaListFunctions()
+      .then((list) => setFunctionName(list.find((f) => f.id === functionId)?.name ?? null))
+      .catch(() => setFunctionName(null));
+  }, [functionId]);
+
+  const isNewContainer = pathname === '/containers/new';
+  const gatewayName = pathname.match(/^\/gateway\/(.+)$/)?.[1];
+
+  const detailLabel = functionId
+    ? (functionId === 'new' ? 'New function' : functionName ?? 'Function')
+    : isNewContainer
+      ? 'New instance'
+      : gatewayName
+        ? `/gw/${gatewayName}`
+        : null;
 
   return (
     <nav className="breadcrumbs" aria-label="Breadcrumb">
@@ -45,7 +74,17 @@ function Breadcrumbs() {
       {currentLabel && (
         <>
           <span className="breadcrumbs__sep">/</span>
-          <span className="breadcrumbs__current">{currentLabel}</span>
+          {detailLabel ? (
+            <Link to={current!.path} className="breadcrumbs__link">{currentLabel}</Link>
+          ) : (
+            <span className="breadcrumbs__current">{currentLabel}</span>
+          )}
+        </>
+      )}
+      {detailLabel && (
+        <>
+          <span className="breadcrumbs__sep">/</span>
+          <span className="breadcrumbs__current">{detailLabel}</span>
         </>
       )}
     </nav>
@@ -159,6 +198,17 @@ export function App() {
                 }
               />
               <Route
+                path="/containers/new"
+                element={
+                  <ContainersPage
+                    containers={containers}
+                    presets={presets}
+                    busy={busy}
+                    onChanged={onChanged}
+                  />
+                }
+              />
+              <Route
                 path="/containers"
                 element={
                   <ContainersPage
@@ -169,8 +219,10 @@ export function App() {
                   />
                 }
               />
+              <Route path="/functions/:id" element={<FunctionsPage />} />
               <Route path="/functions" element={<FunctionsPage />} />
               <Route path="/buckets" element={<BucketsPage />} />
+              <Route path="/gateway/:name" element={<GatewayPage />} />
               <Route path="/gateway" element={<GatewayPage />} />
             </Routes>
           </main>

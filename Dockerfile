@@ -1,6 +1,7 @@
 # Build the whole console (web + server) and run it as a single container.
 # Mount the host Docker socket at runtime so it can manage its siblings.
-FROM node:20-alpine AS build
+FROM node:20-slim AS build
+RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY package.json ./
 COPY server/package.json server/
@@ -9,7 +10,7 @@ RUN npm install
 COPY . .
 RUN npm run build
 
-FROM node:20-alpine
+FROM node:20-slim
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /app/package.json ./

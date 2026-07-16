@@ -14,10 +14,10 @@ const DEFAULT_ENTRY: Record<string, string> = {
   sh: 'index.sh',
 };
 
-export function LambdaPanel() {
+export function LambdaPanel({ functionId: initialFunctionId, onSaved, embedded }: { functionId?: string; onSaved?: (id: string) => void; embedded?: boolean }) {
   const [runtimes, setRuntimes] = useState<LambdaRuntime[]>([]);
   const [functions, setFunctions] = useState<LambdaFunction[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(initialFunctionId || null);
   const [name, setName] = useState('');
   const [runtime, setRuntime] = useState('node');
   const [packages, setPackages] = useState('');
@@ -58,11 +58,29 @@ export function LambdaPanel() {
 
   const loadFunctions = useCallback(async () => {
     try {
-      setFunctions(await api.lambdaListFunctions());
+      const list = await api.lambdaListFunctions();
+      setFunctions(list);
+      return list;
     } catch {
       /* ignore */
     }
   }, []);
+
+  // When embedded with a specific functionId, auto-select it once functions load.
+  // When embedded without a functionId, start in new-function mode.
+  useEffect(() => {
+    if (!embedded) return;
+    if (initialFunctionId) {
+      api.lambdaListFunctions().then((list) => {
+        setFunctions(list);
+        const fn = list.find((f) => f.id === initialFunctionId);
+        if (fn) selectFunction(fn);
+      }).catch(() => {});
+    } else {
+      newFunction();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialFunctionId]);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -240,6 +258,7 @@ export function LambdaPanel() {
         );
         setActiveId(created.id);
         setFunctions((prev) => [created, ...prev]);
+        onSaved?.(created.id);
       }
     } catch (err) {
       setError((err as Error).message);
@@ -301,14 +320,18 @@ export function LambdaPanel() {
 
   return (
     <section className="panel">
-      <div className="panel__head">
-        <h2>
-          Lambda <span className="count">fn</span>
-        </h2>
-      </div>
+      {!embedded && (
+        <div className="panel__head">
+          <h2>Lambda <span className="count">fn</span></h2>
+          <button className="btn btn--primary btn--sm" onClick={newFunction}>
+            + New function
+          </button>
+        </div>
+      )}
 
-      <div className="panel-layout">
-        {/* Sidebar — function list */}
+      <div className={`panel-layout${embedded ? ' panel-layout--full' : ''}`}>
+        {/* Sidebar — function list (hidden in embedded/detail mode) */}
+        {!embedded && (
         <aside className="panel-sidebar">
           <button className="btn btn--primary panel-new-btn" onClick={newFunction}>
             + New function
@@ -361,6 +384,7 @@ export function LambdaPanel() {
             </p>
           </div>
         </aside>
+        )}
 
         {/* Main — editor + output */}
         <div className="panel-main">
@@ -470,7 +494,7 @@ export function LambdaPanel() {
               onChange={(e) => setCode(e.target.value)}
               spellCheck={false}
               placeholder={activePath === entryPoint ? PLACEHOLDERS[runtime] || '' : ''}
-              rows={22}
+              rows={25}
             />
             <div className="lambda-editor-foot">
               <span className="muted mono" style={{ fontSize: '11px' }}>

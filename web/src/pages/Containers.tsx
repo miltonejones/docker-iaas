@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import type { Container, ContainerDetail, Preset } from '../types';
 import { Gallery } from '../components/Gallery';
 import { Instances } from '../components/Instances';
@@ -13,6 +14,10 @@ interface Props {
 }
 
 export function ContainersPage({ containers, presets, busy, onChanged }: Props) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isNew = location.pathname === '/containers/new';
+
   const [launchPreset, setLaunchPreset] = useState<Preset | null>(null);
   const [selectedContainer, setSelectedContainer] = useState<Container | null>(null);
   const [relaunch, setRelaunch] = useState<{
@@ -21,23 +26,32 @@ export function ContainersPage({ containers, presets, busy, onChanged }: Props) 
     replaceId: string;
   } | null>(null);
 
+  const visibleContainers = containers.filter((c) => !c.system);
+
+  if (isNew) {
+    return (
+      <div>
+        <Gallery presets={presets} onLaunch={setLaunchPreset} />
+        {launchPreset && (
+          <LaunchModal
+            preset={launchPreset}
+            onClose={() => setLaunchPreset(null)}
+            onLaunched={() => { setLaunchPreset(null); navigate('/containers'); onChanged(); }}
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div>
       <Instances
-        containers={containers}
+        containers={visibleContainers}
         busy={busy}
         onChanged={onChanged}
         onSelect={setSelectedContainer}
+        onNewInstance={() => navigate('/containers/new')}
       />
-      <Gallery presets={presets} onLaunch={setLaunchPreset} />
-
-      {launchPreset && (
-        <LaunchModal
-          preset={launchPreset}
-          onClose={() => setLaunchPreset(null)}
-          onLaunched={onChanged}
-        />
-      )}
 
       {selectedContainer && (
         <InstanceDetail

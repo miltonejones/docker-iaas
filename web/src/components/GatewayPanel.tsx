@@ -1,19 +1,143 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { Bucket, Container, GatewayRoute, LambdaFunction } from '../types';
 import { api } from '../api';
 
 const TARGET_ICON: Record<string, string> = { bucket: '🪣', container: '📦', lambda: '⚡' };
+
+export function GatewayList() {
+  const navigate = useNavigate();
+  const [routes, setRoutes] = useState<GatewayRoute[]>([]);
+  const [containers, setContainers] = useState<Container[]>([]);
+  const [functions, setFunctions] = useState<LambdaFunction[]>([]);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadRoutes();
+    api.containers().then(setContainers).catch(() => {});
+    api.lambdaListFunctions().then(setFunctions).catch(() => {});
+  }, []);
+
+  async function loadRoutes() {
+    try {
+      setRoutes(await api.gatewayList());
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  function targetLabel(r: GatewayRoute): string {
+    if (r.targetType === 'bucket') return r.targetId;
+    if (r.targetType === 'container') {
+      const c = containers.find((x) => x.id === r.targetId);
+      return c?.name || r.targetId.slice(0, 12);
+    }
+    const fn = functions.find((x) => x.id === r.targetId);
+    return fn?.name || r.targetId;
+  }
+
+  const groups = Object.values(
+    routes.reduce<Record<string, GatewayRoute[]>>((acc, r) => {
+      (acc[r.name] ??= []).push(r);
+      return acc;
+    }, {}),
+  );
+
+  return (
+    <section className="panel">
+      <div className="panel__head">
+        <h2>
+          Gateway <span className="count">{groups.length}</span>
+        </h2>
+        <button className="btn btn--primary btn--sm" onClick={() => setCreating(true)}>
+          + New route
+        </button>
+      </div>
+
+      {error && <p className="muted empty-sm">{error}</p>}
+
+      {creating && (
+        <div className="modal-backdrop" onClick={() => setCreating(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal__head">
+              <h3>New gateway route</h3>
+              <button className="btn btn--ghost" onClick={() => setCreating(false)}>
+                Close
+              </button>
+            </div>
+            <label className="field">
+              <span>Route name (used as /gw/&lt;name&gt;/...)</span>
+              <input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="my-api"
+                spellCheck={false}
+                autoFocus
+              />
+            </label>
+            <p className="hint">
+              A route groups any number of endpoints (method + path combos), each pointing at its own target.
+              Add endpoints from the route's detail page next.
+            </p>
+            <button
+              className="btn btn--primary"
+              disabled={!newName.trim()}
+              onClick={() => navigate(`/gateway/${newName.trim()}`)}
+            >
+              Continue
+            </button>
+          </div>
+        </div>
+      )}
+
+      {groups.length === 0 ? (
+        <p className="empty">No routes yet. Map a bucket, container, or function to a clean URL.</p>
+      ) : (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Route</th>
+                <th>Endpoints</th>
+                <th>Targets</th>
+              </tr>
+            </thead>
+            <tbody>
+              {groups.map((group) => (
+                <tr key={group[0].name} onClick={() => navigate(`/gateway/${group[0].name}`)}>
+                  <td className="mono">/gw/{group[0].name}/…</td>
+                  <td className="muted">{group.length}</td>
+                  <td className="muted">
+                    {group.map((r, i) => (
+                      <span key={r.id} title={targetLabel(r)}>
+                        {i > 0 && ' '}
+                        {TARGET_ICON[r.targetType]}
+                      </span>
+                    ))}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 const METHODS = ['ANY', 'GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'];
 
-export function GatewayPanel() {
+export function GatewayDetail({ name }: { name: string }) {
+  const navigate = useNavigate();
   const [routes, setRoutes] = useState<GatewayRoute[]>([]);
   const [buckets, setBuckets] = useState<Bucket[]>([]);
   const [containers, setContainers] = useState<Container[]>([]);
   const [functions, setFunctions] = useState<LambdaFunction[]>([]);
-  const [creating, setCreating] = useState(false);
+  const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [name, setName] = useState('');
   const [targetType, setTargetType] = useState<'bucket' | 'container' | 'lambda'>('bucket');
   const [bucketId, setBucketId] = useState('');
   const [containerId, setContainerId] = useState('');
@@ -27,11 +151,12 @@ export function GatewayPanel() {
     api.bucketList().then(setBuckets).catch(() => {});
     api.containers().then(setContainers).catch(() => {});
     api.lambdaListFunctions().then(setFunctions).catch(() => {});
-  }, []);
+  }, [name]);
 
   async function loadRoutes() {
     try {
-      setRoutes(await api.gatewayList());
+      const all = await api.gatewayList();
+      setRoutes(all.filter((r) => r.name === name));
     } catch (err) {
       setError((err as Error).message);
     }
@@ -41,7 +166,6 @@ export function GatewayPanel() {
   const selectedContainer = runningContainers.find((c) => c.id === containerId);
 
   function resetForm() {
-    setName('');
     setTargetType('bucket');
     setBucketId('');
     setContainerId('');
@@ -51,7 +175,7 @@ export function GatewayPanel() {
     setPathPattern('');
   }
 
-  async function createRoute() {
+  async function addEndpoint() {
     setError(null);
     try {
       const methodField = method === 'ANY' ? undefined : method;
@@ -75,18 +199,20 @@ export function GatewayPanel() {
         await api.gatewayCreate({ name, targetType, targetId: functionId, method: methodField, pathPattern: pathField });
       }
       resetForm();
-      setCreating(false);
+      setAdding(false);
       await loadRoutes();
     } catch (err) {
       setError((err as Error).message);
     }
   }
 
-  async function removeRoute(id: string) {
-    if (!confirm('Delete this route?')) return;
+  async function removeEndpoint(id: string) {
+    if (!confirm('Delete this endpoint?')) return;
     try {
       await api.gatewayDelete(id);
-      setRoutes((prev) => prev.filter((r) => r.id !== id));
+      const remaining = routes.filter((r) => r.id !== id);
+      setRoutes(remaining);
+      if (remaining.length === 0) navigate('/gateway');
     } catch (err) {
       alert((err as Error).message);
     }
@@ -106,29 +232,24 @@ export function GatewayPanel() {
     <section className="panel">
       <div className="panel__head">
         <h2>
-          Gateway <span className="count">{routes.length}</span>
+          <span className="mono">/gw/{name}</span> <span className="count">{routes.length}</span>
         </h2>
-        <button className="btn btn--primary btn--sm" onClick={() => setCreating(!creating)}>
-          {creating ? 'Cancel' : '+ New route'}
+        <button className="btn btn--primary btn--sm" onClick={() => setAdding(true)}>
+          + Add endpoint
         </button>
       </div>
 
       {error && <p className="muted empty-sm">{error}</p>}
 
-      {creating && (
-        <div className="modal-backdrop" onClick={() => setCreating(false)}>
+      {adding && (
+        <div className="modal-backdrop" onClick={() => setAdding(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal__head">
-              <h3>New gateway route</h3>
-              <button className="btn btn--ghost" onClick={() => setCreating(false)}>
+              <h3>Add endpoint to /gw/{name}</h3>
+              <button className="btn btn--ghost" onClick={() => setAdding(false)}>
                 Close
               </button>
             </div>
-
-            <label className="field">
-              <span>Route name (used as /gw/&lt;name&gt;/...)</span>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="my-api" spellCheck={false} />
-            </label>
 
             <div className="port-row">
               <label className="field" style={{ flex: 1 }}>
@@ -150,8 +271,7 @@ export function GatewayPanel() {
               </label>
             </div>
             <p className="hint">
-              Multiple routes can share the same name — the most specific method + path match wins. Leave both as
-              ANY / blank to catch everything under this name.
+              The most specific method + path match wins. Leave both as ANY / blank to catch everything under this route.
             </p>
 
             <label className="field">
@@ -229,21 +349,20 @@ export function GatewayPanel() {
               </label>
             )}
 
-            <button className="btn btn--primary" disabled={!name.trim()} onClick={createRoute}>
-              Create route
+            <button className="btn btn--primary" onClick={addEndpoint}>
+              Add endpoint
             </button>
           </div>
         </div>
       )}
 
       {routes.length === 0 ? (
-        <p className="empty">No routes yet. Map a bucket, container, or function to a clean URL.</p>
+        <p className="empty">No endpoints yet for this route.</p>
       ) : (
         <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
-                <th>Route</th>
                 <th>Method</th>
                 <th>Path</th>
                 <th>Target</th>
@@ -253,7 +372,6 @@ export function GatewayPanel() {
             <tbody>
               {routes.map((r) => (
                 <tr key={r.id}>
-                  <td className="mono">/gw/{r.name}/…</td>
                   <td>
                     <span className="chip">{r.method || 'ANY'}</span>
                   </td>
@@ -262,7 +380,7 @@ export function GatewayPanel() {
                     {TARGET_ICON[r.targetType]} {targetLabel(r)}
                   </td>
                   <td className="actions-col">
-                    <button className="btn btn--sm btn--danger" onClick={() => removeRoute(r.id)}>
+                    <button className="btn btn--sm btn--danger" onClick={() => removeEndpoint(r.id)}>
                       Delete
                     </button>
                   </td>
