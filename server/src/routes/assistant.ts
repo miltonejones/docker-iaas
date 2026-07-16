@@ -752,7 +752,11 @@ async function respondStream(
 
       const stream = client.messages.stream({
         model: 'claude-opus-4-8',
-        max_tokens: 4096,
+        // Tool calls that echo a whole file set back (replace_lambda_function_files,
+        // write_container_file with a large payload, etc.) can otherwise blow past a
+        // small cap mid-generation, truncating the tool_use JSON. Streaming already
+        // sidesteps the HTTP-timeout risk a large cap would normally carry.
+        max_tokens: 32000,
         system: SYSTEM,
         tools,
         messages,
