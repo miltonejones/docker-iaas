@@ -272,7 +272,7 @@ containersRouter.get('/:id/logs', async (req: Request, res: Response) => {
 });
 
 // Non-TTY container logs are multiplexed with an 8-byte header per frame.
-function stripLogHeaders(buf: Buffer): string {
+export function stripLogHeaders(buf: Buffer): string {
   const out: Buffer[] = [];
   let offset = 0;
   while (offset + 8 <= buf.length) {

@@ -107,11 +107,12 @@ export const api = {
     functionId?: string,
     files?: LambdaFile[],
     entryPoint?: string,
+    payload?: unknown,
   ) =>
     fetch('/api/lambda/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ runtime, code, packages, functionId, files, entryPoint }),
+      body: JSON.stringify({ runtime, code, packages, functionId, files, entryPoint, payload }),
     }).then((r) => json<LambdaResult>(r)),
 
   lambdaHistory: () =>

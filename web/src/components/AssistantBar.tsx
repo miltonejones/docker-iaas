@@ -30,6 +30,7 @@ const ACTION_LABEL: Record<string, string> = {
   delete_bucket_object: 'Delete bucket object',
   write_bucket_object: 'Write bucket file',
   prune_build_cache: 'Prune build cache',
+  run_function: 'Run function',
 };
 
 const LOOKUP_LABEL: Record<string, string> = {
@@ -453,6 +454,22 @@ export function AssistantBar({ onClose, onChanged, initialPrompt, initialSession
 
       case 'prune_build_cache':
         return api.pruneBuildCache();
+
+      case 'run_function': {
+        // The /run endpoint needs the function's actual code/runtime/entry
+        // (functionId alone only injects env vars), so load the saved function
+        // first, then run it with that id so its env vars apply too.
+        const fn = await api.lambdaGetFunction(String(input.id ?? ''));
+        return api.lambdaRun(
+          fn.runtime,
+          fn.code,
+          fn.packages || undefined,
+          fn.id,
+          fn.files,
+          fn.entryPoint,
+          input.payload,
+        );
+      }
 
       default:
         throw new Error(`Unknown action "${action.name}".`);

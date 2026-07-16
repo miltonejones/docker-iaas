@@ -5,6 +5,7 @@ import { Router, type Request, type Response } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 import { GetObjectCommand, ListBucketsCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { docker } from '../docker.js';
+import { stripLogHeaders } from './containers.js';
 import {
   listFunctions,
   getFunction,
@@ -16,6 +17,7 @@ import {
   deleteAssistantSession,
 } from '../db.js';
 import { getS3Client } from '../minio.js';
+import { PRESETS } from '../presets.js';
 
 export const assistantRouter = Router();
 
@@ -342,6 +344,59 @@ const tools: Anthropic.Tool[] = [
       required: ['id'],
     },
   },
+  {
+    name: 'get_container_logs',
+    description:
+      "Fetch a container's recent stdout/stderr log output (read-only, runs automatically with no confirmation). Use this when the user asks what a container is doing, why it isn't working, or wants to see its logs. Returns up to `tail` lines (default 200).",
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Container id (from list_containers or launch_container)' },
+        tail: { type: 'number', description: 'Number of recent lines to fetch (default 200, max 500)' },
+      },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'inspect_container',
+    description:
+      "Inspect a container's configuration (read-only, runs automatically with no confirmation): image, state, published ports, volumes, restart policy, and labels. Environment variable VALUES are redacted for safety — only the env var NAMES are returned. Use this when the user asks how a container is configured or what it's running.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Container id' },
+      },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'list_presets',
+    description:
+      'List the launchable image presets (the gallery of quick-start images — analogous to AMIs): each preset has an id, name, category, image, description, suggested ports and env defaults. Use this when the user asks what they can launch or wants to pick a preset to run. Read-only, runs automatically with no confirmation.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'list_used_ports',
+    description:
+      'List the host ports currently published by running containers (read-only, runs automatically with no confirmation). Use this before launching a container with a specific host port to avoid a conflict, or when the user asks what ports are in use.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'run_function',
+    description:
+      'Run a saved Lambda function by id and return its stdout, status code, and duration. Use this when the user asks to test or run a function. An optional JSON `payload` is provided to the function as the DOCKYARD_REQUEST environment variable (the gateway contract); omit it for functions that take no request. The function runs with its saved environment variables, the same as the editor Run button and gateway invocations. The user confirms before it runs.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Function id, e.g. fn-abc123' },
+        payload: {
+          type: 'object',
+          description: 'Optional request payload passed to the function as DOCKYARD_REQUEST (JSON)',
+        },
+      },
+      required: ['id'],
+    },
+  },
 ];
 
 /** These tools have no side effects, so the server executes them itself and
@@ -356,6 +411,10 @@ const READ_ONLY_TOOLS = new Set([
   'list_bucket_objects',
   'read_bucket_object',
   'read_function',
+  'get_container_logs',
+  'inspect_container',
+  'list_presets',
+  'list_used_ports',
 ]);
 
 /** Caps how much of a bucket object's content gets fed back to Claude — a
@@ -437,6 +496,74 @@ async function executeReadOnlyTool(name: string, input: Record<string, unknown>)
         createdAt: fn.created_at,
         updatedAt: fn.updated_at,
       };
+    }
+    case 'get_container_logs': {
+      const id = String(input.id ?? '');
+      const tailNum = Number.isFinite(input.tail) ? Number(input.tail) : 200;
+      const tail = Math.max(1, Math.min(500, Math.trunc(tailNum) || 200));
+      const buf = await docker.getContainer(id).logs({
+        stdout: true,
+        stderr: true,
+        tail,
+        timestamps: false,
+      });
+      const text = stripLogHeaders(buf as unknown as Buffer);
+      const MAX_LOG_CHARS = 20_000;
+      const truncated = text.length > MAX_LOG_CHARS;
+      return {
+        tail,
+        content: truncated ? text.slice(0, MAX_LOG_CHARS) : text,
+        truncated,
+      };
+    }
+    case 'inspect_container': {
+      const info = await docker.getContainer(String(input.id ?? '')).inspect();
+      // Env VALUES may contain secrets — return only the variable NAMES, never
+      // the values, per secrets hygiene.
+      const envNames = (info.Config?.Env || []).map((e) => e.split('=')[0]);
+      return {
+        id: info.Id,
+        name: (info.Name || '').replace(/^\//, ''),
+        image: info.Config?.Image ?? '',
+        state: info.State?.Status ?? 'unknown',
+        ports: info.NetworkSettings?.Ports
+          ? Object.entries(info.NetworkSettings.Ports).flatMap(([key, bindings]) => {
+              const [port, proto] = key.split('/');
+              return (bindings || []).map((b) => ({
+                privatePort: Number(port),
+                publicPort: b?.HostPort ? Number(b.HostPort) : undefined,
+                type: proto || 'tcp',
+              }));
+            })
+          : [],
+        env: envNames,
+        volumes: (info.Mounts || []).map((m) => ({
+          source: m.Source ?? '',
+          destination: m.Destination ?? '',
+          type: m.Type ?? 'volume',
+        })),
+        restartPolicy: info.HostConfig?.RestartPolicy?.Name ?? 'no',
+        labels: info.Config?.Labels ?? {},
+      };
+    }
+    case 'list_presets':
+      return PRESETS.map((p) => ({
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        image: p.image,
+        description: p.description,
+        ports: (p.ports || []).map((pp) => ({ container: pp.container, host: pp.host })),
+      }));
+    case 'list_used_ports': {
+      const list = await docker.listContainers({ all: true });
+      const used = new Set<number>();
+      for (const c of list) {
+        for (const p of c.Ports || []) {
+          if (p.PublicPort) used.add(p.PublicPort);
+        }
+      }
+      return { ports: Array.from(used).sort((a, b) => a - b) };
     }
     default:
       throw new Error(`Unknown read-only tool "${name}".`);

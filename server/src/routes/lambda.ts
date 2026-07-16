@@ -331,13 +331,14 @@ interface RunFileInput {
 // `files` holds any additional modules (barrel files, lib code) alongside
 // the entry file, addressed by their real relative path.
 lambdaRouter.post('/run', async (req: Request, res: Response) => {
-  const { runtime, code, packages, functionId, files, entryPoint } = req.body as {
+  const { runtime, code, packages, functionId, files, entryPoint, payload } = req.body as {
     runtime?: string;
     code?: string;
     packages?: string;
     functionId?: string;
     files?: RunFileInput[];
     entryPoint?: string;
+    payload?: unknown;
   };
 
   const def = RUNTIMES[runtime ?? ''];
@@ -359,10 +360,18 @@ lambdaRouter.post('/run', async (req: Request, res: Response) => {
 
   try {
     // Testing a saved function also gets its real env vars, so "Run" in the
-    // editor exercises the same configuration the gateway would use.
-    const extraEnv = functionId
-      ? Object.entries(getFunctionEnv(functionId)).map(([k, v]) => `${k}=${v}`)
-      : undefined;
+    // editor exercises the same configuration the gateway would use. An
+    // optional `payload` is provided to the function the same way the gateway
+    // delivers an incoming request: as the DOCKYARD_REQUEST environment
+    // variable (JSON).
+    const extraEnvParts: string[] = [];
+    if (functionId) {
+      for (const [k, v] of Object.entries(getFunctionEnv(functionId))) extraEnvParts.push(`${k}=${v}`);
+    }
+    if (payload !== undefined) {
+      extraEnvParts.push(`DOCKYARD_REQUEST=${JSON.stringify(payload)}`);
+    }
+    const extraEnv = extraEnvParts.length > 0 ? extraEnvParts : undefined;
     const result = await runLambda(def.id, allFiles, entryPath, pkgList, extraEnv);
     const entry: HistoryEntry = {
       ...result,
