@@ -13,15 +13,40 @@ import { getS3Client } from '../minio.js';
 
 export const bucketsRouter = Router();
 
+// Sum every object's Size in a bucket by paginating ListObjectsV2.
+// ListBuckets doesn't report size, so the list view needs this to populate a
+// Size column. MinIO is local, so the N+1 walk is cheap for the demo scale.
+async function bucketStats(name: string): Promise<{ size: number; objectCount: number }> {
+  let size = 0;
+  let objectCount = 0;
+  let token: string | undefined;
+  do {
+    const out = await getS3Client().send(
+      new ListObjectsV2Command({ Bucket: name, ContinuationToken: token }),
+    );
+    for (const o of out.Contents || []) {
+      size += o.Size ?? 0;
+      objectCount += 1;
+    }
+    token = out.IsTruncated ? out.NextContinuationToken : undefined;
+  } while (token);
+  return { size, objectCount };
+}
+
 bucketsRouter.get('/', async (_req: Request, res: Response) => {
   try {
     const out = await getS3Client().send(new ListBucketsCommand({}));
-    res.json(
-      (out.Buckets || []).map((b) => ({
-        name: b.Name,
-        creationDate: b.CreationDate,
-      })),
+    const withStats = await Promise.all(
+      (out.Buckets || []).map(async (b) => {
+        try {
+          const { size, objectCount } = await bucketStats(b.Name!);
+          return { name: b.Name, creationDate: b.CreationDate, size, objectCount };
+        } catch {
+          return { name: b.Name, creationDate: b.CreationDate, size: 0, objectCount: 0 };
+        }
+      }),
     );
+    res.json(withStats);
   } catch (err) {
     res.status(502).json({ error: (err as Error).message });
   }

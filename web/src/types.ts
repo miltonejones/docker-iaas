@@ -140,6 +140,8 @@ export interface UsageSnapshot {
 export interface Bucket {
   name: string;
   creationDate: string;
+  size?: number;
+  objectCount?: number;
 }
 
 export interface BucketObject {

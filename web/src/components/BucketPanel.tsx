@@ -76,6 +76,7 @@ export function BucketList() {
             <thead>
               <tr>
                 <th>Name</th>
+                <th className="num">Size</th>
                 <th>Created</th>
               </tr>
             </thead>
@@ -83,6 +84,7 @@ export function BucketList() {
               {buckets.map((b) => (
                 <tr key={b.name} onClick={() => navigate(`/buckets/${b.name}`)}>
                   <td className="mono">🪣 {b.name}</td>
+                  <td className="num mono">{bytes(b.size ?? 0)}</td>
                   <td className="muted">{b.creationDate ? new Date(b.creationDate).toLocaleString() : '—'}</td>
                 </tr>
               ))}
