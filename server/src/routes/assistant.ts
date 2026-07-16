@@ -134,6 +134,31 @@ const tools: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'replace_lambda_function_files',
+    description:
+      'Replace the complete source file set of an existing Lambda function. Use this for any code edit that adds, removes, or changes files. The files array must contain the entry point and every additional file that should remain.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Function id, e.g. fn-abc123' },
+        entryPoint: { type: 'string', description: 'Path of the file to execute' },
+        files: {
+          type: 'array',
+          description: 'Complete function file set, including the entry point and every retained additional file.',
+          items: {
+            type: 'object',
+            properties: {
+              path: { type: 'string', description: 'Relative file path' },
+              content: { type: 'string', description: 'Complete file content' },
+            },
+            required: ['path', 'content'],
+          },
+        },
+      },
+      required: ['id', 'entryPoint', 'files'],
+    },
+  },
+  {
     name: 'delete_lambda_function',
     description: 'Delete a saved Lambda function by id.',
     input_schema: {

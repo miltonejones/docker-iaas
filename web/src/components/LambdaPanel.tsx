@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Container, LambdaFile, LambdaFunction, LambdaResult, LambdaRuntime } from '../types';
 import { api } from '../api';
 import { AssistantBar } from './AssistantBar';
@@ -47,6 +47,8 @@ export function LambdaPanel({ functionId: initialFunctionId, onSaved, embedded }
   const [activePath, setActivePath] = useState('index.js');
   const [newFileName, setNewFileName] = useState('');
   const [newPackageName, setNewPackageName] = useState('');
+  const editorRef = useRef<HTMLDivElement>(null);
+  const [editorHeight, setEditorHeight] = useState<number>();
 
   const isSaved = activeId !== null;
   const code = contents[activePath] ?? '';
@@ -104,6 +106,19 @@ export function LambdaPanel({ functionId: initialFunctionId, onSaved, embedded }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runtime]);
+
+  useLayoutEffect(() => {
+    if (!embedded || !activeId || !editorRef.current) {
+      setEditorHeight(undefined);
+      return;
+    }
+    const editor = editorRef.current;
+    const updateHeight = () => setEditorHeight(editor.getBoundingClientRect().height);
+    const observer = new ResizeObserver(updateHeight);
+    updateHeight();
+    observer.observe(editor);
+    return () => observer.disconnect();
+  }, [activeId, embedded]);
 
   function setCode(value: string) {
     setContents((prev) => ({ ...prev, [activePath]: value }));
@@ -320,7 +335,9 @@ export function LambdaPanel({ functionId: initialFunctionId, onSaved, embedded }
 
   const currentRuntime = runtimes.find((r) => r.id === runtime);
   const functionAssistantContext = activeId
-    ? `You are the dedicated assistant for the function currently open in Dockyard's editor. Help only with this function unless the user explicitly asks otherwise. Its id is "${activeId}". When changing it, use update_lambda_function with this exact id and preserve any files or settings that are not part of the requested change. Do not create, delete, run, or modify any other resource unless the user explicitly asks.
+    ? `You are the dedicated assistant for the function currently open in Dockyard's editor. Help only with this function unless the user explicitly asks otherwise. Its id is "${activeId}". Do not create, delete, run, or modify any other resource unless the user explicitly asks.
+
+For any source-file change, including adding or removing a file, call replace_lambda_function_files exactly once. Its files argument must contain the COMPLETE desired file set, including the entry point and every existing file to keep, with complete content for each. The current editor state below is authoritative. Do not describe a future retry or apologize: formulate the complete updated files array and call the tool.
 
 Current editor state:
 ${JSON.stringify({
@@ -354,7 +371,7 @@ ${JSON.stringify({
         </div>
       )}
 
-      <div className={`panel-layout${embedded ? (activeId ? ' panel-layout--function-detail' : ' panel-layout--full') : ''}`}>
+      <div className={`panel-layout${embedded ? ' panel-layout--full' : ''}`}>
         {/* Sidebar — function list (hidden in embedded/detail mode) */}
         {!embedded && (
         <aside className="panel-sidebar">
@@ -512,60 +529,71 @@ ${JSON.stringify({
           </div>
 
           {/* Editor */}
-          <div className="lambda-editor-wrap">
-            <textarea
-              className="lambda-editor"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              spellCheck={false}
-              placeholder={activePath === entryPoint ? PLACEHOLDERS[runtime] || '' : ''}
-              rows={25}
-            />
-            <div className="lambda-editor-foot">
-              <span className="muted mono" style={{ fontSize: '11px' }}>
-                {currentRuntime?.image ?? runtime}
-              </span>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                {isSaved && (
+          <div className={embedded && activeId ? 'lambda-editor-with-assistant' : undefined}>
+            <div className="lambda-editor-wrap" ref={editorRef}>
+              <textarea
+                className="lambda-editor"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                spellCheck={false}
+                placeholder={activePath === entryPoint ? PLACEHOLDERS[runtime] || '' : ''}
+                rows={25}
+              />
+              <div className="lambda-editor-foot">
+                <span className="muted mono" style={{ fontSize: '11px' }}>
+                  {currentRuntime?.image ?? runtime}
+                </span>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {isSaved && (
+                    <button
+                      className="btn btn--sm btn--danger"
+                      onClick={deleteActive}
+                    >
+                      Delete
+                    </button>
+                  )}
                   <button
-                    className="btn btn--sm btn--danger"
-                    onClick={deleteActive}
+                    className="btn btn--sm"
+                    onClick={() => setShowEnv(true)}
+                    title={isSaved ? 'Environment variables' : 'Save the function first to add environment variables'}
                   >
-                    Delete
+                    Env{env.length > 0 ? ` (${env.length})` : ''}
                   </button>
-                )}
-                <button
-                  className="btn btn--sm"
-                  onClick={() => setShowEnv(true)}
-                  title={isSaved ? 'Environment variables' : 'Save the function first to add environment variables'}
-                >
-                  Env{env.length > 0 ? ` (${env.length})` : ''}
-                </button>
-                <button
-                  className="btn btn--sm"
-                  onClick={() => {
-                    setShowHistory(!showHistory);
-                    if (!showHistory) loadHistory();
-                  }}
-                >
-                  {showHistory ? 'Hide history' : 'History'}
-                </button>
-                <button
-                  className="btn btn--sm"
-                  disabled={saving || !name.trim()}
-                  onClick={save}
-                >
-                  {saving ? 'Saving…' : isSaved ? 'Update' : 'Save'}
-                </button>
-                <button
-                  className="btn btn--primary"
-                  disabled={running || !(contents[entryPoint] || '').trim()}
-                  onClick={run}
-                >
-                  {running ? 'Running…' : 'Run'}
-                </button>
+                  <button
+                    className="btn btn--sm"
+                    onClick={() => {
+                      setShowHistory(!showHistory);
+                      if (!showHistory) loadHistory();
+                    }}
+                  >
+                    {showHistory ? 'Hide history' : 'History'}
+                  </button>
+                  <button
+                    className="btn btn--sm"
+                    disabled={saving || !name.trim()}
+                    onClick={save}
+                  >
+                    {saving ? 'Saving…' : isSaved ? 'Update' : 'Save'}
+                  </button>
+                  <button
+                    className="btn btn--primary"
+                    disabled={running || !(contents[entryPoint] || '').trim()}
+                    onClick={run}
+                  >
+                    {running ? 'Running…' : 'Run'}
+                  </button>
+                </div>
               </div>
             </div>
+            {embedded && activeId && functionAssistantContext && (
+              <aside className="function-assistant" style={editorHeight ? { height: editorHeight } : undefined}>
+                <AssistantBar
+                  embedded
+                  contextPrompt={functionAssistantContext}
+                  onChanged={refreshFunctionAfterAssistantChange}
+                />
+              </aside>
+            )}
           </div>
 
           {/* Output */}
@@ -599,17 +627,7 @@ ${JSON.stringify({
               )}
             </div>
           )}
-
         </div>
-        {embedded && activeId && functionAssistantContext && (
-          <aside className="function-assistant">
-            <AssistantBar
-              embedded
-              contextPrompt={functionAssistantContext}
-              onChanged={refreshFunctionAfterAssistantChange}
-            />
-          </aside>
-        )}
       </div>
 
       {/* Environment variables modal — stored separately from code, masked by default. */}

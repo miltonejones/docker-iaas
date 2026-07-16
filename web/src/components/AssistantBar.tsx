@@ -18,6 +18,7 @@ const ACTION_LABEL: Record<string, string> = {
   create_lambda_function: 'Create Lambda function',
   create_gateway_route: 'Create Gateway route',
   update_lambda_function: 'Update Lambda function',
+  replace_lambda_function_files: 'Update function files',
   delete_lambda_function: 'Delete Lambda function',
   delete_gateway_route: 'Delete Gateway route',
   launch_container: 'Launch container',
@@ -426,6 +427,19 @@ export function AssistantBar({
           entryPoint: str(input.entryPoint),
           files: parseLambdaFiles(input.files),
         });
+
+      case 'replace_lambda_function_files': {
+        const entryPoint = String(input.entryPoint ?? '');
+        const files = parseLambdaFiles(input.files);
+        if (!files) throw new Error('Function files are required.');
+        const entryFile = files.find((file) => file.path === entryPoint);
+        if (!entryFile) throw new Error('Function files must include the entry point.');
+        return api.lambdaUpdateFunction(String(input.id ?? ''), {
+          entryPoint,
+          code: entryFile.content,
+          files: files.filter((file) => file.path !== entryPoint),
+        });
+      }
 
       case 'delete_lambda_function':
         return api.lambdaDeleteFunction(String(input.id ?? ''));

@@ -1141,6 +1141,12 @@ textarea:focus {
   padding-left: 18px;
   margin-left: 18px;
 }
+.lambda-editor-with-assistant {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  gap: 18px;
+  align-items: start;
+}
 .function-assistant .assistant-log {
   flex: 1 1 auto;
   min-height: 180px;
@@ -1160,7 +1166,7 @@ textarea:focus {
 }
 
 @media (max-width: 900px) {
-  .panel-layout--function-detail {
+  .lambda-editor-with-assistant {
     grid-template-columns: 1fr;
   }
   .function-assistant {
@@ -1318,9 +1324,6 @@ textarea:focus {
 }
 .panel-layout--full {
   grid-template-columns: 1fr;
-}
-.panel-layout--function-detail {
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
 }
 
 /* Sidebar */
