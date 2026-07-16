@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import type Docker from 'dockerode';
+import tar from 'tar-stream';
 import { docker, dockyardNetworkConfig, ensureImage } from '../docker.js';
 import { findPreset } from '../presets.js';
 
@@ -123,6 +124,50 @@ containersRouter.post('/', async (req: Request, res: Response) => {
       await container.start();
     }
     res.status(201).json({ id: container.id });
+  } catch (err) {
+    res.status(502).json({ error: (err as Error).message });
+  }
+});
+
+// Write a text file into a running container — used to build a site hosted on
+// an OS container (e.g. dropping index.html into an nginx container's served
+// directory). The container must be running and must not be system-managed.
+containersRouter.post('/:id/files', async (req: Request, res: Response) => {
+  try {
+    const target = String(req.body?.path ?? '');
+    const rel = target.slice(1);
+    if (!target.startsWith('/') || rel === '' || /\.\.(?:\/|$)/.test(target) || !/^[\w./-]+$/.test(rel)) {
+      res.status(400).json({
+        error: 'path must be an absolute file path using only letters, digits, "/", ".", "-", "_" (no "..").',
+      });
+      return;
+    }
+    const content = String(req.body?.content ?? '');
+    const container = docker.getContainer(req.params.id);
+    const info = await container.inspect();
+    if (info.Config?.Labels?.['iaas.system']) {
+      res.status(403).json({ error: 'This container is system-managed and cannot be written to here.' });
+      return;
+    }
+    if (!info.State?.Running) {
+      res.status(409).json({ error: 'Container is not running — start it before writing files.' });
+      return;
+    }
+    // Build a tar whose entry name is the path relative to "/" — Docker's
+    // extractor creates the intermediate directories automatically (same trick
+    // the lambda runtime uses to land files at /fn/<path>).
+    const buf = Buffer.from(content, 'utf8');
+    const tarBuffer = await new Promise<Buffer>((resolve, reject) => {
+      const pack = tar.pack();
+      const chunks: Buffer[] = [];
+      pack.on('data', (c: Buffer) => chunks.push(c));
+      pack.on('end', () => resolve(Buffer.concat(chunks)));
+      pack.on('error', reject);
+      pack.entry({ name: rel, size: buf.length, mode: 0o644 }, buf);
+      pack.finalize();
+    });
+    await container.putArchive(tarBuffer, { path: '/' });
+    res.json({ ok: true, path: target });
   } catch (err) {
     res.status(502).json({ error: (err as Error).message });
   }

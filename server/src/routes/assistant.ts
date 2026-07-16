@@ -53,8 +53,9 @@ Rules:
 - When writing a function's "code", write complete, runnable source for the chosen runtime. Functions invoked through a gateway route follow this contract: the incoming request arrives as JSON in the DOCKYARD_REQUEST environment variable, shaped like { httpMethod, path, headers, queryStringParameters, body, isBase64Encoded } (body may be null). The function must print exactly one JSON object to stdout shaped like { "statusCode": number, "headers"?: object, "body": string, "isBase64Encoded"?: boolean }. Do not print anything else to stdout.
 - When a gateway route targets a lambda function, targetType must be "lambda" and targetId must be the id returned by the create_lambda_function call. When it targets a bucket, targetType must be "bucket" and targetId is simply the bucket's name.
 - gateway route "pathPattern" is matched by EXACT string equality against the incoming request path (with the route's own name already stripped from the front) — there is no wildcard, glob, or prefix support. A trailing "/*" or "/:id" will never match anything real; do not use them. To match every path and method under a route (a whole static site, or a REST resource with multiple sub-paths like "/todos" and "/todos/{id}"), omit both "method" and "pathPattern" entirely rather than guessing a pattern.
-- To host a static website: create the bucket first if it doesn't already exist (check with list_buckets), write each file with write_bucket_object (e.g. "index.html", "style.css", "script.js" — one tool call per file), then create_gateway_route with targetType "bucket" and targetId set to the bucket name, omitting method and pathPattern so every file in the site is reachable. Requests to "/" or a path with no file extension serve "index.html" (SPA-style fallback).
-- Destructive or disruptive actions (delete_*, prune_*, container_action) still go through the normal tool-call flow — the user reviews and confirms every tool call before it executes, so call the tool directly rather than asking "are you sure?" in text first.
+- To host a static website on a BUCKET (the default, simplest path): create the bucket first if it doesn't already exist (check with list_buckets), write each file with write_bucket_object (e.g. "index.html", "style.css", "script.js" — one tool call per file), then create_gateway_route with targetType "bucket" and targetId set to the bucket name, omitting method and pathPattern so every file in the site is reachable. Requests to "/" or a path with no file extension serve "index.html" (SPA-style fallback).
+- To host a site on an OS CONTAINER instead (when the user asks for a container/VM/server, needs a long-running process, dynamic requests, or explicitly wants it on a container rather than a bucket): call launch_container with a serving image — prefer "nginx:alpine" for static sites because its default command serves /usr/share/nginx/html on port 80 with no extra setup. Write each site file with write_container_file to that directory (e.g. "/usr/share/nginx/html/index.html", "/usr/share/nginx/html/style.css" — one call per file). Then create_gateway_route with targetType "container", targetId set to the container id returned by launch_container, targetPort 80, omitting method and pathPattern so every path reaches the container. Use this path only when a container is genuinely wanted; otherwise default to the bucket path.
+- Destructive or disruptive actions (delete_*, prune_*, container_action) still go through the normal tool-call flow — the user reviews and confirms every tool call before it executes, so call the tool directly rather than asking "are you sure?" in text first. write_container_file and launch_container are no exception: call them directly; the user confirms before they run.
 - When done, give a short (1-2 sentence) confirmation of what was done — no more.`;
 
 const tools: Anthropic.Tool[] = [
@@ -77,18 +78,23 @@ const tools: Anthropic.Tool[] = [
   {
     name: 'create_gateway_route',
     description:
-      'Create an API Gateway route pointing at a target resource. Call this when the user wants to expose or attach an endpoint. For targetType "lambda", targetId is the id returned by create_lambda_function. For targetType "bucket", targetId is just the bucket name (no lookup needed) — use this to serve a static site written with write_bucket_object.',
+      'Create an API Gateway route pointing at a target resource. Call this when the user wants to expose or attach an endpoint. For targetType "lambda", targetId is the id returned by create_lambda_function. For targetType "bucket", targetId is just the bucket name (no lookup needed) — use this to serve a static site written with write_bucket_object. For targetType "container", targetId is the container id returned by launch_container and targetPort is the port the server listens on inside that container (e.g. 80 for nginx) — use this to serve a site hosted on an OS container written with write_container_file.',
     input_schema: {
       type: 'object',
       properties: {
         name: { type: 'string', description: 'Route name: lowercase letters/digits/hyphens, starting with a letter or digit' },
         targetType: { type: 'string', enum: ['lambda', 'container', 'bucket'] },
         targetId: { type: 'string' },
+        targetPort: {
+          type: 'number',
+          description:
+            'For targetType "container" only: the port the server listens on inside the target container (e.g. 80 for nginx). Omit for lambda/bucket targets.',
+        },
         method: { type: 'string', enum: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'] },
         pathPattern: {
           type: 'string',
           description:
-            'Must start with "/". Matched by EXACT string equality against the request path — no wildcards or path params (a trailing "/*" or "/:id" never matches). Omit this (and method) entirely for a catch-all route matching every path/method, which is usually what you want for a bucket-hosted site or a multi-path REST resource.',
+            'Must start with "/". Matched by EXACT string equality against the request path — no wildcards or path params (a trailing "/*" or "/:id" never matches). Omit this (and method) entirely for a catch-all route matching every path/method, which is usually what you want for a bucket-hosted site, a container-hosted site, or a multi-path REST resource.',
         },
       },
       required: ['name', 'targetType', 'targetId'],
@@ -172,6 +178,23 @@ const tools: Anthropic.Tool[] = [
         action: { type: 'string', enum: ['start', 'stop', 'restart'] },
       },
       required: ['id', 'action'],
+    },
+  },
+  {
+    name: 'write_container_file',
+    description:
+      'Write (create or overwrite) a text file inside a running container at an absolute path. Use this to host a static site on an OS container: launch a serving image such as nginx:alpine (which serves /usr/share/nginx/html on port 80 by default), write each site file there (e.g. /usr/share/nginx/html/index.html, /usr/share/nginx/html/style.css), then create_gateway_route with targetType "container", targetId set to that container id, and targetPort 80.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'Container id (from launch_container or list_containers)' },
+        path: {
+          type: 'string',
+          description: 'Absolute path inside the container, e.g. "/usr/share/nginx/html/index.html"',
+        },
+        content: { type: 'string', description: "The file's full text content" },
+      },
+      required: ['id', 'path', 'content'],
     },
   },
   {

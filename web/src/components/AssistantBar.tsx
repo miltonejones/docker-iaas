@@ -21,6 +21,7 @@ const ACTION_LABEL: Record<string, string> = {
   delete_gateway_route: 'Delete Gateway route',
   launch_container: 'Launch container',
   container_action: 'Container action',
+  write_container_file: 'Write container file',
   delete_container: 'Delete container',
   delete_image: 'Delete image',
   prune_images: 'Prune unused images',
@@ -416,6 +417,13 @@ export function AssistantBar({ onClose, onChanged, initialPrompt, initialSession
 
       case 'container_action':
         return api.action(String(input.id ?? ''), input.action as 'start' | 'stop' | 'restart');
+
+      case 'write_container_file':
+        return api.containerWriteFile(
+          String(input.id ?? ''),
+          String(input.path ?? ''),
+          String(input.content ?? ''),
+        );
 
       case 'delete_container':
         return api.remove(String(input.id ?? ''), bool(input.force));

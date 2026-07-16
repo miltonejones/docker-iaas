@@ -85,6 +85,15 @@ export const api = {
   inspect: (id: string) =>
     fetch(`/api/containers/${id}/inspect`).then((r) => json<ContainerDetail>(r)),
 
+  /** Write a text file into a running container (used to host a site on an OS
+   *  container, e.g. place index.html into an nginx container's served dir). */
+  containerWriteFile: (id: string, path: string, content: string) =>
+    fetch(`/api/containers/${id}/files`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, content }),
+    }).then((r) => json<{ ok: true; path: string }>(r)),
+
   usedPorts: () =>
     fetch('/api/system/used-ports').then((r) => json<{ ports: number[] }>(r)),
 
