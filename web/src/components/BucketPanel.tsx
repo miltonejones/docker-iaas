@@ -4,6 +4,7 @@ import type { Bucket, BucketListing } from '../types';
 import { api } from '../api';
 import { bytes } from '../format';
 import { onRefresh } from '../refresh';
+import { AppIcon } from '../icons';
 
 export function BucketList() {
   const navigate = useNavigate();
@@ -87,7 +88,7 @@ export function BucketList() {
             <tbody>
               {buckets.map((b) => (
                 <tr key={b.name} onClick={() => navigate(`/buckets/${b.name}`)}>
-                  <td className="mono">🪣 {b.name}</td>
+                  <td className="mono"><AppIcon name="bucket" /> {b.name}</td>
                   <td className="num mono">{bytes(b.size ?? 0)}</td>
                   <td className="muted">{b.creationDate ? new Date(b.creationDate).toLocaleString() : '—'}</td>
                 </tr>
@@ -179,7 +180,7 @@ export function BucketDetail({ name }: { name: string }) {
       <div className="panel__head">
         <div className="mono" style={{ fontSize: '13px' }}>
           <button className="btn btn--ghost btn--sm" onClick={() => openPrefix('')}>
-            🪣 {name}
+            <AppIcon name="bucket" /> {name}
           </button>
           {crumbs.map((seg, i) => (
             <span key={i}>
@@ -238,7 +239,7 @@ export function BucketDetail({ name }: { name: string }) {
                   <tr key={p}>
                     <td>
                       <button className="instance-link" onClick={() => openPrefix(p)}>
-                        📁 {folder}/
+                        <AppIcon name="folder" /> {folder}/
                       </button>
                     </td>
                     <td className="num mono">—</td>

@@ -3,8 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import type { Bucket, Container, GatewayRoute, LambdaFunction } from '../types';
 import { api } from '../api';
 import { onRefresh } from '../refresh';
+import { AppIcon } from '../icons';
 
-const TARGET_ICON: Record<string, string> = { bucket: '🪣', container: '📦', lambda: '⚡' };
+const TARGET_ICON = {
+  bucket: <AppIcon name="bucket" />,
+  container: <AppIcon name="container" />,
+  lambda: <AppIcon name="function" />,
+};
 
 export function GatewayList() {
   const navigate = useNavigate();

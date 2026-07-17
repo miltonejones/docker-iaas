@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { Preset } from '../types';
 import { diskImpact } from '../format';
+import { PresetIcon } from '../icons';
 
 interface Props {
   presets: Preset[];
@@ -38,7 +39,7 @@ export function Gallery({ presets, onLaunch, freeBytes = null }: Props) {
           return (
             <article className="card glow" key={p.id}>
               <div className="card__icon" aria-hidden>
-                {p.icon}
+                <PresetIcon id={p.id} />
               </div>
               <div className="card__body">
                 <h3>{p.name}</h3>

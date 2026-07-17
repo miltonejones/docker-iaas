@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { Container, ContainerDetail } from '../types';
 import { bytes, timeAgo } from '../format';
 import { api } from '../api';
+import { AppIcon } from '../icons';
 
 interface Props {
   container: Container;
@@ -310,7 +311,7 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
           </button>
         </div>
 
-        {loadError && <p className="usage__error">⚠ {loadError}</p>}
+        {loadError && <p className="usage__error"><AppIcon name="warning" /> {loadError}</p>}
 
         <div className="panel-layout panel-layout--full">
           <div className="panel-main">{bodySections}</div>
@@ -333,7 +334,7 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
           </button>
         </div>
 
-        {loadError && <p className="usage__error">⚠ {loadError}</p>}
+        {loadError && <p className="usage__error"><AppIcon name="warning" /> {loadError}</p>}
 
         {bodySections}
       </div>

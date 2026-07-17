@@ -1,8 +1,21 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { Container, LambdaFile, LambdaFunction, LambdaResult, LambdaRuntime } from '../types';
-import { api } from '../api';
-import { AssistantBar } from './AssistantBar';
-import { emitRefresh } from '../refresh';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import type {
+  Container,
+  LambdaFile,
+  LambdaFunction,
+  LambdaResult,
+  LambdaRuntime,
+} from "../types";
+import { api } from "../api";
+import { AssistantBar } from "./AssistantBar";
+import { RuntimeIcon } from "../icons";
+import { emitRefresh } from "../refresh";
 
 const PLACEHOLDERS: Record<string, string> = {
   node: 'console.log("hello from Node.js");',
@@ -11,18 +24,28 @@ const PLACEHOLDERS: Record<string, string> = {
 };
 
 const DEFAULT_ENTRY: Record<string, string> = {
-  node: 'index.js',
-  python: 'index.py',
-  sh: 'index.sh',
+  node: "index.js",
+  python: "index.py",
+  sh: "index.sh",
 };
 
-export function LambdaPanel({ functionId: initialFunctionId, onSaved, embedded }: { functionId?: string; onSaved?: (id: string) => void; embedded?: boolean }) {
+export function LambdaPanel({
+  functionId: initialFunctionId,
+  onSaved,
+  embedded,
+}: {
+  functionId?: string;
+  onSaved?: (id: string) => void;
+  embedded?: boolean;
+}) {
   const [runtimes, setRuntimes] = useState<LambdaRuntime[]>([]);
   const [functions, setFunctions] = useState<LambdaFunction[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(initialFunctionId || null);
-  const [name, setName] = useState('');
-  const [runtime, setRuntime] = useState('node');
-  const [packages, setPackages] = useState('');
+  const [activeId, setActiveId] = useState<string | null>(
+    initialFunctionId || null,
+  );
+  const [name, setName] = useState("");
+  const [runtime, setRuntime] = useState("node");
+  const [packages, setPackages] = useState("");
   const [running, setRunning] = useState(false);
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<LambdaResult | null>(null);
@@ -41,23 +64,28 @@ export function LambdaPanel({ functionId: initialFunctionId, onSaved, embedded }
   // relative path so imports/requires resolve like a normal project.
   // `filePaths` is the ordered tab list (entry point always first);
   // `contents` holds every file's text, keyed by path.
-  const [entryPoint, setEntryPoint] = useState('index.js');
-  const [filePaths, setFilePaths] = useState<string[]>(['index.js']);
-  const [contents, setContents] = useState<Record<string, string>>({ 'index.js': '' });
-  const [activePath, setActivePath] = useState('index.js');
-  const [newFileName, setNewFileName] = useState('');
-  const [newPackageName, setNewPackageName] = useState('');
+  const [entryPoint, setEntryPoint] = useState("index.js");
+  const [filePaths, setFilePaths] = useState<string[]>(["index.js"]);
+  const [contents, setContents] = useState<Record<string, string>>({
+    "index.js": "",
+  });
+  const [activePath, setActivePath] = useState("index.js");
+  const [newFileName, setNewFileName] = useState("");
+  const [newPackageName, setNewPackageName] = useState("");
   const editorRef = useRef<HTMLDivElement>(null);
   const [editorHeight, setEditorHeight] = useState<number>();
 
   const isSaved = activeId !== null;
-  const code = contents[activePath] ?? '';
+  const code = contents[activePath] ?? "";
 
   // Load runtimes, saved functions, and running containers on mount.
   useEffect(() => {
     api.lambdaRuntimes().then(setRuntimes).catch(console.error);
     loadFunctions();
-    api.containers().then(setContainers).catch(() => {});
+    api
+      .containers()
+      .then(setContainers)
+      .catch(() => {});
   }, []);
 
   const loadFunctions = useCallback(async () => {
@@ -75,11 +103,14 @@ export function LambdaPanel({ functionId: initialFunctionId, onSaved, embedded }
   useEffect(() => {
     if (!embedded) return;
     if (initialFunctionId) {
-      api.lambdaListFunctions().then((list) => {
-        setFunctions(list);
-        const fn = list.find((f) => f.id === initialFunctionId);
-        if (fn) selectFunction(fn);
-      }).catch(() => {});
+      api
+        .lambdaListFunctions()
+        .then((list) => {
+          setFunctions(list);
+          const fn = list.find((f) => f.id === initialFunctionId);
+          if (fn) selectFunction(fn);
+        })
+        .catch(() => {});
     } else {
       newFunction();
     }
@@ -98,10 +129,10 @@ export function LambdaPanel({ functionId: initialFunctionId, onSaved, embedded }
   // changes and the editor is otherwise empty.
   useEffect(() => {
     if (!code.trim() && filePaths.length === 1) {
-      const entry = DEFAULT_ENTRY[runtime] || 'index.js';
+      const entry = DEFAULT_ENTRY[runtime] || "index.js";
       setEntryPoint(entry);
       setFilePaths([entry]);
-      setContents({ [entry]: PLACEHOLDERS[runtime] || '' });
+      setContents({ [entry]: PLACEHOLDERS[runtime] || "" });
       setActivePath(entry);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -113,7 +144,8 @@ export function LambdaPanel({ functionId: initialFunctionId, onSaved, embedded }
       return;
     }
     const editor = editorRef.current;
-    const updateHeight = () => setEditorHeight(editor.getBoundingClientRect().height);
+    const updateHeight = () =>
+      setEditorHeight(editor.getBoundingClientRect().height);
     const observer = new ResizeObserver(updateHeight);
     updateHeight();
     observer.observe(editor);
@@ -128,8 +160,8 @@ export function LambdaPanel({ functionId: initialFunctionId, onSaved, embedded }
     setActiveId(fn.id);
     setName(fn.name);
     setRuntime(fn.runtime);
-    setPackages(fn.packages || '');
-    const entry = fn.entryPoint || DEFAULT_ENTRY[fn.runtime] || 'index.js';
+    setPackages(fn.packages || "");
+    const entry = fn.entryPoint || DEFAULT_ENTRY[fn.runtime] || "index.js";
     const extra = fn.files || [];
     setEntryPoint(entry);
     setFilePaths([entry, ...extra.map((f) => f.path)]);
@@ -145,19 +177,21 @@ export function LambdaPanel({ functionId: initialFunctionId, onSaved, embedded }
     setShowEnv(false);
     api
       .lambdaGetEnv(fn.id)
-      .then((e) => setEnv(Object.entries(e).map(([key, value]) => ({ key, value }))))
+      .then((e) =>
+        setEnv(Object.entries(e).map(([key, value]) => ({ key, value }))),
+      )
       .catch(() => setEnv([]));
   }
 
   function newFunction() {
     setActiveId(null);
     setName(`fn-${Math.random().toString(36).slice(2, 8)}`);
-    setRuntime('node');
-    setEntryPoint('index.js');
-    setFilePaths(['index.js']);
-    setContents({ 'index.js': PLACEHOLDERS.node });
-    setActivePath('index.js');
-    setPackages('');
+    setRuntime("node");
+    setEntryPoint("index.js");
+    setFilePaths(["index.js"]);
+    setContents({ "index.js": PLACEHOLDERS.node });
+    setActivePath("index.js");
+    setPackages("");
     setResult(null);
     setError(null);
     setEnv([]);
@@ -170,9 +204,9 @@ export function LambdaPanel({ functionId: initialFunctionId, onSaved, embedded }
     const path = newFileName.trim();
     if (!path || filePaths.includes(path)) return;
     setFilePaths((prev) => [...prev, path]);
-    setContents((prev) => ({ ...prev, [path]: '' }));
+    setContents((prev) => ({ ...prev, [path]: "" }));
     setActivePath(path);
-    setNewFileName('');
+    setNewFileName("");
   }
 
   function removeFile(path: string) {
@@ -187,28 +221,33 @@ export function LambdaPanel({ functionId: initialFunctionId, onSaved, embedded }
   }
 
   function addPackage() {
-    const additions = newPackageName.split(/[\s,]+/).map((p) => p.trim()).filter(Boolean);
+    const additions = newPackageName
+      .split(/[\s,]+/)
+      .map((p) => p.trim())
+      .filter(Boolean);
     if (additions.length === 0) return;
     const current = packages.trim().split(/\s+/).filter(Boolean);
     const merged = [...current];
     for (const pkg of additions) {
       if (!merged.includes(pkg)) merged.push(pkg);
     }
-    setPackages(merged.join(' '));
-    setNewPackageName('');
+    setPackages(merged.join(" "));
+    setNewPackageName("");
   }
 
   function removePackage(pkg: string) {
     const current = packages.trim().split(/\s+/).filter(Boolean);
-    setPackages(current.filter((p) => p !== pkg).join(' '));
+    setPackages(current.filter((p) => p !== pkg).join(" "));
   }
 
   function addEnvRow() {
-    setEnv((prev) => [...prev, { key: '', value: '' }]);
+    setEnv((prev) => [...prev, { key: "", value: "" }]);
   }
 
-  function updateEnvRow(i: number, field: 'key' | 'value', value: string) {
-    setEnv((prev) => prev.map((row, idx) => (idx === i ? { ...row, [field]: value } : row)));
+  function updateEnvRow(i: number, field: "key" | "value", value: string) {
+    setEnv((prev) =>
+      prev.map((row, idx) => (idx === i ? { ...row, [field]: value } : row)),
+    );
   }
 
   function removeEnvRow(i: number) {
@@ -230,7 +269,9 @@ export function LambdaPanel({ functionId: initialFunctionId, onSaved, embedded }
     setEnvError(null);
     try {
       const record = Object.fromEntries(
-        env.filter((row) => row.key.trim()).map((row) => [row.key.trim(), row.value]),
+        env
+          .filter((row) => row.key.trim())
+          .map((row) => [row.key.trim(), row.value]),
       );
       await api.lambdaSetEnv(activeId, record);
     } catch (err) {
@@ -243,7 +284,7 @@ export function LambdaPanel({ functionId: initialFunctionId, onSaved, embedded }
   function extraFilesPayload(): LambdaFile[] {
     return filePaths
       .filter((p) => p !== entryPoint)
-      .map((path) => ({ path, content: contents[path] ?? '' }));
+      .map((path) => ({ path, content: contents[path] ?? "" }));
   }
 
   async function save() {
@@ -251,7 +292,7 @@ export function LambdaPanel({ functionId: initialFunctionId, onSaved, embedded }
     setSaving(true);
     setError(null);
     try {
-      const entryContent = contents[entryPoint] ?? '';
+      const entryContent = contents[entryPoint] ?? "";
       if (isSaved) {
         const updated = await api.lambdaUpdateFunction(activeId!, {
           name: name.trim(),
@@ -302,7 +343,7 @@ export function LambdaPanel({ functionId: initialFunctionId, onSaved, embedded }
     setError(null);
     setResult(null);
     try {
-      const entryContent = contents[entryPoint] ?? '';
+      const entryContent = contents[entryPoint] ?? "";
       const res = await api.lambdaRun(
         runtime,
         entryContent,
@@ -322,11 +363,14 @@ export function LambdaPanel({ functionId: initialFunctionId, onSaved, embedded }
 
   function selectHistory(entry: LambdaResult) {
     setRuntime(entry.runtime);
-    const historyEntry = DEFAULT_ENTRY[entry.runtime] || 'index.js';
+    const historyEntry = DEFAULT_ENTRY[entry.runtime] || "index.js";
     setEntryPoint(historyEntry);
     setFilePaths([historyEntry]);
     setContents({
-      [historyEntry]: entry.stdout || entry.stderr || (entry.error ? `// error: ${entry.error}` : ''),
+      [historyEntry]:
+        entry.stdout ||
+        entry.stderr ||
+        (entry.error ? `// error: ${entry.error}` : ""),
     });
     setActivePath(historyEntry);
     setResult(entry);
@@ -340,14 +384,18 @@ export function LambdaPanel({ functionId: initialFunctionId, onSaved, embedded }
 For any source-file change, including adding or removing a file, call replace_lambda_function_files exactly once. Its files argument must contain the COMPLETE desired file set, including the entry point and every existing file to keep, with complete content for each. The current editor state below is authoritative. Do not describe a future retry or apologize: formulate the complete updated files array and call the tool.
 
 Current editor state:
-${JSON.stringify({
-  id: activeId,
-  name,
-  runtime,
-  packages,
-  entryPoint,
-  files: filePaths.map((path) => ({ path, content: contents[path] ?? '' })),
-}, null, 2)}`
+${JSON.stringify(
+  {
+    id: activeId,
+    name,
+    runtime,
+    packages,
+    entryPoint,
+    files: filePaths.map((path) => ({ path, content: contents[path] ?? "" })),
+  },
+  null,
+  2,
+)}`
     : undefined;
 
   async function refreshFunctionAfterAssistantChange() {
@@ -364,68 +412,90 @@ ${JSON.stringify({
     <section className="panel">
       {!embedded && (
         <div className="panel__head">
-          <h2>Lambda <span className="count">fn</span></h2>
+          <h2>
+            Lambda <span className="count">fn</span>
+          </h2>
           <button className="btn btn--primary btn--sm" onClick={newFunction}>
             + New function
           </button>
         </div>
       )}
 
-      <div className={`panel-layout${embedded ? ' panel-layout--full' : ''}`}>
+      <div className={`panel-layout${embedded ? " panel-layout--full" : ""}`}>
         {/* Sidebar — function list (hidden in embedded/detail mode) */}
         {!embedded && (
-        <aside className="panel-sidebar">
-          <button className="btn btn--primary panel-new-btn" onClick={newFunction}>
-            + New function
-          </button>
-          <div className="panel-item-list">
-            {functions.length === 0 ? (
-              <p className="muted empty-sm">No saved functions yet.</p>
-            ) : (
-              functions.map((fn) => (
-                <button
-                  key={fn.id}
-                  className={`panel-item${fn.id === activeId ? ' panel-item--active' : ''}`}
-                  onClick={() => selectFunction(fn)}
-                >
-                  <span className="panel-item-name">{fn.name}</span>
-                  <span className="chip" style={{ fontSize: '10px', padding: '1px 7px' }}>
-                    {fn.runtime}
-                  </span>
-                </button>
-              ))
-            )}
-          </div>
+          <aside className="panel-sidebar">
+            <button
+              className="btn btn--primary panel-new-btn"
+              onClick={newFunction}
+            >
+              + New function
+            </button>
+            <div className="panel-item-list">
+              {functions.length === 0 ? (
+                <p className="muted empty-sm">No saved functions yet.</p>
+              ) : (
+                functions.map((fn) => (
+                  <button
+                    key={fn.id}
+                    className={`panel-item${fn.id === activeId ? " panel-item--active" : ""}`}
+                    onClick={() => selectFunction(fn)}
+                  >
+                    <span className="panel-item-name">{fn.name}</span>
+                    <span
+                      className="chip"
+                      style={{ fontSize: "10px", padding: "1px 7px" }}
+                    >
+                      {fn.runtime}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
 
-          {/* Running containers — available as hostnames */}
-          <div className="lambda-containers">
-            <h4 className="detail-subtitle" style={{ marginTop: 0 }}>Running containers</h4>
-            {containers.filter((c) => c.state === 'running').length === 0 ? (
-              <p className="muted empty-sm">No running containers.</p>
-            ) : (
-              <div className="lambda-container-list">
-                {containers
-                  .filter((c) => c.state === 'running')
-                  .map((c) => (
-                    <div className="lambda-container-item" key={c.id}>
-                      <span className="mono" style={{ fontSize: '11px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {c.name || c.id.slice(0, 12)}
-                      </span>
-                      <span className="muted" style={{ fontSize: '10px' }}>
-                        {c.ports
-                          .filter((p) => p.publicPort)
-                          .map((p) => `:${p.publicPort}`)
-                          .join(', ') || '—'}
-                      </span>
-                    </div>
-                  ))}
-              </div>
-            )}
-            <p className="muted" style={{ fontSize: '10px', marginTop: '6px', lineHeight: 1.4 }}>
-              Use the container name as the hostname in your function code. All containers share the <code>dockyard-net</code> network.
-            </p>
-          </div>
-        </aside>
+            {/* Running containers — available as hostnames */}
+            <div className="lambda-containers">
+              <h4 className="detail-subtitle" style={{ marginTop: 0 }}>
+                Running containers
+              </h4>
+              {containers.filter((c) => c.state === "running").length === 0 ? (
+                <p className="muted empty-sm">No running containers.</p>
+              ) : (
+                <div className="lambda-container-list">
+                  {containers
+                    .filter((c) => c.state === "running")
+                    .map((c) => (
+                      <div className="lambda-container-item" key={c.id}>
+                        <span
+                          className="mono"
+                          style={{
+                            fontSize: "11px",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {c.name || c.id.slice(0, 12)}
+                        </span>
+                        <span className="muted" style={{ fontSize: "10px" }}>
+                          {c.ports
+                            .filter((p) => p.publicPort)
+                            .map((p) => `:${p.publicPort}`)
+                            .join(", ") || "—"}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              )}
+              <p
+                className="muted"
+                style={{ fontSize: "10px", marginTop: "6px", lineHeight: 1.4 }}
+              >
+                Use the container name as the hostname in your function code.
+                All containers share the <code>dockyard-net</code> network.
+              </p>
+            </div>
+          </aside>
         )}
 
         {/* Main — editor + output */}
@@ -448,43 +518,47 @@ ${JSON.stringify({
                 {runtimes.map((r) => (
                   <button
                     key={r.id}
-                    className={`chip ${runtime === r.id ? 'chip--on' : ''}`}
+                    className={`chip ${runtime === r.id ? "chip--on" : ""}`}
                     onClick={() => setRuntime(r.id)}
                   >
-                    {r.icon} {r.name}
+                    <RuntimeIcon id={r.id} /> {r.name}
                   </button>
                 ))}
               </div>
             )}
             <div className="lambda-package-pills">
-              {packages.trim().split(/\s+/).filter(Boolean).map((pkg) => (
-                <span className="lambda-package-pill" key={pkg}>
-                  <span className="mono">{pkg}</span>
-                  <span
-                    className="lambda-package-pill__close"
-                    onClick={() => removePackage(pkg)}
-                    title={`Remove ${pkg}`}
-                  >
-                    ×
+              {packages
+                .trim()
+                .split(/\s+/)
+                .filter(Boolean)
+                .map((pkg) => (
+                  <span className="lambda-package-pill" key={pkg}>
+                    <span className="mono">{pkg}</span>
+                    <span
+                      className="lambda-package-pill__close"
+                      onClick={() => removePackage(pkg)}
+                      title={`Remove ${pkg}`}
+                    >
+                      ×
+                    </span>
                   </span>
-                </span>
-              ))}
+                ))}
               <input
                 className="lambda-package-pill-add"
                 value={newPackageName}
                 onChange={(e) => setNewPackageName(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
+                  if (e.key === "Enter") {
                     e.preventDefault();
                     addPackage();
                   }
                 }}
                 placeholder={
-                  runtime === 'node'
-                    ? '+ mysql2, axios…'
-                    : runtime === 'python'
-                      ? '+ requests, flask…'
-                      : '+ curl, jq…'
+                  runtime === "node"
+                    ? "+ mysql2, axios…"
+                    : runtime === "python"
+                      ? "+ requests, flask…"
+                      : "+ curl, jq…"
                 }
                 spellCheck={false}
               />
@@ -496,7 +570,7 @@ ${JSON.stringify({
             {filePaths.map((path) => (
               <button
                 key={path}
-                className={`lambda-file-tab${path === activePath ? ' lambda-file-tab--active' : ''}`}
+                className={`lambda-file-tab${path === activePath ? " lambda-file-tab--active" : ""}`}
                 onClick={() => setActivePath(path)}
                 title={path === entryPoint ? `${path} (entry point)` : path}
               >
@@ -521,7 +595,7 @@ ${JSON.stringify({
               value={newFileName}
               onChange={(e) => setNewFileName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') addFile();
+                if (e.key === "Enter") addFile();
               }}
               placeholder="+ lib/util.js"
               spellCheck={false}
@@ -529,21 +603,28 @@ ${JSON.stringify({
           </div>
 
           {/* Editor */}
-          <div className={embedded && activeId ? 'lambda-editor-with-assistant' : undefined}>
+          <div
+            className={
+              embedded && activeId ? "lambda-editor-with-assistant" : undefined
+            }
+          >
             <div className="lambda-editor-wrap" ref={editorRef}>
               <textarea
                 className="lambda-editor"
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
                 spellCheck={false}
-                placeholder={activePath === entryPoint ? PLACEHOLDERS[runtime] || '' : ''}
-                rows={25}
+                placeholder={
+                  activePath === entryPoint ? PLACEHOLDERS[runtime] || "" : ""
+                }
+                rows={24}
               />
+
               <div className="lambda-editor-foot">
-                <span className="muted mono" style={{ fontSize: '11px' }}>
+                <span className="muted mono" style={{ fontSize: "11px" }}>
                   {currentRuntime?.image ?? runtime}
                 </span>
-                <div style={{ display: 'flex', gap: '8px' }}>
+                <div style={{ display: "flex", gap: "8px" }}>
                   {isSaved && (
                     <button
                       className="btn btn--sm btn--danger"
@@ -555,9 +636,13 @@ ${JSON.stringify({
                   <button
                     className="btn btn--sm"
                     onClick={() => setShowEnv(true)}
-                    title={isSaved ? 'Environment variables' : 'Save the function first to add environment variables'}
+                    title={
+                      isSaved
+                        ? "Environment variables"
+                        : "Save the function first to add environment variables"
+                    }
                   >
-                    Env{env.length > 0 ? ` (${env.length})` : ''}
+                    Env{env.length > 0 ? ` (${env.length})` : ""}
                   </button>
                   <button
                     className="btn btn--sm"
@@ -566,31 +651,36 @@ ${JSON.stringify({
                       if (!showHistory) loadHistory();
                     }}
                   >
-                    {showHistory ? 'Hide history' : 'History'}
+                    {showHistory ? "Hide history" : "History"}
                   </button>
                   <button
                     className="btn btn--sm"
                     disabled={saving || !name.trim()}
                     onClick={save}
                   >
-                    {saving ? 'Saving…' : isSaved ? 'Update' : 'Save'}
+                    {saving ? "Saving…" : isSaved ? "Update" : "Save"}
                   </button>
                   <button
                     className="btn btn--primary"
-                    disabled={running || !(contents[entryPoint] || '').trim()}
+                    disabled={running || !(contents[entryPoint] || "").trim()}
                     onClick={run}
                   >
-                    {running ? 'Running…' : 'Run'}
+                    {running ? "Running…" : "Run"}
                   </button>
                 </div>
               </div>
             </div>
             {embedded && activeId && functionAssistantContext && (
-              <aside className="function-assistant" style={editorHeight ? { height: editorHeight } : undefined}>
+              <aside
+                className="function-assistant"
+                style={editorHeight ? { height: editorHeight } : undefined}
+              >
                 <AssistantBar
+                  key={activeId}
                   embedded
                   contextPrompt={functionAssistantContext}
                   onChanged={refreshFunctionAfterAssistantChange}
+                  sessionStorageKey={`dockyard:function-assistant:${activeId}`}
                 />
               </aside>
             )}
@@ -603,16 +693,18 @@ ${JSON.stringify({
                 <span className="muted">
                   {result ? (
                     <>
-                      Exit {result.exitCode} · {result.durationMs}ms ·{' '}
+                      Exit {result.exitCode} · {result.durationMs}ms ·{" "}
                       {new Date(result.timestamp).toLocaleTimeString()}
                     </>
                   ) : (
-                    'Error'
+                    "Error"
                   )}
                 </span>
               </div>
               {error && (
-                <pre className="logs lambda-output__pre lambda-output__err">{error}</pre>
+                <pre className="logs lambda-output__pre lambda-output__err">
+                  {error}
+                </pre>
               )}
               {result && result.stdout && (
                 <pre className="logs lambda-output__pre">{result.stdout}</pre>
@@ -636,46 +728,67 @@ ${JSON.stringify({
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal__head">
               <h3>Environment variables</h3>
-              <button className="btn btn--ghost" onClick={() => setShowEnv(false)}>Close</button>
+              <button
+                className="btn btn--ghost"
+                onClick={() => setShowEnv(false)}
+              >
+                Close
+              </button>
             </div>
             {isSaved ? (
               <>
-                {env.length === 0 && <p className="muted empty-sm">No environment variables set.</p>}
+                {env.length === 0 && (
+                  <p className="muted empty-sm">
+                    No environment variables set.
+                  </p>
+                )}
                 {env.map((row, i) => (
                   <div className="env-row" key={i}>
                     <input
                       value={row.key}
                       placeholder="KEY"
                       spellCheck={false}
-                      onChange={(e) => updateEnvRow(i, 'key', e.target.value)}
+                      onChange={(e) => updateEnvRow(i, "key", e.target.value)}
                     />
                     <input
-                      type={revealed.has(i) ? 'text' : 'password'}
+                      type={revealed.has(i) ? "text" : "password"}
                       value={row.value}
                       placeholder="value"
                       spellCheck={false}
-                      onChange={(e) => updateEnvRow(i, 'value', e.target.value)}
+                      onChange={(e) => updateEnvRow(i, "value", e.target.value)}
                     />
-                    <button className="btn btn--sm btn--ghost" onClick={() => toggleReveal(i)}>
-                      {revealed.has(i) ? 'Hide' : 'Show'}
+                    <button
+                      className="btn btn--sm btn--ghost"
+                      onClick={() => toggleReveal(i)}
+                    >
+                      {revealed.has(i) ? "Hide" : "Show"}
                     </button>
-                    <button className="btn btn--sm btn--danger" onClick={() => removeEnvRow(i)}>
+                    <button
+                      className="btn btn--sm btn--danger"
+                      onClick={() => removeEnvRow(i)}
+                    >
                       Remove
                     </button>
                   </div>
                 ))}
-                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
                   <button className="btn btn--sm" onClick={addEnvRow}>
                     + Add variable
                   </button>
-                  <button className="btn btn--sm btn--primary" disabled={savingEnv} onClick={saveEnv}>
-                    {savingEnv ? 'Saving…' : 'Save variables'}
+                  <button
+                    className="btn btn--sm btn--primary"
+                    disabled={savingEnv}
+                    onClick={saveEnv}
+                  >
+                    {savingEnv ? "Saving…" : "Save variables"}
                   </button>
                 </div>
                 {envError && <p className="muted empty-sm">{envError}</p>}
               </>
             ) : (
-              <p className="muted empty-sm">Save the function first to add environment variables.</p>
+              <p className="muted empty-sm">
+                Save the function first to add environment variables.
+              </p>
             )}
           </div>
         </div>
@@ -697,25 +810,31 @@ ${JSON.stringify({
                 >
                   <span
                     className="chip chip--on"
-                    style={{ fontSize: '10px', padding: '2px 8px' }}
+                    style={{ fontSize: "10px", padding: "2px 8px" }}
                   >
                     {entry.runtime}
                   </span>
                   <span
                     className="mono muted"
                     style={{
-                      fontSize: '11px',
+                      fontSize: "11px",
                       flex: 1,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
                     }}
                   >
-                    {(entry.stdout || entry.stderr || entry.error || '').slice(0, 80)}
+                    {(entry.stdout || entry.stderr || entry.error || "").slice(
+                      0,
+                      80,
+                    )}
                   </span>
-                  <span className="muted" style={{ fontSize: '10px', whiteSpace: 'nowrap' }}>
-                    {entry.durationMs}ms ·{' '}
-                    {entry.exitCode === 0 ? 'OK' : `exit ${entry.exitCode}`}
+                  <span
+                    className="muted"
+                    style={{ fontSize: "10px", whiteSpace: "nowrap" }}
+                  >
+                    {entry.durationMs}ms ·{" "}
+                    {entry.exitCode === 0 ? "OK" : `exit ${entry.exitCode}`}
                   </span>
                 </button>
               ))}

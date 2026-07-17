@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { Preset } from '../types';
 import { api, type LaunchRequest } from '../api';
+import { AppIcon, PresetIcon } from '../icons';
 
 interface Props {
   preset: Preset;
@@ -74,7 +75,7 @@ export function LaunchModal({ preset, onClose, onLaunched, prefill, replaceId }:
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal__head">
           <h3>
-            <span aria-hidden>{preset.icon}</span> Launch {preset.name}
+            <PresetIcon id={preset.id} /> Launch {preset.name}
           </h3>
           <button className="btn btn--ghost" onClick={onClose}>
             Close
@@ -192,7 +193,7 @@ export function LaunchModal({ preset, onClose, onLaunched, prefill, replaceId }:
           </fieldset>
         )}
 
-        {error && <p className="usage__error">⚠ {error}</p>}
+        {error && <p className="usage__error"><AppIcon name="warning" /> {error}</p>}
 
         <div className="modal__foot">
           <span className="muted mono">{preset.image}</span>

@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { AppIcon } from '../icons';
 import { api } from '../api';
 import { timeAgo } from '../format';
 import type {
@@ -116,6 +119,8 @@ interface Props {
   embedded?: boolean;
   /** Context added to every request without exposing it in the visible chat log. */
   contextPrompt?: string;
+  /** Browser storage key for resuming the latest session in an embedded assistant. */
+  sessionStorageKey?: string;
 }
 
 export function AssistantBar({
@@ -125,6 +130,7 @@ export function AssistantBar({
   initialSessionId,
   embedded = false,
   contextPrompt,
+  sessionStorageKey,
 }: Props) {
   const [prompt, setPrompt] = useState('');
   const [log, setLog] = useState<LogEntry[]>([]);
@@ -164,7 +170,7 @@ export function AssistantBar({
   // Skipped while a turn is in flight (busy) and on the pristine empty
   // render, so we don't create a session for a modal nobody used yet.
   useEffect(() => {
-    if (embedded || busy) return;
+    if (busy) return;
     if (log.length === 0 && rawMessages.length === 0) return;
 
     let cancelled = false;
@@ -179,6 +185,7 @@ export function AssistantBar({
           if (cancelled) return;
           setSessionId(created.id);
           setSessionName(created.name);
+          if (sessionStorageKey) localStorage.setItem(sessionStorageKey, created.id);
           // If the user didn't name it themselves, ask Claude for a friendly
           // title and rename the session once. Best-effort and non-blocking —
           // saving already completed with the placeholder name, so a failure
@@ -211,9 +218,10 @@ export function AssistantBar({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rawMessages, log, pending, resolved, busy]);
+  }, [rawMessages, log, pending, resolved, busy, sessionStorageKey]);
 
   function resetToNewSession() {
+    if (sessionStorageKey) localStorage.removeItem(sessionStorageKey);
     setSessionId(null);
     setSessionName('');
     setPrompt('');
@@ -358,15 +366,18 @@ export function AssistantBar({
     await askWithText(text);
   }
 
-  // Load a saved session on mount when opened from the offcanvas panel.
-  // Takes precedence over initialPrompt — if both are set, the session wins.
+  // Load an explicitly selected session or the last saved embedded session.
+  // An explicit session takes precedence over the per-function stored session.
   useEffect(() => {
-    if (!initialSessionId) return;
+    const savedSessionId = initialSessionId ?? (
+      sessionStorageKey ? localStorage.getItem(sessionStorageKey) : null
+    );
+    if (!savedSessionId) return;
     let cancelled = false;
     async function load() {
       setBusy(true);
       try {
-        const session = await api.assistantGetSession(initialSessionId!);
+        const session = await api.assistantGetSession(savedSessionId);
         if (cancelled) return;
         setSessionId(session.id);
         setSessionName(session.name);
@@ -380,6 +391,9 @@ export function AssistantBar({
         );
         setResolved(session.state.resolved ?? []);
       } catch (err) {
+        if (sessionStorageKey && localStorage.getItem(sessionStorageKey) === savedSessionId) {
+          localStorage.removeItem(sessionStorageKey);
+        }
         if (!cancelled) setError((err as Error).message);
       } finally {
         if (!cancelled) setBusy(false);
@@ -390,7 +404,7 @@ export function AssistantBar({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [initialSessionId, sessionStorageKey]);
 
   // Run a prompt that arrived pre-submitted from the toolbar search box —
   // once per mount, i.e. once per time this modal is opened. Skipped when
@@ -613,13 +627,26 @@ export function AssistantBar({
         onClick={embedded ? undefined : (e) => e.stopPropagation()}
       >
         <div className={embedded ? 'assistant-panel__head' : 'modal__head'}>
-          <h3>{embedded ? '✨ Function assistant' : '✨ Ask Dockyard.ai'}</h3>
+          <h3>
+            <span className="assistant-panel__badge"><AppIcon name="assistant" /></span>
+            {embedded ? 'Function assistant' : 'Ask Dockyard.ai'}
+          </h3>
+          {embedded && (
+            <button className="btn btn--ghost btn--sm" onClick={resetToNewSession}>
+              <AppIcon name="plus" /> New
+            </button>
+          )}
           {!embedded && (
             <button className="btn btn--ghost" onClick={onClose}>
-              Close
+              <AppIcon name="close" /> Close
             </button>
           )}
         </div>
+        {embedded && (
+          <div className="assistant-panel__session">
+            <span className="muted">{sessionSaving ? 'Saving…' : sessionName || 'New conversation'}</span>
+          </div>
+        )}
 
         {!embedded && (
           <div className="assistant-session-bar">
@@ -634,10 +661,10 @@ export function AssistantBar({
             {sessionSaving && <span className="assistant-session-bar__status muted">Saving…</span>}
             <div className="assistant-session-bar__actions">
               <button className="btn btn--ghost btn--sm" onClick={resetToNewSession}>
-                + New
+                <AppIcon name="plus" /> New
               </button>
               <button className="btn btn--ghost btn--sm" onClick={toggleSessionsList}>
-                📂 Sessions
+                <AppIcon name="folder" /> Sessions
               </button>
             </div>
           </div>
@@ -656,11 +683,11 @@ export function AssistantBar({
                   </span>
                 </button>
                 <button
-                  className="btn btn--ghost btn--sm"
+                  className="btn btn--ghost btn--sm assistant-sessions-panel__delete"
                   title="Delete session"
                   onClick={() => deleteSessionRow(s.id)}
                 >
-                  ×
+                  <AppIcon name="close" />
                 </button>
               </div>
             ))}
@@ -675,12 +702,34 @@ export function AssistantBar({
                 : 'Try: "create a lambda function that sorts strings and attach a gateway endpoint to it"'}
             </p>
           )}
-          {log.map((entry, i) => (
-            <p key={i} className={`assistant-log__entry assistant-log__entry--${entry.kind}`}>
-              {entry.text}
-            </p>
-          ))}
-          {error && <p className="assistant-log__entry assistant-log__entry--error">{error}</p>}
+          {log
+            // A turn that goes straight to a tool call with no preamble text
+            // leaves the streaming placeholder empty — skip rendering it
+            // rather than showing an empty bubble.
+            .filter((entry) => entry.kind !== 'assistant' || entry.text.trim().length > 0)
+            .map((entry, i) => (
+              <div key={i} className={`assistant-log__entry assistant-log__entry--${entry.kind}`}>
+                {(entry.kind === 'user' || entry.kind === 'assistant') && (
+                  <span className="assistant-log__avatar">
+                    <AppIcon name={entry.kind === 'user' ? 'user' : 'assistant'} />
+                  </span>
+                )}
+                <div className="assistant-log__body">
+                  {entry.kind === 'assistant' ? (
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.text}</ReactMarkdown>
+                  ) : entry.kind === 'action' ? (
+                    <><AppIcon name="check" /> {entry.text}</>
+                  ) : (
+                    entry.text
+                  )}
+                </div>
+              </div>
+            ))}
+          {error && (
+            <div className="assistant-log__entry assistant-log__entry--error">
+              <div className="assistant-log__body"><AppIcon name="warning" /> {error}</div>
+            </div>
+          )}
         </div>
 
         {pending.map((action) => {
@@ -689,7 +738,9 @@ export function AssistantBar({
           return (
             <div key={action.id} className={`pending-action-card${destructive ? ' pending-action-card--destructive' : ''}`}>
               <h4>
-                {destructive && '⚠️ '}
+                <span className="pending-action-card__icon">
+                  <AppIcon name={destructive ? 'warning' : 'tool'} />
+                </span>
                 {ACTION_LABEL[action.name] ?? action.name}
               </h4>
               {Object.keys(fields).length === 0 && <p className="hint">No parameters — takes effect immediately on confirm.</p>}
@@ -747,8 +798,12 @@ export function AssistantBar({
               disabled={busy}
               autoFocus
             />
-            <button className="btn btn--primary" disabled={busy || !prompt.trim()} onClick={ask}>
-              {busy ? 'Thinking…' : 'Ask'}
+            <button
+              className="btn btn--primary assistant-input__send"
+              disabled={busy || !prompt.trim()}
+              onClick={ask}
+            >
+              {busy ? 'Thinking…' : <><AppIcon name="send" /> Ask</>}
             </button>
           </div>
         )}

@@ -10,13 +10,14 @@ import { BucketsPage } from './pages/Buckets';
 import { GatewayPage } from './pages/Gateway';
 import { AssistantBar } from './components/AssistantBar';
 import { emitRefresh } from './refresh';
+import { AppIcon } from './icons';
 
 const SERVICES = [
-  { path: '/', label: '◈ Home' },
-  { path: '/containers', label: '📦 Containers' },
-  { path: '/functions', label: '⚡ Functions' },
-  { path: '/buckets', label: '🪣 Buckets' },
-  { path: '/gateway', label: '🌉 Gateway' },
+  { path: '/', label: 'Home', icon: 'home' },
+  { path: '/containers', label: 'Containers', icon: 'container' },
+  { path: '/functions', label: 'Functions', icon: 'function' },
+  { path: '/buckets', label: 'Buckets', icon: 'bucket' },
+  { path: '/gateway', label: 'Gateway', icon: 'gateway' },
 ] as const;
 
 function ServiceNav() {
@@ -29,7 +30,7 @@ function ServiceNav() {
           end={s.path === '/'}
           className={({ isActive }) => `service-nav__btn${isActive ? ' service-nav__btn--active' : ''}`}
         >
-          {s.label}
+          <AppIcon name={s.icon} /> {s.label}
         </NavLink>
       ))}
     </nav>
@@ -43,7 +44,7 @@ function Breadcrumbs() {
   // Detail routes (e.g. /functions/:id) live one level under a service path —
   // match by prefix so the trail stays populated while drilled in.
   const current = SERVICES.find((s) => s.path !== '/' && pathname.startsWith(s.path));
-  const currentLabel = current ? current.label.replace(/^\S+\s/, '') : null;
+  const currentLabel = current?.label ?? null;
 
   const functionId = pathname.match(/^\/functions\/(.+)$/)?.[1];
   const [functionName, setFunctionName] = useState<string | null>(null);
@@ -238,7 +239,7 @@ export function App() {
               title="Saved sessions"
               aria-label="Open saved sessions"
             >
-              ☰
+              <AppIcon name="menu" />
             </button>
             <Link to="/" className="brand">
               <span className="brand__mark">◈</span>
@@ -248,7 +249,7 @@ export function App() {
             </Link>
             <ServiceNav />
             <label className="assistant-search">
-              <span className="assistant-search__icon">✨</span>
+              <span className="assistant-search__icon"><AppIcon name="assistant" /></span>
               <input
                 value={assistantQuery}
                 onChange={(e) => setAssistantQuery(e.target.value)}
@@ -387,7 +388,7 @@ export function App() {
             rel="noreferrer"
             className="app-footer__link"
           >
-            GitHub ↗
+            GitHub <AppIcon name="external" />
           </a>
         </footer>
       </div>

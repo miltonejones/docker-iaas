@@ -37,7 +37,7 @@ app.use(cors());
 app.use('/gw', gatewayProxyRouter);
 app.use('/api/buckets', bucketsRouter);
 
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
 
 app.use('/api/containers', containersRouter);
 app.use('/api/images', imagesRouter);

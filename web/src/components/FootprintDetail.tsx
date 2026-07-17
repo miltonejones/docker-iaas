@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { BuildCacheEntry, Container, DockerImage, DockerVolume } from '../types';
 import { api } from '../api';
 import { bytes, timeAgo } from '../format';
+import { AppIcon } from '../icons';
 
 function ageLabel(epochOrIso: number | string): string {
   if (!epochOrIso) return '—';
@@ -103,7 +104,7 @@ export function FootprintDetail({ category, onClose }: Props) {
           </div>
         </div>
 
-        {error && <p className="usage__error">⚠ {error}</p>}
+        {error && <p className="usage__error"><AppIcon name="warning" /> {error}</p>}
 
         {loading && <p className="empty">Loading…</p>}
 

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { UsageSnapshot } from '../types';
 import { bytes } from '../format';
 import { FootprintDetail } from './FootprintDetail';
+import { AppIcon } from '../icons';
 
 type Category = 'Images' | 'Containers' | 'Volumes' | 'Build cache';
 
@@ -97,7 +98,7 @@ export function UsageHeader({ snapshot, live, onPrune, pruning }: Props) {
         </div>
       </div>
 
-      {snapshot?.error && <p className="usage__error">⚠ {snapshot.error}</p>}
+      {snapshot?.error && <p className="usage__error"><AppIcon name="warning" /> {snapshot.error}</p>}
 
       {detail && <FootprintDetail category={detail} onClose={() => setDetail(null)} />}
     </section>
