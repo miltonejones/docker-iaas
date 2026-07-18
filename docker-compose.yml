@@ -4,6 +4,7 @@ services:
     container_name: dockyard
     ports:
       - '4300:4300'
+      - '80:4300'
     environment:
       # Where to read host disk usage from. When running the console inside a
       # container, mount the host root read-only (below) and point here.
