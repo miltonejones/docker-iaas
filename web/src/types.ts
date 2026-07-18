@@ -211,6 +211,21 @@ export interface GatewayTrafficRequests {
   requests: GatewayTrafficRequest[];
 }
 
+export interface GatewayTrafficHour {
+  start: string;
+  requestCount: number;
+  successfulRequests: number;
+  clientErrorRequests: number;
+  serverErrorRequests: number;
+}
+
+export interface GatewayTrafficTimeseries {
+  windowHours: number;
+  since: string;
+  until: string;
+  buckets: GatewayTrafficHour[];
+}
+
 export interface DockerImage {
   id: string;
   tags: string[];

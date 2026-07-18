@@ -355,6 +355,14 @@ export interface GatewayTrafficSummaryRow {
   error_counts: Record<string, number>;
 }
 
+export interface GatewayTrafficHourlyRow {
+  bucket_start: string;
+  request_count: number;
+  success_count: number;
+  client_error_count: number;
+  server_error_count: number;
+}
+
 function gatewayTrafficWhere(filters: GatewayTrafficSummaryFilters) {
   const clauses = ['e.occurred_at >= ?'];
   const params: Array<string | number> = [filters.since];
@@ -488,6 +496,26 @@ export function summarizeGatewayTraffic(filters: GatewayTrafficSummaryFilters): 
     ...row,
     error_counts: errorCountsByKey.get(`${row.gateway_name}::${row.route_id || ''}::${row.target_type || ''}`) || {},
   }));
+}
+
+export function summarizeGatewayTrafficByHour(
+  filters: GatewayTrafficSummaryFilters,
+): GatewayTrafficHourlyRow[] {
+  const { whereSql, params } = gatewayTrafficWhere(filters);
+  return db.prepare(
+    `
+      SELECT
+        strftime('%Y-%m-%dT%H:00:00.000Z', e.occurred_at) AS bucket_start,
+        COUNT(*) AS request_count,
+        SUM(CASE WHEN e.status_code BETWEEN 200 AND 399 THEN 1 ELSE 0 END) AS success_count,
+        SUM(CASE WHEN e.status_code BETWEEN 400 AND 499 THEN 1 ELSE 0 END) AS client_error_count,
+        SUM(CASE WHEN e.status_code >= 500 THEN 1 ELSE 0 END) AS server_error_count
+      FROM gateway_traffic_events e
+      WHERE ${whereSql}
+      GROUP BY bucket_start
+      ORDER BY bucket_start ASC
+    `,
+  ).all(...params) as GatewayTrafficHourlyRow[];
 }
 
 export function listGatewayTrafficEvents(

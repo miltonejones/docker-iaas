@@ -18,6 +18,7 @@ import type {
   GatewayRoute,
   GatewayTrafficRequests,
   GatewayTrafficSummary,
+  GatewayTrafficTimeseries,
   LambdaFile,
   LambdaFunction,
   LambdaResult,
@@ -347,6 +348,9 @@ export const api = {
     const query = gatewayName ? `?gatewayName=${encodeURIComponent(gatewayName)}` : '';
     return fetch(`/api/gateway/traffic/requests${query}`).then((r) => json<GatewayTrafficRequests>(r));
   },
+
+  gatewayTrafficTimeseries: () =>
+    fetch('/api/gateway/traffic/timeseries').then((r) => json<GatewayTrafficTimeseries>(r)),
 
   databaseOverview: () =>
     fetch('/api/databases/overview').then((r) => json<DatabaseOverview>(r)),
