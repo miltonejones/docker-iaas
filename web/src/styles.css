@@ -493,6 +493,9 @@ code,
 .home-links-grid .panel {
   min-width: 0;
 }
+.home-links-grid .panel:only-child {
+  grid-column: 1 / -1;
+}
 
 @media (max-width: 800px) {
   .home-links-grid {
