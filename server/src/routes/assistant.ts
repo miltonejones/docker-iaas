@@ -80,6 +80,7 @@ Rules:
 - A gateway route "name" is a group that can hold multiple method/pathPattern/target combinations — e.g. GET /todos going to one target and POST /todos/{id} going to another, all under the same name. create_gateway_route only accepts one method/pathPattern/targetId combination per call, so build up a multi-endpoint route by calling create_gateway_route once per combination, reusing the same "name" each time (this mirrors the "+ Add endpoint" button in the Gateway UI, which adds one endpoint to an existing named route). Never claim this isn't supported — it is; it just takes one tool call per endpoint, same as any other multi-step request.
 - To host a static website on a BUCKET (the default, simplest path): create the bucket first if it doesn't already exist (check with list_buckets), write each file with write_bucket_object (e.g. "index.html", "style.css", "script.js" — one tool call per file), then create_gateway_route with targetType "bucket" and targetId set to the bucket name, omitting method and pathPattern so every file in the site is reachable. Requests to "/" or a path with no file extension serve "index.html" (SPA-style fallback).
 - To host a site on an OS CONTAINER instead (when the user asks for a container/VM/server, needs a long-running process, dynamic requests, or explicitly wants it on a container rather than a bucket): call launch_container with a serving image — prefer "nginx:alpine" for static sites because its default command serves /usr/share/nginx/html on port 80 with no extra setup. Write each site file with write_container_file to that directory (e.g. "/usr/share/nginx/html/index.html", "/usr/share/nginx/html/style.css" — one call per file). Then create_gateway_route with targetType "container", targetId set to the container id returned by launch_container, targetPort 80, omitting method and pathPattern so every path reaches the container. Use this path only when a container is genuinely wanted; otherwise default to the bucket path.
+- Containers launched through this assistant can run confirmed commands with execute_container_command. Pass command as an argument array, never as a shell string: for example, ["npm", "ci"] or ["npx", "ng", "build"]. Set workingDir when the project is not in the container's default working directory. Use this for install/build/test steps only after the container is running and its project files are present.
 - The host filesystem is available read-only within Dockyard's configured host-files mount. Use list_host_directory to inspect one directory at a time, then read_host_file to read an explicitly requested text file. Both require absolute host paths (for example, "/home/me/project"). Do not read files the user has not requested or that are likely to contain secrets (such as .env files, SSH keys, credential stores, or private keys). Host file reads are capped at 512 KiB and 50,000 characters; binary files cannot be read. To copy one host file to a bucket, use copy_host_file_to_bucket. To copy one host file to a container folder, use copy_host_file_to_container. Both require confirmation and accept the source as its absolute HOST path. Host file transfers support regular files up to 200 MiB.
 - To build a configured host project and deploy its artifacts to a container, first call list_host_build_presets to find the exact preset, then call run_host_build_preset with its name, target container id, and destination directory. Presets contain fixed host-side commands and artifact directories; never invent a command, command arguments, working directory, or artifact path.
 - For database work, always resolve the saved connection id first (list_database_connections unless it is already known). Use inspect_database_schema to explore structure, run_database_read_query for bounded read-only access, execute_database_mutation for one confirmed write, execute_database_migration for confirmed schema/multi-step changes, execute_database_access_grant for structured MySQL GRANT or MongoDB grantRolesToUser requests, create_database_backup to generate a backup job, restore_database_backup to restore from a prior backup job id, and list_database_jobs / get_database_job to inspect backup or restore history.
@@ -311,6 +312,30 @@ const tools: Anthropic.Tool[] = [
         },
       },
       required: ["id", "path", "content"],
+    },
+  },
+  {
+    name: "execute_container_command",
+    description:
+      'Run a command in a running container that this assistant launched. Requires user confirmation. Pass command as separate arguments, e.g. ["npm", "ci"] or ["npx", "ng", "build"], not a shell command string. Returns combined stdout/stderr and exit code. Use workingDir for the project directory.',
+    input_schema: {
+      type: "object",
+      properties: {
+        id: {
+          type: "string",
+          description: "Container id returned by launch_container",
+        },
+        command: {
+          type: "array",
+          description: 'Executable and arguments, e.g. ["npm", "ci"]',
+          items: { type: "string" },
+        },
+        workingDir: {
+          type: "string",
+          description: 'Optional absolute project directory inside the container, e.g. "/workspace"',
+        },
+      },
+      required: ["id", "command"],
     },
   },
   {

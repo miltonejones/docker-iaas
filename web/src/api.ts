@@ -80,6 +80,7 @@ export interface LaunchRequest {
   env?: { key: string; value: string }[];
   volumes?: string[];
   autoStart?: boolean;
+  assistantManaged?: boolean;
 }
 
 export const api = {
@@ -119,6 +120,15 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ path, content }),
     }).then((r) => json<{ ok: true; path: string }>(r)),
+
+  containerExec: (id: string, command: string[], workingDir?: string) =>
+    fetch(`/api/containers/${id}/exec`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command, workingDir }),
+    }).then((r) =>
+      json<{ command: string[]; workingDir: string | null; exitCode: number | null; output: string; truncated: boolean }>(r),
+    ),
 
   hostFileToBucket: (sourcePath: string, bucket: string, key: string, contentType?: string) =>
     fetch('/api/host-files/to-bucket', {

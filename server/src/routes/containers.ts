@@ -60,6 +60,7 @@ interface LaunchBody {
   env?: { key: string; value: string }[];
   volumes?: string[];
   autoStart?: boolean;
+  assistantManaged?: boolean;
 }
 
 // Launch a new instance from a preset (or a raw image). Pulls the image if it
@@ -109,7 +110,10 @@ containersRouter.post('/', async (req: Request, res: Response) => {
       name: body.name || undefined,
       Env: env.length ? env : undefined,
       ExposedPorts: Object.keys(exposedPorts).length ? exposedPorts : undefined,
-      Labels: preset ? { 'iaas.preset': preset.id } : undefined,
+      Labels: {
+        ...(preset ? { 'iaas.preset': preset.id } : {}),
+        ...(body.assistantManaged ? { 'iaas.assistant-managed': 'true' } : {}),
+      },
       // Keep interactive OS/runtime images alive so they show as "running".
       Tty: preset ? ['ubuntu', 'debian', 'alpine', 'fedora', 'rockylinux', 'archlinux', 'node', 'python'].includes(preset.id) : false,
       HostConfig: {
@@ -168,6 +172,91 @@ containersRouter.post('/:id/files', async (req: Request, res: Response) => {
     });
     await container.putArchive(tarBuffer, { path: '/' });
     res.json({ ok: true, path: target });
+  } catch (err) {
+    res.status(502).json({ error: (err as Error).message });
+  }
+});
+
+const MAX_EXEC_OUTPUT_BYTES = 256 * 1024;
+
+function readExecOutput(stream: NodeJS.ReadableStream): Promise<{ output: string; truncated: boolean }> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let truncated = false;
+    stream.on('data', (chunk: Buffer | string) => {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      if (size >= MAX_EXEC_OUTPUT_BYTES) {
+        truncated = true;
+        return;
+      }
+      const remaining = MAX_EXEC_OUTPUT_BYTES - size;
+      chunks.push(buffer.subarray(0, remaining));
+      size += Math.min(buffer.length, remaining);
+      truncated ||= buffer.length > remaining;
+    });
+    stream.once('end', () => resolve({ output: stripLogHeaders(Buffer.concat(chunks)), truncated }));
+    stream.once('error', reject);
+  });
+}
+
+// Execute a confirmed command in a running container that the assistant
+// created. Commands are passed directly to Docker (never through a host shell).
+containersRouter.post('/:id/exec', async (req: Request, res: Response) => {
+  const { command, workingDir } = req.body as Record<string, unknown>;
+  if (
+    !Array.isArray(command) ||
+    command.length === 0 ||
+    command.length > 32 ||
+    command.some((part) => typeof part !== 'string' || !part || part.length > 4096)
+  ) {
+    res.status(400).json({ error: 'command must be a non-empty array of up to 32 non-empty string arguments.' });
+    return;
+  }
+  const commandArgs = command as string[];
+  if (
+    workingDir !== undefined &&
+    (typeof workingDir !== 'string' ||
+      !workingDir.startsWith('/') ||
+      /\.\.(?:\/|$)/.test(workingDir) ||
+      workingDir.length > 4096)
+  ) {
+    res.status(400).json({ error: 'workingDir must be an absolute container path without "..".' });
+    return;
+  }
+
+  try {
+    const container = docker.getContainer(req.params.id);
+    const info = await container.inspect();
+    if (info.Config?.Labels?.['iaas.system']) {
+      res.status(403).json({ error: 'System-managed containers cannot execute assistant commands.' });
+      return;
+    }
+    if (info.Config?.Labels?.['iaas.assistant-managed'] !== 'true') {
+      res.status(403).json({ error: 'Assistant commands are limited to containers created by the assistant.' });
+      return;
+    }
+    if (!info.State?.Running) {
+      res.status(409).json({ error: 'Container is not running — start it before executing a command.' });
+      return;
+    }
+
+    const exec = await container.exec({
+      Cmd: commandArgs,
+      AttachStdout: true,
+      AttachStderr: true,
+      WorkingDir: workingDir,
+    });
+    const stream = await exec.start({ hijack: true, stdin: false });
+    const { output, truncated } = await readExecOutput(stream);
+    const result = await exec.inspect();
+    res.json({
+      command: commandArgs,
+      workingDir: workingDir ?? null,
+      exitCode: result.ExitCode ?? null,
+      output,
+      truncated,
+    });
   } catch (err) {
     res.status(502).json({ error: (err as Error).message });
   }

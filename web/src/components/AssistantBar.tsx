@@ -27,6 +27,7 @@ const ACTION_LABEL: Record<string, string> = {
   launch_container: 'Launch container',
   container_action: 'Container action',
   write_container_file: 'Write container file',
+  execute_container_command: 'Run container command',
   copy_host_file_to_container: 'Copy host file to container',
   delete_container: 'Delete container',
   delete_image: 'Delete image',
@@ -560,6 +561,7 @@ export function AssistantBar({
           ports: Array.isArray(input.ports) ? (input.ports as { container: string; host: number }[]) : undefined,
           env: Array.isArray(input.env) ? (input.env as { key: string; value: string }[]) : undefined,
           autoStart: true,
+          assistantManaged: true,
         });
 
       case 'container_action':
@@ -570,6 +572,16 @@ export function AssistantBar({
           String(input.id ?? ''),
           String(input.path ?? ''),
           String(input.content ?? ''),
+        );
+
+      case 'execute_container_command':
+        if (!Array.isArray(input.command) || input.command.some((part) => typeof part !== 'string')) {
+          throw new Error('Container command must be an array of string arguments.');
+        }
+        return api.containerExec(
+          String(input.id ?? ''),
+          input.command as string[],
+          str(input.workingDir),
         );
 
       case 'copy_host_file_to_container':
