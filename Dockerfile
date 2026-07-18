@@ -11,6 +11,9 @@ COPY . .
 RUN npm run build
 
 FROM node:20-slim
+# git is used by the Ask Dockyard assistant's GitHub tools (clone/commit/push
+# into a scratch checkout under /app/data).
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /app/package.json ./

@@ -167,6 +167,50 @@ export interface GatewayRoute {
   updatedAt: string;
 }
 
+export interface GatewayTrafficRouteSummary {
+  gatewayName: string;
+  routeId: string | null;
+  targetType: GatewayRoute['targetType'] | null;
+  routeMethod: string | null;
+  routePathPattern: string | null;
+  requestCount: number;
+  successfulRequests: number;
+  clientErrorRequests: number;
+  serverErrorRequests: number;
+  avgDurationMs: number;
+  maxDurationMs: number;
+  totalRequestBytes: number;
+  totalResponseBytes: number;
+  lastSeenAt: string;
+  errorCounts: Record<string, number>;
+}
+
+export interface GatewayTrafficSummary {
+  windowHours: number;
+  totalRequests: number;
+  routes: GatewayTrafficRouteSummary[];
+}
+
+export interface GatewayTrafficRequest {
+  id: number;
+  occurredAt: string;
+  gatewayName: string;
+  routeId: string | null;
+  targetType: GatewayRoute['targetType'] | null;
+  method: string;
+  path: string;
+  statusCode: number;
+  durationMs: number;
+  requestBytes: number;
+  responseBytes: number;
+  errorClassification: string | null;
+}
+
+export interface GatewayTrafficRequests {
+  totalMatched: number;
+  requests: GatewayTrafficRequest[];
+}
+
 export interface DockerImage {
   id: string;
   tags: string[];
@@ -181,6 +225,110 @@ export interface DockerVolume {
   createdAt: string;
   size: number;
   refCount: number;
+}
+
+export type DatabaseEngine = 'mysql' | 'mongodb';
+
+export interface DatabaseConnectionSummary {
+  engine: DatabaseEngine;
+  database: string;
+  host?: string;
+  port?: number;
+  username?: string;
+  ssl?: boolean;
+  mode?: 'fields' | 'uri';
+  uriRedacted?: string;
+  authDatabase?: string;
+  directConnection?: boolean;
+  tls?: boolean;
+  hasPassword: boolean;
+}
+
+export interface DatabaseConnectionDetail {
+  id: string;
+  name: string;
+  engine: DatabaseEngine;
+  summary: DatabaseConnectionSummary;
+  createdAt: string;
+  updatedAt: string;
+  lastTestedAt: string | null;
+  lastTestStatus: string | null;
+  lastTestError: string | null;
+}
+
+export interface DatabaseLimits {
+  maxReadRows: number;
+  maxReadStringChars: number;
+  maxReadJsonBytes: number;
+  maxReadArrayItems: number;
+  maxReadObjectKeys: number;
+  maxSchemaDatabases: number;
+  maxSchemaTables: number;
+  maxSchemaCollections: number;
+  maxSchemaColumnsPerTable: number;
+  maxSchemaFieldPathsPerCollection: number;
+  maxMongoSampleDocs: number;
+  maxMongoPipelineStages: number;
+  maxMutationSteps: number;
+  maxInsertManyDocuments: number;
+  maxBackupArtifactBytes: number;
+  maxBackupEstimatedRows: number;
+  maxQueryPayloadBytes: number;
+  maxQueryTimeMs: number;
+}
+
+export interface DatabaseOperationOverview {
+  id: string;
+  connectionId: string;
+  engine: DatabaseEngine;
+  category: string;
+  action: string;
+  summary: string;
+  status: string;
+  request: unknown;
+  result: unknown;
+  error: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface DatabaseJobOverview {
+  id: string;
+  connectionId: string;
+  engine: DatabaseEngine;
+  kind: string;
+  summary: string;
+  status: string;
+  artifactFormat: string | null;
+  artifactSize: number | null;
+  artifactAvailable: boolean;
+  request: unknown;
+  result: unknown;
+  error: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface DatabaseOverview {
+  masterKeyConfigured: boolean;
+  connections: {
+    total: number;
+    unhealthy: number;
+    byEngine: Record<DatabaseEngine, number>;
+    items: DatabaseConnectionDetail[];
+  };
+  recentOperations: DatabaseOperationOverview[];
+  recentJobs: DatabaseJobOverview[];
+  limits: DatabaseLimits;
+}
+
+export interface DatabaseConfirmationPreview {
+  requiresConfirmation: true;
+  category: 'mutation' | 'migration' | 'backup' | 'restore';
+  summary: string;
+  request: unknown;
 }
 
 export interface AssistantPendingAction {

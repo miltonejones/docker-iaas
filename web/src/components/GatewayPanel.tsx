@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { Bucket, Container, GatewayRoute, LambdaFunction } from '../types';
+import type { Bucket, Container, GatewayRoute, GatewayTrafficRequest, GatewayTrafficSummary, LambdaFunction } from '../types';
 import { api } from '../api';
 import { onRefresh } from '../refresh';
 import { AppIcon } from '../icons';
+import { bytes } from '../format';
 
 const TARGET_ICON = {
   bucket: <AppIcon name="bucket" />,
@@ -16,6 +17,7 @@ export function GatewayList() {
   const [routes, setRoutes] = useState<GatewayRoute[]>([]);
   const [containers, setContainers] = useState<Container[]>([]);
   const [functions, setFunctions] = useState<LambdaFunction[]>([]);
+  const [traffic, setTraffic] = useState<GatewayTrafficSummary | null>(null);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -24,6 +26,7 @@ export function GatewayList() {
     loadRoutes();
     api.containers().then(setContainers).catch(() => {});
     api.lambdaListFunctions().then(setFunctions).catch(() => {});
+    api.gatewayTrafficSummary().then(setTraffic).catch(() => {});
   }, []);
 
   // Reload when the assistant mutates gateway routes, containers, or functions.
@@ -31,6 +34,7 @@ export function GatewayList() {
     loadRoutes();
     api.containers().then(setContainers).catch(() => {});
     api.lambdaListFunctions().then(setFunctions).catch(() => {});
+    api.gatewayTrafficSummary().then(setTraffic).catch(() => {});
   }), []);
 
   async function loadRoutes() {
@@ -57,6 +61,10 @@ export function GatewayList() {
       return acc;
     }, {}),
   );
+  const requestsByGateway = new Map<string, number>();
+  for (const route of traffic?.routes ?? []) {
+    requestsByGateway.set(route.gatewayName, (requestsByGateway.get(route.gatewayName) ?? 0) + route.requestCount);
+  }
 
   return (
     <section className="panel">
@@ -115,6 +123,7 @@ export function GatewayList() {
                 <th>Route</th>
                 <th>Endpoints</th>
                 <th>Targets</th>
+                <th className="num">Requests (24h)</th>
               </tr>
             </thead>
             <tbody>
@@ -140,6 +149,7 @@ export function GatewayList() {
                       </span>
                     ))}
                   </td>
+                  <td className="num mono">{requestsByGateway.get(group[0].name) ?? 0}</td>
                 </tr>
               ))}
             </tbody>
@@ -158,6 +168,8 @@ export function GatewayDetail({ name }: { name: string }) {
   const [buckets, setBuckets] = useState<Bucket[]>([]);
   const [containers, setContainers] = useState<Container[]>([]);
   const [functions, setFunctions] = useState<LambdaFunction[]>([]);
+  const [traffic, setTraffic] = useState<GatewayTrafficSummary | null>(null);
+  const [recentRequests, setRecentRequests] = useState<GatewayTrafficRequest[]>([]);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -174,6 +186,8 @@ export function GatewayDetail({ name }: { name: string }) {
     api.bucketList().then(setBuckets).catch(() => {});
     api.containers().then(setContainers).catch(() => {});
     api.lambdaListFunctions().then(setFunctions).catch(() => {});
+    api.gatewayTrafficSummary(name).then(setTraffic).catch(() => {});
+    api.gatewayTrafficRequests(name).then((response) => setRecentRequests(response.requests)).catch(() => {});
   }, [name]);
 
   // Reload when the assistant mutates routes or their target resources.
@@ -182,6 +196,8 @@ export function GatewayDetail({ name }: { name: string }) {
     api.bucketList().then(setBuckets).catch(() => {});
     api.containers().then(setContainers).catch(() => {});
     api.lambdaListFunctions().then(setFunctions).catch(() => {});
+    api.gatewayTrafficSummary(name).then(setTraffic).catch(() => {});
+    api.gatewayTrafficRequests(name).then((response) => setRecentRequests(response.requests)).catch(() => {});
   }), [name]);
 
   async function loadRoutes() {
@@ -195,6 +211,15 @@ export function GatewayDetail({ name }: { name: string }) {
 
   const runningContainers = containers.filter((c) => c.state === 'running');
   const selectedContainer = runningContainers.find((c) => c.id === containerId);
+  const trafficTotals = (traffic?.routes ?? []).reduce(
+    (totals, route) => ({
+      requests: totals.requests + route.requestCount,
+      ingress: totals.ingress + route.totalRequestBytes,
+      egress: totals.egress + route.totalResponseBytes,
+      errors: totals.errors + route.serverErrorRequests,
+    }),
+    { requests: 0, ingress: 0, egress: 0, errors: 0 },
+  );
 
   function resetForm() {
     setTargetType('bucket');
@@ -428,6 +453,59 @@ export function GatewayDetail({ name }: { name: string }) {
           </table>
         </div>
       )}
+
+      <section className="gateway-traffic">
+        <div className="detail-section__head">
+          <h3 className="detail-section__title">Traffic (last 24 hours)</h3>
+          <button
+            className="btn btn--sm"
+            onClick={() => {
+              api.gatewayTrafficSummary(name).then(setTraffic).catch(() => {});
+              api.gatewayTrafficRequests(name).then((response) => setRecentRequests(response.requests)).catch(() => {});
+            }}
+          >
+            Refresh
+          </button>
+        </div>
+        <div className="gateway-traffic__summary">
+          <span><strong>{trafficTotals.requests}</strong> requests</span>
+          <span><strong>{bytes(trafficTotals.ingress)}</strong> in</span>
+          <span><strong>{bytes(trafficTotals.egress)}</strong> out</span>
+          <span><strong>{trafficTotals.errors}</strong> server errors</span>
+        </div>
+        {recentRequests.length === 0 ? (
+          <p className="empty-sm">No gateway requests recorded in the last 24 hours.</p>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Request</th>
+                  <th>Status</th>
+                  <th className="num">Latency</th>
+                  <th className="num">In / out</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentRequests.map((request) => (
+                  <tr key={request.id}>
+                    <td className="muted">{new Date(request.occurredAt).toLocaleTimeString()}</td>
+                    <td className="mono">{request.method} {request.path}</td>
+                    <td>
+                      <span className={`db-status-pill ${request.statusCode >= 500 ? 'db-status-pill--error' : request.statusCode >= 400 ? 'db-status-pill--neutral' : 'db-status-pill--ok'}`}>
+                        {request.statusCode}
+                      </span>
+                    </td>
+                    <td className="num mono">{request.durationMs}ms</td>
+                    <td className="num mono">{bytes(request.requestBytes)} / {bytes(request.responseBytes)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </section>
   );
 }

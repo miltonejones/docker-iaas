@@ -9,8 +9,43 @@ import { getS3Client } from '../minio.js';
 export const hostFilesRouter = Router();
 
 const MAX_FILE_SIZE = 200 * 1024 * 1024;
+const MAX_ASSISTANT_FILE_BYTES = 512 * 1024;
+const MAX_ASSISTANT_FILE_CHARS = 50_000;
+const MAX_DIRECTORY_ENTRIES = 500;
+const SENSITIVE_PATH_SEGMENTS = new Set([
+  '.aws',
+  '.docker',
+  '.gnupg',
+  '.kube',
+  '.password-store',
+  '.ssh',
+  'secrets',
+]);
 
-function resolveHostPath(sourcePath: unknown): string {
+function isSensitiveAssistantPath(sourcePath: unknown): boolean {
+  if (typeof sourcePath !== 'string') return false;
+  const segments = sourcePath.split('/').filter(Boolean).map((segment) => segment.toLowerCase());
+  const name = segments.at(-1) || '';
+  return (
+    segments.some((segment) => SENSITIVE_PATH_SEGMENTS.has(segment)) ||
+    name === '.antro' ||
+    name === '.dockyard_database_master_key' ||
+    name === '.env' ||
+    name.startsWith('.env.') ||
+    /^id_[a-z0-9_-]+$/.test(name) ||
+    /^(credentials|passwords?)$/.test(name) ||
+    /\.(key|pem|p12|pfx)$/i.test(name)
+  );
+}
+
+function containsLikelySecret(content: string): boolean {
+  return (
+    /-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(content) ||
+    /\b(?:api[_-]?key|password|secret|token)\b\s*[:=]\s*["']?[A-Za-z0-9_-]{20,}/i.test(content)
+  );
+}
+
+export async function resolveHostPath(sourcePath: unknown): Promise<string> {
   if (typeof sourcePath !== 'string' || !path.isAbsolute(sourcePath)) {
     throw new Error('sourcePath must be an absolute host file path.');
   }
@@ -23,11 +58,15 @@ function resolveHostPath(sourcePath: unknown): string {
   if (path.relative(hostRoot, resolved).startsWith('..')) {
     throw new Error('sourcePath must stay within the mounted host filesystem.');
   }
-  return resolved;
+  const [realRoot, realPath] = await Promise.all([fs.realpath(hostRoot), fs.realpath(resolved)]);
+  if (path.relative(realRoot, realPath).startsWith('..')) {
+    throw new Error('sourcePath must stay within the mounted host filesystem.');
+  }
+  return realPath;
 }
 
 async function readHostFile(sourcePath: unknown): Promise<{ sourcePath: string; content: Buffer }> {
-  const resolved = resolveHostPath(sourcePath);
+  const resolved = await resolveHostPath(sourcePath);
   const stat = await fs.stat(resolved);
   if (!stat.isFile()) {
     throw new Error('sourcePath must identify a regular file.');
@@ -36,6 +75,66 @@ async function readHostFile(sourcePath: unknown): Promise<{ sourcePath: string; 
     throw new Error('sourcePath exceeds the 200 MiB transfer limit.');
   }
   return { sourcePath: resolved, content: await fs.readFile(resolved) };
+}
+
+export async function listHostDirectory(sourcePath: unknown) {
+  if (isSensitiveAssistantPath(sourcePath)) {
+    throw new Error('Assistant access to sensitive host paths is not allowed.');
+  }
+  const resolved = await resolveHostPath(sourcePath);
+  const stat = await fs.stat(resolved);
+  if (!stat.isDirectory()) {
+    throw new Error('sourcePath must identify a directory.');
+  }
+
+  const entries = await fs.readdir(resolved, { withFileTypes: true });
+  const visible = entries
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, MAX_DIRECTORY_ENTRIES);
+  return {
+    path: sourcePath,
+    entries: await Promise.all(
+      visible.map(async (entry) => {
+        const entryPath = path.join(resolved, entry.name);
+        const entryStat = await fs.lstat(entryPath);
+        return {
+          name: entry.name,
+          type: entry.isDirectory() ? 'directory' : entry.isFile() ? 'file' : entry.isSymbolicLink() ? 'symlink' : 'other',
+          size: entry.isFile() ? entryStat.size : undefined,
+          modifiedAt: entryStat.mtime.toISOString(),
+        };
+      }),
+    ),
+    truncated: entries.length > MAX_DIRECTORY_ENTRIES,
+  };
+}
+
+export async function readHostTextFile(sourcePath: unknown) {
+  if (isSensitiveAssistantPath(sourcePath)) {
+    throw new Error('Assistant access to sensitive host paths is not allowed.');
+  }
+  const resolved = await resolveHostPath(sourcePath);
+  const stat = await fs.stat(resolved);
+  if (!stat.isFile()) {
+    throw new Error('sourcePath must identify a regular file.');
+  }
+  if (stat.size > MAX_ASSISTANT_FILE_BYTES) {
+    throw new Error(`sourcePath exceeds the ${MAX_ASSISTANT_FILE_BYTES / 1024} KiB assistant read limit.`);
+  }
+
+  const content = await fs.readFile(resolved);
+  if (content.includes(0)) {
+    throw new Error('sourcePath appears to be binary and cannot be read as text.');
+  }
+  const text = new TextDecoder('utf-8', { fatal: true }).decode(content);
+  if (containsLikelySecret(text)) {
+    throw new Error('sourcePath appears to contain credentials or private-key material and cannot be read by the assistant.');
+  }
+  return {
+    path: sourcePath,
+    content: text.length > MAX_ASSISTANT_FILE_CHARS ? text.slice(0, MAX_ASSISTANT_FILE_CHARS) : text,
+    truncated: text.length > MAX_ASSISTANT_FILE_CHARS,
+  };
 }
 
 function validContainerPath(value: unknown): string | undefined {

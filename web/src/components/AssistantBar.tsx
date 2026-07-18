@@ -39,6 +39,18 @@ const ACTION_LABEL: Record<string, string> = {
   run_host_build_preset: 'Build host project and deploy artifacts',
   prune_build_cache: 'Prune build cache',
   run_function: 'Run function',
+  create_database_connection: 'Create database connection',
+  update_database_connection: 'Update database connection',
+  delete_database_connection: 'Delete database connection',
+  test_database_connection: 'Test database connection',
+  execute_database_mutation: 'Execute database mutation',
+  execute_database_migration: 'Execute database migration',
+  execute_database_access_grant: 'Grant database access',
+  create_database_backup: 'Create database backup',
+  restore_database_backup: 'Restore database backup',
+  pull_github_repo_to_bucket: 'Pull GitHub repo into bucket',
+  pull_github_repo_to_container: 'Pull GitHub repo into container',
+  commit_and_push_github_files: 'Commit and push to GitHub',
 };
 
 const LOOKUP_LABEL: Record<string, string> = {
@@ -50,7 +62,62 @@ const LOOKUP_LABEL: Record<string, string> = {
   list_bucket_objects: 'bucket contents',
   read_bucket_object: 'file content',
   list_host_build_presets: 'host build presets',
+  list_github_repo_files: 'GitHub repo contents',
+  read_github_file: 'GitHub file content',
 };
+
+const THINKING_WORDS = [
+  'Discombobulating',
+  'Anthropomorphizing',
+  'Contemplating',
+  'Percolating',
+  'Cogitating',
+  'Ruminating',
+  'Synthesizing',
+  'Extrapolating',
+  'Calibrating',
+  'Orchestrating',
+  'Pondering',
+  'Musing',
+  'Reasoning',
+  'Analyzing',
+  'Investigating',
+  'Deciphering',
+  'Untangling',
+  'Deconstructing',
+  'Reconstructing',
+  'Formulating',
+  'Harmonizing',
+  'Optimizing',
+  'Prioritizing',
+  'Contextualizing',
+  'Correlating',
+  'Triangulating',
+  'Interpolating',
+  'Refactoring',
+  'Compiling',
+  'Indexing',
+  'Mapping',
+  'Modeling',
+  'Simulating',
+  'Iterating',
+  'Prototyping',
+  'Evaluating',
+  'Validating',
+  'Reconciling',
+  'Translating',
+  'Navigating',
+  'Sifting',
+  'Scouting',
+  'Surveying',
+  'Scrutinizing',
+  'Illuminating',
+  'Connecting',
+  'Converging',
+  'Conjuring',
+  'Galvanizing',
+  'Unspooling',
+];
 
 /** Actions that mutate/destroy state in a way worth calling out visually,
  *  beyond the ordinary Confirm/Cancel gate every action already goes through. */
@@ -138,18 +205,31 @@ export function AssistantBar({
   const [pending, setPending] = useState<AssistantPendingAction[]>([]);
   const [edits, setEdits] = useState<Record<string, Record<string, unknown>>>({});
   const [resolved, setResolved] = useState<ResolvedResult[]>([]);
+  const [autoApprove, setAutoApprove] = useState(false);
+  const [activeActionName, setActiveActionName] = useState<string | null>(null);
+  const [thinkingWord, setThinkingWord] = useState(() => THINKING_WORDS[Math.floor(Math.random() * THINKING_WORDS.length)]);
+  const [copiedMessage, setCopiedMessage] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Auto-scroll the conversation to the bottom as new text streams in, but
-  // only when the reader is already near the bottom — so scrolling up to reread
-  // earlier output isn't hijacked by each incoming token.
+  // Keep the active conversation on its newest streamed or newly added entry.
   const logRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = logRef.current;
     if (!el) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    if (embedded || nearBottom) el.scrollTop = el.scrollHeight;
-  }, [embedded, log, error, pending]);
+    el.scrollTop = el.scrollHeight;
+  }, [embedded, log, error, pending, busy]);
+  useEffect(() => {
+    if (!busy) return;
+    const rotate = () => {
+      setThinkingWord((current) => {
+        const alternatives = THINKING_WORDS.filter((word) => word !== current);
+        return alternatives[Math.floor(Math.random() * alternatives.length)];
+      });
+    };
+    rotate();
+    const interval = window.setInterval(rotate, 1800);
+    return () => window.clearInterval(interval);
+  }, [busy]);
   // Guards the initial-prompt effect below against React StrictMode's
   // dev-only double-invoke of effects (mount → cleanup → mount) — without
   // this, the same prompt gets submitted twice and comes back with two
@@ -230,6 +310,7 @@ export function AssistantBar({
     setPending([]);
     setEdits({});
     setResolved([]);
+    setAutoApprove(false);
     setError(null);
     setSessionsOpen(false);
   }
@@ -558,6 +639,82 @@ export function AssistantBar({
         );
       }
 
+      case 'create_database_connection':
+        return api.databaseCreateConnection({
+          name: String(input.name ?? ''),
+          engine: input.engine as 'mysql' | 'mongodb',
+          config: (input.config ?? {}) as Record<string, unknown>,
+        });
+
+      case 'update_database_connection': {
+        const { connectionId, ...fields } = input;
+        return api.databaseUpdateConnection(String(connectionId ?? ''), {
+          name: typeof fields.name === 'string' ? fields.name : undefined,
+          engine: typeof fields.engine === 'string' ? fields.engine : undefined,
+          config: fields.config && typeof fields.config === 'object' && !Array.isArray(fields.config)
+            ? fields.config as Record<string, unknown>
+            : undefined,
+        });
+      }
+
+      case 'delete_database_connection':
+        return api.databaseDeleteConnection(String(input.connectionId ?? ''));
+
+      case 'test_database_connection':
+        return api.databaseTestConnection(String(input.connectionId ?? ''));
+
+      case 'execute_database_mutation': {
+        const { connectionId, ...request } = input;
+        return api.databaseMutate(String(connectionId ?? ''), { ...request, confirmed: true });
+      }
+
+      case 'execute_database_migration': {
+        const { connectionId, ...request } = input;
+        return api.databaseMigrate(String(connectionId ?? ''), { ...request, confirmed: true });
+      }
+
+      case 'execute_database_access_grant': {
+        const { connectionId, ...request } = input;
+        return api.databaseGrant(String(connectionId ?? ''), { ...request, confirmed: true });
+      }
+
+      case 'create_database_backup': {
+        const { connectionId, ...request } = input;
+        return api.databaseBackup(String(connectionId ?? ''), { ...request, confirmed: true });
+      }
+
+      case 'restore_database_backup': {
+        const { connectionId, ...request } = input;
+        return api.databaseRestore(String(connectionId ?? ''), { ...request, confirmed: true });
+      }
+
+      case 'pull_github_repo_to_bucket':
+        return api.githubPullToBucket(
+          String(input.owner ?? ''),
+          String(input.repo ?? ''),
+          String(input.bucket ?? ''),
+          str(input.ref),
+          str(input.prefix),
+        );
+
+      case 'pull_github_repo_to_container':
+        return api.githubPullToContainer(
+          String(input.owner ?? ''),
+          String(input.repo ?? ''),
+          String(input.id ?? ''),
+          String(input.path ?? ''),
+          str(input.ref),
+        );
+
+      case 'commit_and_push_github_files':
+        return api.githubCommitAndPush(
+          String(input.owner ?? ''),
+          String(input.repo ?? ''),
+          String(input.message ?? ''),
+          parseLambdaFiles(input.files) ?? [],
+          str(input.branch),
+        );
+
       default:
         throw new Error(`Unknown action "${action.name}".`);
     }
@@ -573,6 +730,7 @@ export function AssistantBar({
       entry = { toolUseId: action.id, ok: false, content: 'The user declined this action.' };
     } else {
       try {
+        setActiveActionName(ACTION_LABEL[action.name] ?? action.name);
         const result = await runAction(action, edits[action.id] ?? action.input);
         setLog((l) => [...l, { kind: 'action', text: `Done: ${ACTION_LABEL[action.name] ?? action.name}` }]);
         onChanged?.();
@@ -581,6 +739,7 @@ export function AssistantBar({
         setLog((l) => [...l, { kind: 'error', text: (err as Error).message }]);
         entry = { toolUseId: action.id, ok: false, content: { error: (err as Error).message } };
       }
+
     }
 
     const nextResolved = [...resolved, entry];
@@ -591,6 +750,7 @@ export function AssistantBar({
       // since Claude expects all tool_result blocks for a turn at once.
       setResolved(nextResolved);
       setPending(remaining);
+      setActiveActionName(null);
       setBusy(false);
       return;
     }
@@ -601,12 +761,34 @@ export function AssistantBar({
     } catch (err) {
       setError((err as Error).message);
     } finally {
+      setActiveActionName(null);
       setBusy(false);
     }
   }
 
+  // Process one action at a time so every tool result is returned to the
+  // model in the same order as a manually confirmed conversation.
+  useEffect(() => {
+    if (!autoApprove || busy || pending.length === 0) return;
+    void decide(pending[0], true);
+    // decide intentionally reads the current turn state from this render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoApprove, busy, pending]);
+
   function editField(actionId: string, key: string, value: unknown) {
     setEdits((s) => ({ ...s, [actionId]: { ...s[actionId], [key]: value } }));
+  }
+
+  async function copyAssistantMessage(index: number, text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedMessage(index);
+      window.setTimeout(() => {
+        setCopiedMessage((current) => (current === index ? null : current));
+      }, 2_000);
+    } catch (err) {
+      setError(`Could not copy message: ${(err as Error).message}`);
+    }
   }
 
   /** Object/array fields (e.g. launch_container's ports/env) are edited as
@@ -694,45 +876,63 @@ export function AssistantBar({
           </div>
         )}
 
-        <div className="assistant-log" ref={logRef}>
-          {log.length === 0 && (
-            <p className="muted empty-sm">
-              {embedded
-                ? 'Ask for an explanation, a review, or a change to this function.'
-                : 'Try: "create a lambda function that sorts strings and attach a gateway endpoint to it"'}
-            </p>
-          )}
-          {log
-            // A turn that goes straight to a tool call with no preamble text
-            // leaves the streaming placeholder empty — skip rendering it
-            // rather than showing an empty bubble.
-            .filter((entry) => entry.kind !== 'assistant' || entry.text.trim().length > 0)
-            .map((entry, i) => (
-              <div key={i} className={`assistant-log__entry assistant-log__entry--${entry.kind}`}>
-                {(entry.kind === 'user' || entry.kind === 'assistant') && (
-                  <span className="assistant-log__avatar">
-                    <AppIcon name={entry.kind === 'user' ? 'user' : 'assistant'} />
-                  </span>
-                )}
-                <div className="assistant-log__body">
-                  {entry.kind === 'assistant' ? (
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.text}</ReactMarkdown>
-                  ) : entry.kind === 'action' ? (
-                    <><AppIcon name="check" /> {entry.text}</>
-                  ) : (
-                    entry.text
+        <div className="assistant-panel__scroll" ref={embedded ? logRef : undefined}>
+          <div className="assistant-log" ref={embedded ? undefined : logRef}>
+            {log.length === 0 && (
+              <p className="muted empty-sm">
+                {embedded
+                  ? 'Ask for an explanation, a review, or a change to this function.'
+                  : 'Try: "create a lambda function that sorts strings and attach a gateway endpoint to it"'}
+              </p>
+            )}
+            {log
+              // A turn that goes straight to a tool call with no preamble text
+              // leaves the streaming placeholder empty — skip rendering it
+              // rather than showing an empty bubble.
+              .filter((entry) => entry.kind !== 'assistant' || entry.text.trim().length > 0)
+              .map((entry, i) => (
+                <div key={i} className={`assistant-log__entry assistant-log__entry--${entry.kind}`}>
+                  {(entry.kind === 'user' || entry.kind === 'assistant') && (
+                    <span className="assistant-log__avatar">
+                      <AppIcon name={entry.kind === 'user' ? 'user' : 'assistant'} />
+                    </span>
                   )}
+                  <div className="assistant-log__body">
+                    {entry.kind === 'assistant' ? (
+                      <>
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.text}</ReactMarkdown>
+                        <button
+                          className="assistant-log__copy"
+                          onClick={() => copyAssistantMessage(i, entry.text)}
+                          title="Copy assistant message"
+                          aria-label="Copy assistant message"
+                        >
+                          <AppIcon name={copiedMessage === i ? 'check' : 'copy'} />
+                          {copiedMessage === i && <span>Copied</span>}
+                        </button>
+                      </>
+                    ) : entry.kind === 'action' ? (
+                      <><AppIcon name="check" /> {entry.text}</>
+                    ) : (
+                      entry.text
+                    )}
+                  </div>
                 </div>
+              ))}
+            {error && (
+              <div className="assistant-log__entry assistant-log__entry--error">
+                <div className="assistant-log__body"><AppIcon name="warning" /> {error}</div>
               </div>
-            ))}
-          {error && (
-            <div className="assistant-log__entry assistant-log__entry--error">
-              <div className="assistant-log__body"><AppIcon name="warning" /> {error}</div>
-            </div>
-          )}
-        </div>
+            )}
+            {busy && (
+              <div className="assistant-working" role="status">
+                <AppIcon name="spinner" className="assistant-working__spinner" />
+                {activeActionName ? `Running ${activeActionName} — ${thinkingWord}…` : `${thinkingWord}…`}
+              </div>
+            )}
+          </div>
 
-        {pending.map((action) => {
+          {pending.map((action) => {
           const destructive = DESTRUCTIVE.has(action.name);
           const fields = edits[action.id] ?? action.input;
           return (
@@ -786,7 +986,18 @@ export function AssistantBar({
               </div>
             </div>
           );
-        })}
+          })}
+
+          <label className="assistant-auto-approve">
+            <input
+              type="checkbox"
+              checked={autoApprove}
+              onChange={(e) => setAutoApprove(e.target.checked)}
+            />
+            <span>Auto-approve tool actions</span>
+            <span className="muted">(includes destructive actions)</span>
+          </label>
+        </div>
 
         {pending.length === 0 && (
           <div className="assistant-input">

@@ -57,6 +57,32 @@ export function initDb(): void {
     )
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS gateway_traffic_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      occurred_at TEXT NOT NULL,
+      gateway_name TEXT NOT NULL,
+      route_id TEXT,
+      target_type TEXT,
+      method TEXT NOT NULL,
+      path TEXT NOT NULL,
+      status_code INTEGER NOT NULL,
+      duration_ms INTEGER NOT NULL,
+      request_bytes INTEGER NOT NULL,
+      response_bytes INTEGER NOT NULL,
+      error_classification TEXT
+    )
+  `);
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_gateway_traffic_events_occurred_at ON gateway_traffic_events (occurred_at DESC, id DESC)',
+  );
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_gateway_traffic_events_gateway_name ON gateway_traffic_events (gateway_name, occurred_at DESC, id DESC)',
+  );
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_gateway_traffic_events_route_id ON gateway_traffic_events (route_id, occurred_at DESC, id DESC)',
+  );
+
   // Migration: add method and path_pattern columns if upgrading from older schema.
   try { db.exec('ALTER TABLE routes ADD COLUMN method TEXT'); } catch { /* ok */ }
   try { db.exec('ALTER TABLE routes ADD COLUMN path_pattern TEXT'); } catch { /* ok */ }
@@ -134,6 +160,61 @@ export function initDb(): void {
       updated_at TEXT NOT NULL
     )
   `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS database_connections (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      engine TEXT NOT NULL,
+      summary_json TEXT NOT NULL,
+      encrypted_config TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      last_tested_at TEXT,
+      last_test_status TEXT,
+      last_test_error TEXT
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS database_operations (
+      id TEXT PRIMARY KEY,
+      connection_id TEXT NOT NULL,
+      engine TEXT NOT NULL,
+      category TEXT NOT NULL,
+      action TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      status TEXT NOT NULL,
+      request_json TEXT NOT NULL DEFAULT '{}',
+      result_json TEXT NOT NULL DEFAULT '{}',
+      error TEXT,
+      created_at TEXT NOT NULL,
+      started_at TEXT,
+      finished_at TEXT,
+      FOREIGN KEY (connection_id) REFERENCES database_connections(id) ON DELETE CASCADE
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS database_jobs (
+      id TEXT PRIMARY KEY,
+      connection_id TEXT NOT NULL,
+      engine TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      status TEXT NOT NULL,
+      artifact_format TEXT,
+      artifact_path TEXT,
+      artifact_size INTEGER,
+      request_json TEXT NOT NULL DEFAULT '{}',
+      result_json TEXT NOT NULL DEFAULT '{}',
+      error TEXT,
+      created_at TEXT NOT NULL,
+      started_at TEXT,
+      finished_at TEXT,
+      FOREIGN KEY (connection_id) REFERENCES database_connections(id) ON DELETE CASCADE
+    )
+  `);
 }
 
 // ---------------------------------------------------------------------------
@@ -205,6 +286,262 @@ export function createRoute(
 export function deleteRoute(id: string): boolean {
   const result = db.prepare('DELETE FROM routes WHERE id = ?').run(id);
   return result.changes > 0;
+}
+
+// ---------------------------------------------------------------------------
+// Gateway traffic telemetry
+// ---------------------------------------------------------------------------
+
+export const GATEWAY_TRAFFIC_RETENTION_LIMIT = 10_000;
+
+export interface GatewayTrafficEventRow {
+  id: number;
+  occurred_at: string;
+  gateway_name: string;
+  route_id: string | null;
+  target_type: string | null;
+  method: string;
+  path: string;
+  status_code: number;
+  duration_ms: number;
+  request_bytes: number;
+  response_bytes: number;
+  error_classification: string | null;
+}
+
+export interface GatewayTrafficEventInput {
+  occurredAt?: string;
+  gatewayName: string;
+  routeId?: string | null;
+  targetType?: string | null;
+  method: string;
+  path: string;
+  statusCode: number;
+  durationMs: number;
+  requestBytes?: number;
+  responseBytes?: number;
+  errorClassification?: string | null;
+}
+
+export interface GatewayTrafficSummaryFilters {
+  since: string;
+  until?: string;
+  gatewayName?: string | null;
+  routeId?: string | null;
+  targetType?: string | null;
+}
+
+export interface GatewayTrafficRequestsFilters extends GatewayTrafficSummaryFilters {
+  method?: string | null;
+  statusCode?: number | null;
+  errorClassification?: string | null;
+}
+
+export interface GatewayTrafficSummaryRow {
+  gateway_name: string;
+  route_id: string | null;
+  target_type: string | null;
+  route_method: string | null;
+  route_path_pattern: string | null;
+  request_count: number;
+  success_count: number;
+  client_error_count: number;
+  server_error_count: number;
+  avg_duration_ms: number;
+  max_duration_ms: number;
+  total_request_bytes: number;
+  total_response_bytes: number;
+  last_seen_at: string;
+  error_counts: Record<string, number>;
+}
+
+function gatewayTrafficWhere(filters: GatewayTrafficSummaryFilters) {
+  const clauses = ['e.occurred_at >= ?'];
+  const params: Array<string | number> = [filters.since];
+
+  if (filters.until) {
+    clauses.push('e.occurred_at <= ?');
+    params.push(filters.until);
+  }
+  if (filters.gatewayName) {
+    clauses.push('e.gateway_name = ?');
+    params.push(filters.gatewayName);
+  }
+  if (filters.routeId) {
+    clauses.push('e.route_id = ?');
+    params.push(filters.routeId);
+  }
+  if (filters.targetType) {
+    clauses.push('e.target_type = ?');
+    params.push(filters.targetType);
+  }
+
+  return { whereSql: clauses.join(' AND '), params };
+}
+
+export function recordGatewayTrafficEvent(input: GatewayTrafficEventInput): void {
+  db.transaction((event: GatewayTrafficEventInput) => {
+    const occurredAt = event.occurredAt || new Date().toISOString();
+    db.prepare(
+      `INSERT INTO gateway_traffic_events (
+        occurred_at,
+        gateway_name,
+        route_id,
+        target_type,
+        method,
+        path,
+        status_code,
+        duration_ms,
+        request_bytes,
+        response_bytes,
+        error_classification
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      occurredAt,
+      event.gatewayName,
+      event.routeId || null,
+      event.targetType || null,
+      event.method,
+      event.path,
+      event.statusCode,
+      Math.max(0, Math.round(event.durationMs)),
+      Math.max(0, Math.round(event.requestBytes || 0)),
+      Math.max(0, Math.round(event.responseBytes || 0)),
+      event.errorClassification || null,
+    );
+
+    // Retain only the newest bounded event window so telemetry storage stays
+    // predictable even if the gateway receives sustained traffic.
+    db.prepare(`
+      DELETE FROM gateway_traffic_events
+      WHERE id IN (
+        SELECT id
+        FROM gateway_traffic_events
+        ORDER BY occurred_at DESC, id DESC
+        LIMIT -1 OFFSET ?
+      )
+    `).run(GATEWAY_TRAFFIC_RETENTION_LIMIT);
+  })(input);
+}
+
+export function summarizeGatewayTraffic(filters: GatewayTrafficSummaryFilters): GatewayTrafficSummaryRow[] {
+  const { whereSql, params } = gatewayTrafficWhere(filters);
+  const rows = db.prepare(
+    `
+      SELECT
+        e.gateway_name,
+        e.route_id,
+        e.target_type,
+        r.method AS route_method,
+        r.path_pattern AS route_path_pattern,
+        COUNT(*) AS request_count,
+        SUM(CASE WHEN e.status_code BETWEEN 200 AND 399 THEN 1 ELSE 0 END) AS success_count,
+        SUM(CASE WHEN e.status_code BETWEEN 400 AND 499 THEN 1 ELSE 0 END) AS client_error_count,
+        SUM(CASE WHEN e.status_code >= 500 THEN 1 ELSE 0 END) AS server_error_count,
+        ROUND(AVG(e.duration_ms), 1) AS avg_duration_ms,
+        MAX(e.duration_ms) AS max_duration_ms,
+        SUM(e.request_bytes) AS total_request_bytes,
+        SUM(e.response_bytes) AS total_response_bytes,
+        MAX(e.occurred_at) AS last_seen_at
+      FROM gateway_traffic_events e
+      LEFT JOIN routes r ON r.id = e.route_id
+      WHERE ${whereSql}
+      GROUP BY
+        e.gateway_name,
+        e.route_id,
+        e.target_type,
+        r.method,
+        r.path_pattern
+      ORDER BY request_count DESC, last_seen_at DESC, e.gateway_name ASC
+    `,
+  ).all(...params) as Omit<GatewayTrafficSummaryRow, 'error_counts'>[];
+
+  const errorRows = db.prepare(
+    `
+      SELECT
+        e.gateway_name,
+        e.route_id,
+        e.target_type,
+        e.error_classification,
+        COUNT(*) AS count
+      FROM gateway_traffic_events e
+      WHERE ${whereSql} AND e.error_classification IS NOT NULL
+      GROUP BY e.gateway_name, e.route_id, e.target_type, e.error_classification
+    `,
+  ).all(...params) as {
+    gateway_name: string;
+    route_id: string | null;
+    target_type: string | null;
+    error_classification: string;
+    count: number;
+  }[];
+
+  const errorCountsByKey = new Map<string, Record<string, number>>();
+  for (const row of errorRows) {
+    const key = `${row.gateway_name}::${row.route_id || ''}::${row.target_type || ''}`;
+    const counts = errorCountsByKey.get(key) || {};
+    counts[row.error_classification] = row.count;
+    errorCountsByKey.set(key, counts);
+  }
+
+  return rows.map((row) => ({
+    ...row,
+    error_counts: errorCountsByKey.get(`${row.gateway_name}::${row.route_id || ''}::${row.target_type || ''}`) || {},
+  }));
+}
+
+export function listGatewayTrafficEvents(
+  filters: GatewayTrafficRequestsFilters,
+  limit: number,
+): { totalMatched: number; events: GatewayTrafficEventRow[] } {
+  const { whereSql, params } = gatewayTrafficWhere(filters);
+  const extraClauses: string[] = [];
+  const extraParams: Array<string | number> = [];
+
+  if (filters.method) {
+    extraClauses.push('e.method = ?');
+    extraParams.push(filters.method);
+  }
+  if (filters.statusCode != null) {
+    extraClauses.push('e.status_code = ?');
+    extraParams.push(filters.statusCode);
+  }
+  if (filters.errorClassification) {
+    extraClauses.push('e.error_classification = ?');
+    extraParams.push(filters.errorClassification);
+  }
+
+  const finalWhere = [whereSql, ...extraClauses].join(' AND ');
+  const finalParams = [...params, ...extraParams];
+
+  const totalMatched = (
+    db.prepare(`SELECT COUNT(*) AS count FROM gateway_traffic_events e WHERE ${finalWhere}`).get(
+      ...finalParams,
+    ) as { count: number }
+  ).count;
+  const events = db.prepare(
+    `
+      SELECT
+        e.id,
+        e.occurred_at,
+        e.gateway_name,
+        e.route_id,
+        e.target_type,
+        e.method,
+        e.path,
+        e.status_code,
+        e.duration_ms,
+        e.request_bytes,
+        e.response_bytes,
+        e.error_classification
+      FROM gateway_traffic_events e
+      WHERE ${finalWhere}
+      ORDER BY e.occurred_at DESC, e.id DESC
+      LIMIT ?
+    `,
+  ).all(...finalParams, limit) as GatewayTrafficEventRow[];
+
+  return { totalMatched, events };
 }
 
 // ---------------------------------------------------------------------------
@@ -387,4 +724,335 @@ export function updateAssistantSession(
 export function deleteAssistantSession(id: string): boolean {
   const result = db.prepare('DELETE FROM assistant_sessions WHERE id = ?').run(id);
   return result.changes > 0;
+}
+
+// ---------------------------------------------------------------------------
+// Saved external database connections
+// ---------------------------------------------------------------------------
+
+export interface DatabaseConnectionRow {
+  id: string;
+  name: string;
+  engine: string;
+  summary_json: string;
+  encrypted_config: string;
+  created_at: string;
+  updated_at: string;
+  last_tested_at: string | null;
+  last_test_status: string | null;
+  last_test_error: string | null;
+}
+
+export function listDatabaseConnections(): DatabaseConnectionRow[] {
+  return db
+    .prepare('SELECT * FROM database_connections ORDER BY updated_at DESC')
+    .all() as DatabaseConnectionRow[];
+}
+
+export function getDatabaseConnection(id: string): DatabaseConnectionRow | undefined {
+  return db.prepare('SELECT * FROM database_connections WHERE id = ?').get(id) as
+    | DatabaseConnectionRow
+    | undefined;
+}
+
+export function createDatabaseConnection(
+  id: string,
+  name: string,
+  engine: string,
+  summaryJson: string,
+  encryptedConfig: string,
+): DatabaseConnectionRow {
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO database_connections
+      (id, name, engine, summary_json, encrypted_config, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, name, engine, summaryJson, encryptedConfig, now, now);
+  return getDatabaseConnection(id)!;
+}
+
+export function updateDatabaseConnection(
+  id: string,
+  fields: {
+    name?: string;
+    engine?: string;
+    summaryJson?: string;
+    encryptedConfig?: string;
+    lastTestedAt?: string | null;
+    lastTestStatus?: string | null;
+    lastTestError?: string | null;
+  },
+): DatabaseConnectionRow | undefined {
+  const existing = getDatabaseConnection(id);
+  if (!existing) return undefined;
+  const now = new Date().toISOString();
+  db.prepare(
+    `UPDATE database_connections SET
+      name = ?,
+      engine = ?,
+      summary_json = ?,
+      encrypted_config = ?,
+      updated_at = ?,
+      last_tested_at = ?,
+      last_test_status = ?,
+      last_test_error = ?
+     WHERE id = ?`,
+  ).run(
+    fields.name ?? existing.name,
+    fields.engine ?? existing.engine,
+    fields.summaryJson ?? existing.summary_json,
+    fields.encryptedConfig ?? existing.encrypted_config,
+    now,
+    fields.lastTestedAt !== undefined ? fields.lastTestedAt : existing.last_tested_at,
+    fields.lastTestStatus !== undefined ? fields.lastTestStatus : existing.last_test_status,
+    fields.lastTestError !== undefined ? fields.lastTestError : existing.last_test_error,
+    id,
+  );
+  return getDatabaseConnection(id)!;
+}
+
+export function setDatabaseConnectionTestResult(
+  id: string,
+  status: string,
+  error?: string | null,
+): DatabaseConnectionRow | undefined {
+  return updateDatabaseConnection(id, {
+    lastTestedAt: new Date().toISOString(),
+    lastTestStatus: status,
+    lastTestError: error ?? null,
+  });
+}
+
+export function deleteDatabaseConnection(id: string): boolean {
+  const result = db.prepare('DELETE FROM database_connections WHERE id = ?').run(id);
+  return result.changes > 0;
+}
+
+// ---------------------------------------------------------------------------
+// Database operation records
+// ---------------------------------------------------------------------------
+
+export interface DatabaseOperationRow {
+  id: string;
+  connection_id: string;
+  engine: string;
+  category: string;
+  action: string;
+  summary: string;
+  status: string;
+  request_json: string;
+  result_json: string;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export function listDatabaseOperations(limit = 25): DatabaseOperationRow[] {
+  return db
+    .prepare('SELECT * FROM database_operations ORDER BY created_at DESC LIMIT ?')
+    .all(limit) as DatabaseOperationRow[];
+}
+
+export function listDatabaseOperationsForConnection(connectionId: string, limit = 25): DatabaseOperationRow[] {
+  return db
+    .prepare('SELECT * FROM database_operations WHERE connection_id = ? ORDER BY created_at DESC LIMIT ?')
+    .all(connectionId, limit) as DatabaseOperationRow[];
+}
+
+export function createDatabaseOperation(fields: {
+  id: string;
+  connectionId: string;
+  engine: string;
+  category: string;
+  action: string;
+  summary: string;
+  status: string;
+  requestJson?: string;
+  resultJson?: string;
+  error?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+}): DatabaseOperationRow {
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO database_operations
+      (id, connection_id, engine, category, action, summary, status, request_json, result_json, error, created_at, started_at, finished_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    fields.id,
+    fields.connectionId,
+    fields.engine,
+    fields.category,
+    fields.action,
+    fields.summary,
+    fields.status,
+    fields.requestJson ?? '{}',
+    fields.resultJson ?? '{}',
+    fields.error ?? null,
+    now,
+    fields.startedAt ?? now,
+    fields.finishedAt ?? null,
+  );
+  return db.prepare('SELECT * FROM database_operations WHERE id = ?').get(fields.id) as DatabaseOperationRow;
+}
+
+export function updateDatabaseOperation(
+  id: string,
+  fields: {
+    summary?: string;
+    status?: string;
+    requestJson?: string;
+    resultJson?: string;
+    error?: string | null;
+    startedAt?: string | null;
+    finishedAt?: string | null;
+  },
+): DatabaseOperationRow | undefined {
+  const existing = db.prepare('SELECT * FROM database_operations WHERE id = ?').get(id) as
+    | DatabaseOperationRow
+    | undefined;
+  if (!existing) return undefined;
+  db.prepare(
+    `UPDATE database_operations SET
+      summary = ?,
+      status = ?,
+      request_json = ?,
+      result_json = ?,
+      error = ?,
+      started_at = ?,
+      finished_at = ?
+     WHERE id = ?`,
+  ).run(
+    fields.summary ?? existing.summary,
+    fields.status ?? existing.status,
+    fields.requestJson ?? existing.request_json,
+    fields.resultJson ?? existing.result_json,
+    fields.error !== undefined ? fields.error : existing.error,
+    fields.startedAt !== undefined ? fields.startedAt : existing.started_at,
+    fields.finishedAt !== undefined ? fields.finishedAt : existing.finished_at,
+    id,
+  );
+  return db.prepare('SELECT * FROM database_operations WHERE id = ?').get(id) as DatabaseOperationRow;
+}
+
+// ---------------------------------------------------------------------------
+// Database backup / restore jobs
+// ---------------------------------------------------------------------------
+
+export interface DatabaseJobRow {
+  id: string;
+  connection_id: string;
+  engine: string;
+  kind: string;
+  summary: string;
+  status: string;
+  artifact_format: string | null;
+  artifact_path: string | null;
+  artifact_size: number | null;
+  request_json: string;
+  result_json: string;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export function listDatabaseJobs(limit = 25): DatabaseJobRow[] {
+  return db
+    .prepare('SELECT * FROM database_jobs ORDER BY created_at DESC LIMIT ?')
+    .all(limit) as DatabaseJobRow[];
+}
+
+export function getDatabaseJob(id: string): DatabaseJobRow | undefined {
+  return db.prepare('SELECT * FROM database_jobs WHERE id = ?').get(id) as
+    | DatabaseJobRow
+    | undefined;
+}
+
+export function createDatabaseJob(fields: {
+  id: string;
+  connectionId: string;
+  engine: string;
+  kind: string;
+  summary: string;
+  status: string;
+  artifactFormat?: string | null;
+  artifactPath?: string | null;
+  artifactSize?: number | null;
+  requestJson?: string;
+  resultJson?: string;
+  error?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+}): DatabaseJobRow {
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO database_jobs
+      (id, connection_id, engine, kind, summary, status, artifact_format, artifact_path, artifact_size, request_json, result_json, error, created_at, started_at, finished_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    fields.id,
+    fields.connectionId,
+    fields.engine,
+    fields.kind,
+    fields.summary,
+    fields.status,
+    fields.artifactFormat ?? null,
+    fields.artifactPath ?? null,
+    fields.artifactSize ?? null,
+    fields.requestJson ?? '{}',
+    fields.resultJson ?? '{}',
+    fields.error ?? null,
+    now,
+    fields.startedAt ?? now,
+    fields.finishedAt ?? null,
+  );
+  return getDatabaseJob(fields.id)!;
+}
+
+export function updateDatabaseJob(
+  id: string,
+  fields: {
+    summary?: string;
+    status?: string;
+    artifactFormat?: string | null;
+    artifactPath?: string | null;
+    artifactSize?: number | null;
+    requestJson?: string;
+    resultJson?: string;
+    error?: string | null;
+    startedAt?: string | null;
+    finishedAt?: string | null;
+  },
+): DatabaseJobRow | undefined {
+  const existing = getDatabaseJob(id);
+  if (!existing) return undefined;
+  db.prepare(
+    `UPDATE database_jobs SET
+      summary = ?,
+      status = ?,
+      artifact_format = ?,
+      artifact_path = ?,
+      artifact_size = ?,
+      request_json = ?,
+      result_json = ?,
+      error = ?,
+      started_at = ?,
+      finished_at = ?
+     WHERE id = ?`,
+  ).run(
+    fields.summary ?? existing.summary,
+    fields.status ?? existing.status,
+    fields.artifactFormat !== undefined ? fields.artifactFormat : existing.artifact_format,
+    fields.artifactPath !== undefined ? fields.artifactPath : existing.artifact_path,
+    fields.artifactSize !== undefined ? fields.artifactSize : existing.artifact_size,
+    fields.requestJson ?? existing.request_json,
+    fields.resultJson ?? existing.result_json,
+    fields.error !== undefined ? fields.error : existing.error,
+    fields.startedAt !== undefined ? fields.startedAt : existing.started_at,
+    fields.finishedAt !== undefined ? fields.finishedAt : existing.finished_at,
+    id,
+  );
+  return getDatabaseJob(id)!;
 }

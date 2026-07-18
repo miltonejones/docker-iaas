@@ -34,7 +34,13 @@ center** and reported continuously. Plus on-demand lambda functions.
   preserve binary data and are limited to 200 MiB per file.
 - **Gateway** — named routes that map a clean URL (`/gw/<name>/...`) to a
   bucket (static file serving), a running container (full reverse proxy), or
-  a lambda function (invoked with the request as structured input).
+  a lambda function (invoked with the request as structured input). The server
+  also records bounded gateway traffic telemetry (last 10k requests) for
+  route-level summaries and recent-request inspection.
+- **External DB management foundation** — the server can now store encrypted
+  MySQL and MongoDB connections, inspect schemas, run bounded read queries,
+  preview/execute confirmed mutations, migrations, structured MySQL/MongoDB
+  grants, and record backup / restore jobs for smaller datasets.
 
 ## Architecture
 
@@ -97,6 +103,8 @@ All optional — sensible defaults are used.
 | `HOST_BUILD_HELPER_SOCKET` | `/tmp/dockyard-host-build.sock` | Socket for the host build helper        |
 | `API_PROXY_TARGET`| `http://localhost:4300`   | Dev-only: where Vite proxies `/api`                |
 | `MINIO_ENDPOINT`  | _(auto-detected)_         | Override the S3 API URL used to reach the persistent MinIO instance |
+| `DOCKYARD_DATABASE_MASTER_KEY` | _(optional override)_ | Secret used to AES-256-GCM encrypt saved MySQL/MongoDB credentials at rest |
+| `DOCKYARD_DATABASE_MASTER_KEY_FILE` | `~/.dockyard_database_master_key` | Compose secret file for the database credential encryption key |
 
 ### Managing a remote host (EC2, another server)
 
@@ -136,6 +144,54 @@ DOCKER_HOST=tcp://my-ec2-host:2376 DOCKER_TLS_VERIFY=1 \
   `artifacts` is a relative directory within it. The generated artifact tree is
   limited to 200 MiB and excludes symlinks.
 
+### External database management
+
+The server now exposes a backend foundation for managing saved **MySQL** and
+**MongoDB** connections:
+
+- saved connections are stored in SQLite, while the full connection config
+  (including credentials / URI auth) is encrypted at rest with
+  **AES-256-GCM** using `DOCKYARD_DATABASE_MASTER_KEY`
+- schema inspection is supported for both engines
+- read queries are bounded (result count / payload / execution-time caps)
+- mutations, migrations, grants, backups, and restores are built for a
+  **client-confirmation** flow: without `confirmed: true`, the API returns a
+  preview payload instead of executing
+- MySQL grants are structured server-side (validated account, privilege list,
+  scope, and optional `WITH GRANT OPTION`) and MongoDB role grants call
+  `grantRolesToUser` with validated usernames / role specs
+- backup / restore jobs are recorded in SQLite and artifacts are written under
+  `data/database-backups/`
+
+`DOCKYARD_DATABASE_MASTER_KEY` is required to create, update, decrypt, test,
+inspect, query, back up, or restore saved DB connections. Existing saved
+connections become unreadable if you change that key later.
+
+Supported saved connection payloads:
+
+- **MySQL**: `{ host, port?, database, username, password?, ssl? }`
+- **MongoDB field mode**:
+  `{ mode: "fields", host, port?, database, username?, password?, authDatabase?, directConnection?, tls? }`
+- **MongoDB URI mode**:
+  `{ mode: "uri", uri, database }`
+
+Current built-in safety limits:
+
+- read queries: max **200 rows**, max **256 KiB** response payload, max **8s**
+  query time target
+- Mongo aggregate pipelines: max **25** stages, `$out` / `$merge` rejected
+- migration step arrays: max **20** steps
+- built-in backup artifacts: max **25 MiB** and intended for smaller datasets
+
+Current backup caveats:
+
+- MySQL backups are Dockyard JSON exports of **base tables + row data** only;
+  they do **not** currently preserve views, triggers, routines, or events
+- MongoDB backups are Dockyard **EJSON** exports of collection documents plus
+  index metadata
+- restores replace the tables / collections present in the selected backup
+  artifact
+
 ## REST API
 
 | Method / path                        | Description                          |
@@ -165,7 +221,70 @@ DOCKER_HOST=tcp://my-ec2-host:2376 DOCKER_TLS_VERIFY=1 \
 | `GET  /api/gateway`                  | List gateway routes                  |
 | `POST /api/gateway`                  | Create a route (`{ name, targetType, targetId, targetPort? }`) |
 | `DELETE /api/gateway/:id`            | Delete a route                       |
+| `GET  /api/gateway/traffic/summary?windowHours=&gatewayName=&routeId=&targetType=` | Route-level gateway traffic summary |
+| `GET  /api/gateway/traffic/requests?windowHours=&limit=&gatewayName=&routeId=&targetType=&method=&statusCode=&errorClassification=` | Recent gateway request events |
+| `GET  /api/databases/overview`       | Saved DB overview, limits, recent ops/jobs |
+| `GET  /api/databases/connections`    | List saved MySQL/MongoDB connections |
+| `POST /api/databases/connections`    | Create a saved connection (`{ name, engine, config }`) |
+| `GET  /api/databases/connections/:id`| Read one saved connection summary    |
+| `PUT  /api/databases/connections/:id`| Update a saved connection            |
+| `DELETE /api/databases/connections/:id` | Delete a saved connection         |
+| `POST /api/databases/connections/:id/test` | Test a saved connection       |
+| `GET  /api/databases/connections/:id/schema?database=` | Inspect schema metadata |
+| `POST /api/databases/connections/:id/read` | Run bounded read query        |
+| `POST /api/databases/connections/:id/grant` | Preview/execute structured MySQL/MongoDB grants (`confirmed: true` to run) |
+| `POST /api/databases/connections/:id/mutate` | Preview/execute mutation (`confirmed: true` to run) |
+| `POST /api/databases/connections/:id/migrate` | Preview/execute migration (`confirmed: true` to run) |
+| `POST /api/databases/connections/:id/backup` | Preview/execute backup job (`confirmed: true` to run) |
+| `POST /api/databases/connections/:id/restore` | Preview/execute restore job (`{ jobId, confirmed: true }`) |
+| `GET  /api/databases/operations?limit=` | List recent mutation/migration/grant ops |
+| `GET  /api/databases/jobs?limit=`    | List backup / restore jobs           |
+| `GET  /api/databases/jobs/:id`       | Read one backup / restore job        |
+| `GET  /api/databases/jobs/:id/download` | Download the saved backup artifact |
 | `*  /gw/:name/*`                     | The route itself — see below         |
+
+### Assistant client contracts for DB actions
+
+No `AssistantBar` wiring was added here, but the server now defines assistant
+tool names for future client support. A client executor should map these names
+to the REST endpoints above:
+
+- `list_database_connections` → `GET /api/databases/connections`
+- `get_database_connection` → `GET /api/databases/connections/:id`
+- `get_database_operations_overview` → `GET /api/databases/overview`
+- `inspect_database_schema` → `GET /api/databases/connections/:id/schema`
+- `run_database_read_query` → `POST /api/databases/connections/:id/read`
+- `list_database_jobs` → `GET /api/databases/jobs`
+- `get_database_job` → `GET /api/databases/jobs/:id`
+- `create_database_connection` → `POST /api/databases/connections`
+- `update_database_connection` → `PUT /api/databases/connections/:id`
+- `delete_database_connection` → `DELETE /api/databases/connections/:id`
+- `test_database_connection` → `POST /api/databases/connections/:id/test`
+- `execute_database_access_grant` → `POST /api/databases/connections/:id/grant`
+- `execute_database_mutation` → `POST /api/databases/connections/:id/mutate`
+- `execute_database_migration` → `POST /api/databases/connections/:id/migrate`
+- `create_database_backup` → `POST /api/databases/connections/:id/backup`
+- `restore_database_backup` → `POST /api/databases/connections/:id/restore`
+
+Expected tool arguments:
+
+- all mutating tools take `connectionId`
+- MySQL reads use `{ connectionId, sql }`
+- Mongo reads use `{ connectionId, collection, database?, mode?, filter?, projection?, sort?, limit?, pipeline? }`
+- access grants use MySQL `{ connectionId, username, host, privileges: string[], database, table?, withGrantOption? }` or MongoDB `{ connectionId, username, authDatabase, roles: (string | { role, db })[] }`
+- MySQL mutations use `{ connectionId, statement }`
+- MySQL migrations use `{ connectionId, statements: string[] }`
+- Mongo mutations use `{ connectionId, operation, collection, database?, document?, documents?, filter?, update?, upsert? }`
+- Mongo migrations use `{ connectionId, steps: [...] }`
+- backup uses `{ connectionId, database? }`
+- restore uses `{ connectionId, jobId, targetDatabase? }`
+
+For `grant`, `mutate`, `migrate`, `backup`, and `restore`, the REST API returns
+a preview unless the client sends `confirmed: true`. `execute_database_access_grant`
+is the assistant/client action name for structured grant requests; after
+confirmation, the client should resend the same tool input with `confirmed: true`.
+Successful grant responses include the executed result plus `operation` and
+`operationHistory` entries from the server's database-operation log.
 
 ### Gateway routes
 
@@ -196,6 +315,101 @@ Each route lives at `/gw/<name>/...` and maps to one of three target types:
   gateway returns `502` — the same "malformed Lambda proxy response"
   failure mode real API Gateway produces, so a broken handler fails the
   same way locally as it would in AWS.
+
+### Gateway traffic telemetry
+
+Every `/gw/:name/*` request writes one server-side telemetry row to SQLite,
+including route misses and target failures. Stored fields are:
+
+```ts
+{
+  occurredAt,
+  gatewayName,
+  routeId,
+  targetType,
+  method,
+  path,
+  statusCode,
+  durationMs,
+  requestBytes,
+  responseBytes,
+  errorClassification
+}
+```
+
+Notes:
+
+- query string values, request bodies, `Authorization`, `Cookie`, and other
+  sensitive headers are **not** persisted
+- `requestBytes` is derived from the declared body size when available
+- telemetry retention is capped at the newest **10,000** events
+
+`GET /api/gateway/traffic/summary` returns:
+
+```ts
+{
+  windowHours,
+  since,
+  until,
+  filters: { gatewayName, routeId, targetType },
+  totalRequests,
+  routes: [
+    {
+      gatewayName,
+      routeId,
+      targetType,
+      routeMethod,
+      routePathPattern,
+      requestCount,
+      successfulRequests,
+      clientErrorRequests,
+      serverErrorRequests,
+      avgDurationMs,
+      maxDurationMs,
+      totalRequestBytes,
+      totalResponseBytes,
+      lastSeenAt,
+      errorCounts
+    }
+  ]
+}
+```
+
+`GET /api/gateway/traffic/requests` returns:
+
+```ts
+{
+  windowHours,
+  since,
+  until,
+  limit,
+  filters: {
+    gatewayName,
+    routeId,
+    targetType,
+    method,
+    statusCode,
+    errorClassification
+  },
+  totalMatched,
+  requests: [
+    {
+      id,
+      occurredAt,
+      gatewayName,
+      routeId,
+      targetType,
+      method,
+      path,
+      statusCode,
+      durationMs,
+      requestBytes,
+      responseBytes,
+      errorClassification
+    }
+  ]
+}
+```
 
 ## Notes & safety
 

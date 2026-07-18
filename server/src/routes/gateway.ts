@@ -1,11 +1,53 @@
 import { Router, type Request, type Response } from 'express';
-import { listRoutes, getRoutesByName, createRoute, deleteRoute } from '../db.js';
+import {
+  listRoutes,
+  getRoutesByName,
+  createRoute,
+  deleteRoute,
+  listGatewayTrafficEvents,
+  summarizeGatewayTraffic,
+} from '../db.js';
 
 export const gatewayRouter = Router();
 
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
 const TARGET_TYPES = new Set(['bucket', 'container', 'lambda']);
 const VALID_METHODS = new Set(['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS']);
+const DEFAULT_WINDOW_HOURS = 24;
+const MAX_WINDOW_HOURS = 24 * 30;
+const DEFAULT_REQUEST_LIMIT = 100;
+const MAX_REQUEST_LIMIT = 200;
+
+class GatewayApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+function sendError(res: Response, status: number, error: string): void {
+  res.status(status).json({ error });
+}
+
+function stringQuery(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function integerQuery(
+  value: unknown,
+  fallback: number,
+  label: string,
+  min: number,
+  max: number,
+): number {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    throw new GatewayApiError(400, `${label} must be an integer between ${min} and ${max}.`);
+  }
+  return parsed;
+}
 
 function toJson(r: import('../db.js').RouteRow) {
   return {
@@ -21,11 +63,155 @@ function toJson(r: import('../db.js').RouteRow) {
   };
 }
 
+function trafficEventJson(r: import('../db.js').GatewayTrafficEventRow) {
+  return {
+    id: r.id,
+    occurredAt: r.occurred_at,
+    gatewayName: r.gateway_name,
+    routeId: r.route_id,
+    targetType: r.target_type,
+    method: r.method,
+    path: r.path,
+    statusCode: r.status_code,
+    durationMs: r.duration_ms,
+    requestBytes: r.request_bytes,
+    responseBytes: r.response_bytes,
+    errorClassification: r.error_classification,
+  };
+}
+
+function trafficSummaryJson(r: import('../db.js').GatewayTrafficSummaryRow) {
+  return {
+    gatewayName: r.gateway_name,
+    routeId: r.route_id,
+    targetType: r.target_type,
+    routeMethod: r.route_method,
+    routePathPattern: r.route_path_pattern,
+    requestCount: r.request_count,
+    successfulRequests: r.success_count,
+    clientErrorRequests: r.client_error_count,
+    serverErrorRequests: r.server_error_count,
+    avgDurationMs: r.avg_duration_ms,
+    maxDurationMs: r.max_duration_ms,
+    totalRequestBytes: r.total_request_bytes,
+    totalResponseBytes: r.total_response_bytes,
+    lastSeenAt: r.last_seen_at,
+    errorCounts: r.error_counts,
+  };
+}
+
 gatewayRouter.get('/', (_req: Request, res: Response) => {
   try {
     res.json(listRoutes().map(toJson));
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+gatewayRouter.get('/traffic/summary', (req: Request, res: Response) => {
+  try {
+    const windowHours = integerQuery(
+      req.query.windowHours,
+      DEFAULT_WINDOW_HOURS,
+      'windowHours',
+      1,
+      MAX_WINDOW_HOURS,
+    );
+    const until = new Date();
+    const since = new Date(until.getTime() - windowHours * 60 * 60 * 1000);
+    const gatewayName = stringQuery(req.query.gatewayName);
+    const routeId = stringQuery(req.query.routeId);
+    const targetType = stringQuery(req.query.targetType);
+    if (targetType && !TARGET_TYPES.has(targetType)) {
+      throw new GatewayApiError(400, `targetType must be one of: ${Array.from(TARGET_TYPES).join(', ')}.`);
+    }
+
+    const rows = summarizeGatewayTraffic({
+      since: since.toISOString(),
+      until: until.toISOString(),
+      gatewayName,
+      routeId,
+      targetType,
+    });
+
+    res.json({
+      windowHours,
+      since: since.toISOString(),
+      until: until.toISOString(),
+      filters: {
+        gatewayName,
+        routeId,
+        targetType,
+      },
+      totalRequests: rows.reduce((sum, row) => sum + row.request_count, 0),
+      routes: rows.map(trafficSummaryJson),
+    });
+  } catch (err) {
+    const status = err instanceof GatewayApiError ? err.status : 500;
+    sendError(res, status, (err as Error).message);
+  }
+});
+
+gatewayRouter.get('/traffic/requests', (req: Request, res: Response) => {
+  try {
+    const windowHours = integerQuery(
+      req.query.windowHours,
+      DEFAULT_WINDOW_HOURS,
+      'windowHours',
+      1,
+      MAX_WINDOW_HOURS,
+    );
+    const limit = integerQuery(req.query.limit, DEFAULT_REQUEST_LIMIT, 'limit', 1, MAX_REQUEST_LIMIT);
+    const until = new Date();
+    const since = new Date(until.getTime() - windowHours * 60 * 60 * 1000);
+
+    const gatewayName = stringQuery(req.query.gatewayName);
+    const routeId = stringQuery(req.query.routeId);
+    const targetType = stringQuery(req.query.targetType);
+    const method = stringQuery(req.query.method)?.toUpperCase() || null;
+    const errorClassification = stringQuery(req.query.errorClassification);
+    const statusCode = req.query.statusCode == null ? null : integerQuery(req.query.statusCode, 0, 'statusCode', 100, 599);
+
+    if (targetType && !TARGET_TYPES.has(targetType)) {
+      throw new GatewayApiError(400, `targetType must be one of: ${Array.from(TARGET_TYPES).join(', ')}.`);
+    }
+    if (method && !VALID_METHODS.has(method)) {
+      throw new GatewayApiError(400, `method must be one of: ${Array.from(VALID_METHODS).join(', ')}.`);
+    }
+
+    const result = listGatewayTrafficEvents(
+      {
+        since: since.toISOString(),
+        until: until.toISOString(),
+        gatewayName,
+        routeId,
+        targetType,
+        method,
+        statusCode,
+        errorClassification,
+      },
+      limit,
+    );
+
+    res.json({
+      windowHours,
+      since: since.toISOString(),
+      until: until.toISOString(),
+      limit,
+      filters: {
+        gatewayName,
+        routeId,
+        targetType,
+        method,
+        statusCode,
+        errorClassification,
+      },
+      totalMatched: result.totalMatched,
+      requests: result.events.map(trafficEventJson),
+    });
+  } catch (err) {
+    const status = err instanceof GatewayApiError ? err.status : 500;
+    sendError(res, status, (err as Error).message);
   }
 });
 

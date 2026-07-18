@@ -8,6 +8,7 @@ import {
   faCheck,
   faCircleNodes,
   faCode,
+  faCopy,
   faCube,
   faDatabase,
   faFeather,
@@ -25,6 +26,7 @@ import {
   faPlus,
   faRobot,
   faServer,
+  faSpinner,
   faTerminal,
   faTriangleExclamation,
   faUser,
@@ -36,6 +38,8 @@ import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 const UI_ICONS: Record<string, IconDefinition> = {
   assistant: faWandMagicSparkles,
   menu: faBars,
+  spinner: faSpinner,
+  database: faDatabase,
   bucket: faBucket,
   container: faBoxArchive,
   folder: faFolder,
@@ -50,6 +54,7 @@ const UI_ICONS: Record<string, IconDefinition> = {
   send: faPaperPlane,
   plus: faPlus,
   check: faCheck,
+  copy: faCopy,
   close: faXmark,
   lookup: faMagnifyingGlass,
 };
@@ -69,8 +74,8 @@ const PRESET_ICONS: Record<string, IconDefinition> = {
   debian: faServer,
 };
 
-export function AppIcon({ name }: { name: keyof typeof UI_ICONS }) {
-  return <FontAwesomeIcon icon={UI_ICONS[name]} fixedWidth aria-hidden />;
+export function AppIcon({ name, className }: { name: keyof typeof UI_ICONS; className?: string }) {
+  return <FontAwesomeIcon icon={UI_ICONS[name]} className={className} fixedWidth aria-hidden />;
 }
 
 export function PresetIcon({ id }: { id: string }) {

@@ -8,6 +8,7 @@ import { ContainersPage } from './pages/Containers';
 import { FunctionsPage } from './pages/Functions';
 import { BucketsPage } from './pages/Buckets';
 import { GatewayPage } from './pages/Gateway';
+import { DatabasesPage } from './pages/Databases';
 import { AssistantBar } from './components/AssistantBar';
 import { emitRefresh } from './refresh';
 import { AppIcon } from './icons';
@@ -17,6 +18,7 @@ const SERVICES = [
   { path: '/containers', label: 'Containers', icon: 'container' },
   { path: '/functions', label: 'Functions', icon: 'function' },
   { path: '/buckets', label: 'Buckets', icon: 'bucket' },
+  { path: '/databases', label: 'Databases', icon: 'database' },
   { path: '/gateway', label: 'Gateway', icon: 'gateway' },
 ] as const;
 
@@ -77,6 +79,19 @@ function Breadcrumbs() {
 
   const gatewayName = pathname.match(/^\/gateway\/(.+)$/)?.[1];
   const bucketName = pathname.match(/^\/buckets\/(.+)$/)?.[1];
+  const databaseId = pathname.match(/^\/databases\/(.+)$/)?.[1];
+  const [databaseName, setDatabaseName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!databaseId || databaseId === 'new') {
+      setDatabaseName(null);
+      return;
+    }
+    api
+      .databaseConnections()
+      .then((list) => setDatabaseName(list.find((connection) => connection.id === databaseId)?.name ?? null))
+      .catch(() => setDatabaseName(null));
+  }, [databaseId]);
 
   const detailLabel = functionId
     ? (functionId === 'new' ? 'New function' : functionName ?? 'Function')
@@ -88,7 +103,9 @@ function Breadcrumbs() {
           ? `/gw/${gatewayName}`
           : bucketName
             ? bucketName
-            : null;
+            : databaseId
+              ? (databaseId === 'new' ? 'New connection' : databaseName ?? 'Connection')
+              : null;
 
   if (pathname === '/') return null;
 
@@ -132,6 +149,17 @@ export function App() {
   const [sessionsList, setSessionsList] = useState<AssistantSessionSummary[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const lastBeat = useRef<number>(0);
+
+  // First-ever visit to the console's root path sends the browser to the
+  // marketing site instead. Tracked in localStorage so it only fires once
+  // per browser, and only on "/" — deep links (e.g. a saved /functions/:id
+  // bookmark) are never hijacked.
+  useEffect(() => {
+    if (window.location.pathname !== '/') return;
+    if (localStorage.getItem('dockyard-visited')) return;
+    localStorage.setItem('dockyard-visited', '1');
+    window.location.replace('/gw/dockyard-marketing/');
+  }, []);
 
   function submitAssistantQuery() {
     const q = assistantQuery.trim();
@@ -226,7 +254,7 @@ export function App() {
     }
   }
 
-  const running = containers.filter((c) => c.state === 'running').length;
+  const running = containers.filter((c) => c.state === 'running' && !c.system).length;
 
   return (
     <BrowserRouter>
@@ -257,14 +285,6 @@ export function App() {
                 placeholder="Ask Dockyard.ai to do something..."
               />
             </label>
-          </div>
-          <div className="topbar__stats">
-            <span>
-              <strong>{running}</strong> running
-            </span>
-            <span>
-              <strong>{containers.length}</strong> total
-            </span>
           </div>
         </header>
 
@@ -375,6 +395,8 @@ export function App() {
               <Route path="/functions" element={<FunctionsPage />} />
               <Route path="/buckets/:name" element={<BucketsPage />} />
               <Route path="/buckets" element={<BucketsPage />} />
+              <Route path="/databases/:id" element={<DatabasesPage />} />
+              <Route path="/databases" element={<DatabasesPage />} />
               <Route path="/gateway/:name" element={<GatewayPage />} />
               <Route path="/gateway" element={<GatewayPage />} />
             </Routes>

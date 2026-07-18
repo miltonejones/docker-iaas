@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { UsageSnapshot } from '../types';
+import type { GatewayRoute, UsageSnapshot } from '../types';
 import { UsageHeader } from '../components/UsageHeader';
 import { api } from '../api';
 import { onRefresh } from '../refresh';
+import { AppIcon } from '../icons';
 
 interface Props {
   snapshot: UsageSnapshot | null;
@@ -19,11 +20,21 @@ export function HomePage({ snapshot, live, onPrune, pruning, runningCount, total
   const [fnCount, setFnCount] = useState(0);
   const [bucketCount, setBucketCount] = useState(0);
   const [routeCount, setRouteCount] = useState(0);
+  const [gatewayLinks, setGatewayLinks] = useState<GatewayRoute[]>([]);
 
   function loadCounts() {
     api.lambdaListFunctions().then((list) => setFnCount(list.length)).catch(() => {});
     api.bucketList().then((list) => setBucketCount(list.length)).catch(() => {});
-    api.gatewayList().then((list) => setRouteCount(list.length)).catch(() => {});
+    api.gatewayList().then((list) => {
+      setRouteCount(list.length);
+      const links = new Map<string, GatewayRoute>();
+      for (const route of list) {
+        if ((route.targetType === 'bucket' || route.targetType === 'container') && !links.has(route.name)) {
+          links.set(route.name, route);
+        }
+      }
+      setGatewayLinks(Array.from(links.values()).sort((a, b) => a.name.localeCompare(b.name)));
+    }).catch(() => {});
   }
 
   useEffect(() => {
@@ -61,33 +72,64 @@ export function HomePage({ snapshot, live, onPrune, pruning, runningCount, total
         </button>
       </div>
 
-      <section className="panel" style={{ marginTop: 20 }}>
-        <div className="panel__head">
-          <h2>Quick links</h2>
-        </div>
-        <div className="table-wrap">
-          <table className="table">
-            <tbody>
-              <tr>
-                <td className="mono"><a href="http://dockyard.test:4300/" target="_blank" rel="noreferrer">dockyard.test:4300</a></td>
-                <td className="muted">Dockyard.ai console (production)</td>
-              </tr>
-              <tr>
-                <td className="mono"><a href="http://dockyard.test:5173/" target="_blank" rel="noreferrer">dockyard.test:5173</a></td>
-                <td className="muted">Dockyard.ai console (dev / Vite)</td>
-              </tr>
-              <tr>
-                <td className="mono"><a href="http://minio.test:9000/" target="_blank" rel="noreferrer">minio.test:9000</a></td>
-                <td className="muted">MinIO S3 API</td>
-              </tr>
-              <tr>
-                <td className="mono"><a href="http://minio-console.test:9001/" target="_blank" rel="noreferrer">minio-console.test:9001</a></td>
-                <td className="muted">MinIO web console</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <div className="home-links-grid">
+        <section className="panel">
+          <div className="panel__head">
+            <h2>Quick links</h2>
+          </div>
+          <div className="table-wrap">
+            <table className="table">
+              <tbody>
+                <tr>
+                  <td className="mono"><a href="http://dockyard.test:4300/" target="_blank" rel="noreferrer">dockyard.test:4300</a></td>
+                  <td className="muted">Dockyard.ai console (production)</td>
+                </tr>
+                <tr>
+                  <td className="mono"><a href="http://dockyard.test:5173/" target="_blank" rel="noreferrer">dockyard.test:5173</a></td>
+                  <td className="muted">Dockyard.ai console (dev / Vite)</td>
+                </tr>
+                <tr>
+                  <td className="mono"><a href="http://minio.test:9000/" target="_blank" rel="noreferrer">minio.test:9000</a></td>
+                  <td className="muted">MinIO S3 API</td>
+                </tr>
+                <tr>
+                  <td className="mono"><a href="http://minio-console.test:9001/" target="_blank" rel="noreferrer">minio-console.test:9001</a></td>
+                  <td className="muted">MinIO web console</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="panel">
+          <div className="panel__head">
+            <h2>Gateway links <span className="count">{gatewayLinks.length}</span></h2>
+          </div>
+          {gatewayLinks.length === 0 ? (
+            <p className="empty">No bucket or web-app gateway links yet.</p>
+          ) : (
+            <div className="table-wrap">
+              <table className="table">
+                <tbody>
+                  {gatewayLinks.map((route) => (
+                    <tr key={route.name}>
+                      <td className="mono">
+                        <AppIcon name={route.targetType === 'bucket' ? 'bucket' : 'container'} />{' '}
+                        <a href={`/gw/${route.name}/`} target="_blank" rel="noreferrer">
+                          /gw/{route.name}/ <AppIcon name="external" />
+                        </a>
+                      </td>
+                      <td className="muted">
+                        {route.targetType === 'bucket' ? 'Bucket site' : 'Web app'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

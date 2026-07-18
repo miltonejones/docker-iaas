@@ -4,15 +4,30 @@ import { createProxyMiddleware } from 'http-proxy-middleware';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { docker, isSelfContainerized, remoteDockerHost } from './docker.js';
 import { getS3Client } from './minio.js';
-import { getRoutesByName, getFunction, getFunctionEnv, type RouteRow } from './db.js';
+import {
+  getRoutesByName,
+  getFunction,
+  getFunctionEnv,
+  recordGatewayTrafficEvent,
+  type RouteRow,
+} from './db.js';
 import { runLambda, entryPathOf, fullFileSet } from './routes/lambda.js';
 
 declare global {
   namespace Express {
     interface Request {
       gwRoute?: RouteRow;
+      gwTelemetry?: GatewayTelemetryState;
     }
   }
+}
+
+interface GatewayTelemetryState {
+  gatewayName: string;
+  routeId: string | null;
+  targetType: string | null;
+  requestBytes: number;
+  errorClassification: string | null;
 }
 
 // Mounted at /gw, before the app-wide express.json() — container targets need
@@ -24,10 +39,128 @@ export const gatewayProxyRouter = Router();
 const dispatch = Router({ mergeParams: true });
 gatewayProxyRouter.use('/:routeName', dispatch);
 
+function parseContentLength(value: string | string[] | undefined): number {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
+function chunkByteLength(chunk: unknown, encoding?: BufferEncoding): number {
+  if (chunk == null) return 0;
+  if (Buffer.isBuffer(chunk)) return chunk.length;
+  if (chunk instanceof Uint8Array) return chunk.byteLength;
+  if (typeof chunk === 'string') return Buffer.byteLength(chunk, encoding);
+  return Buffer.byteLength(String(chunk));
+}
+
+function setGatewayResolution(req: Request, route: RouteRow | null): void {
+  if (!req.gwTelemetry) return;
+  req.gwTelemetry.routeId = route?.id || null;
+  req.gwTelemetry.targetType = route?.target_type || null;
+}
+
+function setGatewayError(req: Request, classification: string): void {
+  if (!req.gwTelemetry) return;
+  req.gwTelemetry.errorClassification = classification;
+}
+
+function updateGatewayRequestBytes(req: Request, bytes: number): void {
+  if (!req.gwTelemetry) return;
+  req.gwTelemetry.requestBytes = Math.max(req.gwTelemetry.requestBytes, Math.round(bytes));
+}
+
+function finalizeGatewayErrorClassification(
+  classification: string | null,
+  statusCode: number,
+  finished: boolean,
+): string | null {
+  if (!finished) return 'client_aborted';
+  if (classification) return classification;
+  if (statusCode >= 500) return 'upstream_server_error';
+  if (statusCode >= 400) return 'upstream_client_error';
+  return null;
+}
+
+function sendGatewayJsonError(
+  req: Request,
+  res: Response,
+  statusCode: number,
+  classification: string,
+  error: string,
+  extra: Record<string, unknown> = {},
+): void {
+  setGatewayError(req, classification);
+  res.status(statusCode).json({ error, ...extra });
+}
+
+dispatch.use((req: Request, res: Response, next: NextFunction) => {
+  const startedAt = process.hrtime.bigint();
+  req.gwTelemetry = {
+    gatewayName: req.params.routeName,
+    routeId: null,
+    targetType: null,
+    requestBytes: parseContentLength(req.headers['content-length']),
+    errorClassification: null,
+  };
+
+  let responseBytes = 0;
+  let recorded = false;
+  const originalWrite = res.write.bind(res);
+  const originalEnd = res.end.bind(res);
+
+  res.write = ((chunk: unknown, encoding?: BufferEncoding, cb?: ((error?: Error | null) => void)) => {
+    responseBytes += chunkByteLength(chunk, encoding);
+    return originalWrite(chunk as never, encoding as never, cb as never);
+  }) as Response['write'];
+  res.end = ((chunk?: unknown, encoding?: BufferEncoding, cb?: (() => void)) => {
+    responseBytes += chunkByteLength(chunk, encoding);
+    return originalEnd(chunk as never, encoding as never, cb as never);
+  }) as Response['end'];
+
+  const record = (finished: boolean) => {
+    if (recorded) return;
+    recorded = true;
+
+    try {
+      recordGatewayTrafficEvent({
+        gatewayName: req.gwTelemetry?.gatewayName || req.params.routeName,
+        routeId: req.gwTelemetry?.routeId || null,
+        targetType: req.gwTelemetry?.targetType || null,
+        method: req.method.toUpperCase(),
+        path: req.path || '/',
+        statusCode: finished ? res.statusCode : 499,
+        durationMs: Number((process.hrtime.bigint() - startedAt) / 1_000_000n),
+        requestBytes: req.gwTelemetry?.requestBytes || 0,
+        responseBytes,
+        errorClassification: finalizeGatewayErrorClassification(
+          req.gwTelemetry?.errorClassification || null,
+          finished ? res.statusCode : 499,
+          finished,
+        ),
+      });
+    } catch (err) {
+      console.error('Failed to record gateway telemetry:', err);
+    }
+  };
+
+  res.on('finish', () => record(true));
+  res.on('close', () => {
+    if (!res.writableFinished) record(false);
+  });
+
+  next();
+});
+
 dispatch.use((req: Request, res: Response, next: NextFunction) => {
   const routes = getRoutesByName(req.params.routeName);
   if (routes.length === 0) {
-    res.status(404).json({ error: `No gateway route named "${req.params.routeName}".` });
+    sendGatewayJsonError(
+      req,
+      res,
+      404,
+      'route_not_found',
+      `No gateway route named "${req.params.routeName}".`,
+    );
     return;
   }
 
@@ -53,13 +186,18 @@ dispatch.use((req: Request, res: Response, next: NextFunction) => {
   }
 
   if (!best) {
-    res.status(404).json({
-      error: `No route matches ${reqMethod} ${req.path} under "${req.params.routeName}".`,
-    });
+    sendGatewayJsonError(
+      req,
+      res,
+      404,
+      'route_unmatched',
+      `No route matches ${reqMethod} ${req.path} under "${req.params.routeName}".`,
+    );
     return;
   }
 
   req.gwRoute = best;
+  setGatewayResolution(req, best);
   next();
 });
 
@@ -80,7 +218,9 @@ dispatch.use(async (req: Request, res: Response) => {
     else if (route.target_type === 'container') await handleContainer(route, req, res);
     else await handleLambda(route, req, res);
   } catch (err) {
-    if (!res.headersSent) res.status(502).json({ error: (err as Error).message });
+    if (!res.headersSent) {
+      sendGatewayJsonError(req, res, 502, 'gateway_internal_error', (err as Error).message);
+    }
   }
 });
 
@@ -118,13 +258,25 @@ async function handleBucket(route: RouteRow, req: Request, res: Response): Promi
     }
   }
 
-  res.status(404).json({ error: `Object "${key}" not found in bucket "${route.target_id}".` });
+  sendGatewayJsonError(
+    req,
+    res,
+    404,
+    'bucket_object_not_found',
+    `Object "${key}" not found in bucket "${route.target_id}".`,
+  );
 }
 
 async function handleContainer(route: RouteRow, req: Request, res: Response): Promise<void> {
-  const info = await docker.getContainer(route.target_id).inspect();
+  let info;
+  try {
+    info = await docker.getContainer(route.target_id).inspect();
+  } catch {
+    sendGatewayJsonError(req, res, 502, 'container_lookup_failed', 'Target container is not available.');
+    return;
+  }
   if (!info.State?.Running) {
-    res.status(502).json({ error: 'Target container is not running.' });
+    sendGatewayJsonError(req, res, 502, 'container_not_running', 'Target container is not running.');
     return;
   }
 
@@ -135,9 +287,13 @@ async function handleContainer(route: RouteRow, req: Request, res: Response): Pr
   } else {
     const binding = info.NetworkSettings?.Ports?.[`${port}/tcp`]?.[0];
     if (!binding?.HostPort) {
-      res.status(502).json({
-        error: `Container port ${port} is not published to the host — required to reach it from this process.`,
-      });
+      sendGatewayJsonError(
+        req,
+        res,
+        502,
+        'container_port_unpublished',
+        `Container port ${port} is not published to the host — required to reach it from this process.`,
+      );
       return;
     }
     target = `http://${remoteDockerHost() ?? '127.0.0.1'}:${binding.HostPort}`;
@@ -145,7 +301,9 @@ async function handleContainer(route: RouteRow, req: Request, res: Response): Pr
 
   const proxy = createProxyMiddleware({ target, changeOrigin: true });
   proxy(req, res, (err?: unknown) => {
-    if (err && !res.headersSent) res.status(502).json({ error: String(err) });
+    if (err && !res.headersSent) {
+      sendGatewayJsonError(req, res, 502, 'container_proxy_error', String(err));
+    }
   });
 }
 
@@ -173,11 +331,12 @@ interface ProxyResponse {
 async function handleLambda(route: RouteRow, req: Request, res: Response): Promise<void> {
   const fn = getFunction(route.target_id);
   if (!fn) {
-    res.status(404).json({ error: 'Target function no longer exists.' });
+    sendGatewayJsonError(req, res, 404, 'lambda_target_missing', 'Target function no longer exists.');
     return;
   }
 
   const bodyBuf = req.body as Buffer | undefined;
+  if (bodyBuf) updateGatewayRequestBytes(req, bodyBuf.length);
   const event: ProxyEvent = {
     httpMethod: req.method,
     path: req.path,
@@ -199,7 +358,14 @@ async function handleLambda(route: RouteRow, req: Request, res: Response): Promi
   );
 
   if (result.exitCode !== 0) {
-    res.status(502).json({ error: result.stderr || `Function exited with code ${result.exitCode}`, stdout: result.stdout });
+    sendGatewayJsonError(
+      req,
+      res,
+      502,
+      'lambda_execution_failed',
+      result.stderr || `Function exited with code ${result.exitCode}`,
+      { stdout: result.stdout },
+    );
     return;
   }
 
@@ -207,17 +373,25 @@ async function handleLambda(route: RouteRow, req: Request, res: Response): Promi
   try {
     proxyResponse = JSON.parse(result.stdout.trim());
   } catch {
-    res.status(502).json({
-      error: 'Malformed Lambda proxy response: function did not print valid JSON to stdout.',
-      stdout: result.stdout,
-    });
+    sendGatewayJsonError(
+      req,
+      res,
+      502,
+      'lambda_malformed_response',
+      'Malformed Lambda proxy response: function did not print valid JSON to stdout.',
+      { stdout: result.stdout },
+    );
     return;
   }
   if (typeof proxyResponse.statusCode !== 'number') {
-    res.status(502).json({
-      error: 'Malformed Lambda proxy response: missing numeric "statusCode".',
-      stdout: result.stdout,
-    });
+    sendGatewayJsonError(
+      req,
+      res,
+      502,
+      'lambda_malformed_response',
+      'Malformed Lambda proxy response: missing numeric "statusCode".',
+      { stdout: result.stdout },
+    );
     return;
   }
 

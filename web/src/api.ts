@@ -1,4 +1,30 @@
-import type { AssistantSession, AssistantSessionState, AssistantSessionSummary, AssistantTurn, Bucket, BucketListing, BuildCacheEntry, Container, ContainerDetail, DockerImage, DockerVolume, GatewayRoute, LambdaFile, LambdaFunction, LambdaResult, LambdaRuntime, Preset, UsageSnapshot } from './types';
+import type {
+  AssistantSession,
+  AssistantSessionState,
+  AssistantSessionSummary,
+  AssistantTurn,
+  Bucket,
+  BucketListing,
+  BuildCacheEntry,
+  Container,
+  ContainerDetail,
+  DatabaseConfirmationPreview,
+  DatabaseConnectionDetail,
+  DatabaseJobOverview,
+  DatabaseOperationOverview,
+  DatabaseOverview,
+  DockerImage,
+  DockerVolume,
+  GatewayRoute,
+  GatewayTrafficRequests,
+  GatewayTrafficSummary,
+  LambdaFile,
+  LambdaFunction,
+  LambdaResult,
+  LambdaRuntime,
+  Preset,
+  UsageSnapshot,
+} from './types';
 
 /** Parse a Server-Sent Events stream from a fetch Response into an async
  *  generator of JSON objects — one yield per `data:` line. */
@@ -114,6 +140,35 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ preset, id, path }),
     }).then((r) => json<{ ok: true; preset: string; id: string; path: string; size: number }>(r)),
+
+  githubPullToBucket: (owner: string, repo: string, bucket: string, ref?: string, prefix?: string) =>
+    fetch('/api/github/pull-to-bucket', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ owner, repo, bucket, ref, prefix }),
+    }).then((r) => json<{ owner: string; repo: string; ref: string | null; bucket: string; prefix: string | null; filesWritten: number }>(r)),
+
+  githubPullToContainer: (owner: string, repo: string, id: string, path: string, ref?: string) =>
+    fetch('/api/github/pull-to-container', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ owner, repo, id, path, ref }),
+    }).then((r) => json<{ owner: string; repo: string; ref: string | null; id: string; path: string; filesWritten: number }>(r)),
+
+  githubCommitAndPush: (
+    owner: string,
+    repo: string,
+    message: string,
+    files: { path: string; content: string }[],
+    branch?: string,
+  ) =>
+    fetch('/api/github/commit-and-push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ owner, repo, message, files, branch }),
+    }).then((r) =>
+      json<{ owner: string; repo: string; committed: boolean; branch?: string; sha?: string; filesChanged?: string[]; reason?: string }>(r),
+    ),
 
   usedPorts: () =>
     fetch('/api/system/used-ports').then((r) => json<{ ports: number[] }>(r)),
@@ -272,6 +327,122 @@ export const api = {
 
   gatewayDelete: (id: string) =>
     fetch(`/api/gateway/${id}`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r)),
+
+  gatewayTrafficSummary: (gatewayName?: string) => {
+    const query = gatewayName ? `?gatewayName=${encodeURIComponent(gatewayName)}` : '';
+    return fetch(`/api/gateway/traffic/summary${query}`).then((r) => json<GatewayTrafficSummary>(r));
+  },
+
+  gatewayTrafficRequests: (gatewayName?: string) => {
+    const query = gatewayName ? `?gatewayName=${encodeURIComponent(gatewayName)}` : '';
+    return fetch(`/api/gateway/traffic/requests${query}`).then((r) => json<GatewayTrafficRequests>(r));
+  },
+
+  databaseOverview: () =>
+    fetch('/api/databases/overview').then((r) => json<DatabaseOverview>(r)),
+
+  databaseConnections: () =>
+    fetch('/api/databases/connections').then((r) => json<DatabaseConnectionDetail[]>(r)),
+
+  databaseGetConnection: (id: string) =>
+    fetch(`/api/databases/connections/${id}`).then((r) => json<DatabaseConnectionDetail>(r)),
+
+  databaseCreateConnection: (body: {
+    name: string;
+    engine: string;
+    config: Record<string, unknown>;
+  }) =>
+    fetch('/api/databases/connections', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then((r) => json<DatabaseConnectionDetail>(r)),
+
+  databaseUpdateConnection: (
+    id: string,
+    body: {
+      name?: string;
+      engine?: string;
+      config?: Record<string, unknown>;
+    },
+  ) =>
+    fetch(`/api/databases/connections/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then((r) => json<DatabaseConnectionDetail>(r)),
+
+  databaseDeleteConnection: (id: string) =>
+    fetch(`/api/databases/connections/${id}`, { method: 'DELETE' }).then((r) =>
+      json<{ ok: true }>(r),
+    ),
+
+  databaseTestConnection: (id: string) =>
+    fetch(`/api/databases/connections/${id}/test`, { method: 'POST' }).then((r) =>
+      json<Record<string, unknown>>(r),
+    ),
+
+  databaseSchema: (id: string, database?: string) => {
+    const query = database?.trim() ? `?database=${encodeURIComponent(database.trim())}` : '';
+    return fetch(`/api/databases/connections/${id}/schema${query}`).then((r) =>
+      json<Record<string, unknown>>(r),
+    );
+  },
+
+  databaseRead: (id: string, body: Record<string, unknown>) =>
+    fetch(`/api/databases/connections/${id}/read`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then((r) => json<Record<string, unknown>>(r)),
+
+  databaseMutate: (id: string, body: Record<string, unknown>) =>
+    fetch(`/api/databases/connections/${id}/mutate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then((r) => json<DatabaseConfirmationPreview | Record<string, unknown>>(r)),
+
+  databaseMigrate: (id: string, body: Record<string, unknown>) =>
+    fetch(`/api/databases/connections/${id}/migrate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then((r) => json<DatabaseConfirmationPreview | Record<string, unknown>>(r)),
+
+  databaseGrant: (id: string, body: Record<string, unknown>) =>
+    fetch(`/api/databases/connections/${id}/grant`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then((r) => json<DatabaseConfirmationPreview | Record<string, unknown>>(r)),
+
+  databaseOperations: (limit = 25) =>
+    fetch(`/api/databases/operations?limit=${limit}`).then((r) =>
+      json<DatabaseOperationOverview[]>(r),
+    ),
+
+  databaseJobs: (limit = 25) =>
+    fetch(`/api/databases/jobs?limit=${limit}`).then((r) => json<DatabaseJobOverview[]>(r)),
+
+  databaseJob: (id: string) =>
+    fetch(`/api/databases/jobs/${id}`).then((r) => json<DatabaseJobOverview>(r)),
+
+  databaseJobDownloadUrl: (id: string) => `/api/databases/jobs/${id}/download`,
+
+  databaseBackup: (id: string, body: Record<string, unknown>) =>
+    fetch(`/api/databases/connections/${id}/backup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then((r) => json<DatabaseConfirmationPreview | Record<string, unknown>>(r)),
+
+  databaseRestore: (id: string, body: Record<string, unknown>) =>
+    fetch(`/api/databases/connections/${id}/restore`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then((r) => json<DatabaseConfirmationPreview | Record<string, unknown>>(r)),
 
   assistantPlan: (prompt: string, messages?: unknown[]) =>
     fetch('/api/assistant/plan', {

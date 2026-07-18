@@ -25,6 +25,14 @@ services:
       # container — never exposed via `docker inspect`/env, unlike a plain
       # `environment:` entry. Powers the "Ask Dockyard" assistant.
       - anthropic_api_key
+      # Encrypts saved MySQL/MongoDB credentials at rest in Dockyard's SQLite
+      # database. Keep this stable; changing it prevents decrypting existing
+      # saved connections.
+      - dockyard_database_master_key
+      # A GitHub personal access token, used by the assistant's GitHub tools
+      # to read private repos and to clone/commit/push. Optional — public-repo
+      # reads work without it, but private repos and any commit/push require it.
+      - github_token
     restart: unless-stopped
     networks:
       # Shares dockyard-net with the containers/functions it manages (including
@@ -43,3 +51,14 @@ secrets:
     # This host's Anthropic API key lives outside the repo at ~/.antro.
     # Override with ANTHROPIC_KEY_FILE if you keep it somewhere else.
     file: ${ANTHROPIC_KEY_FILE:-/home/miltonejones/.antro}
+  dockyard_database_master_key:
+    # Generated locally outside the repository. Override if your secrets are
+    # managed elsewhere.
+    file: ${DOCKYARD_DATABASE_MASTER_KEY_FILE:-/home/miltonejones/.dockyard_database_master_key}
+  github_token:
+    # A GitHub personal access token (repo scope for private repos / push).
+    # This host's token lives outside the repo at ~/.github_token — an empty
+    # file is fine (public-repo reads work with no token; private repos and
+    # commit/push report a clear "not configured" error until a real token is
+    # added). Override with GITHUB_TOKEN_FILE if you keep it somewhere else.
+    file: ${GITHUB_TOKEN_FILE:-/home/miltonejones/.github_token}

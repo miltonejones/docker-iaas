@@ -2,9 +2,16 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
+import CodeMirror from "@uiw/react-codemirror";
+import { javascript } from "@codemirror/lang-javascript";
+import { python } from "@codemirror/lang-python";
+import { StreamLanguage } from "@codemirror/language";
+import { shell } from "@codemirror/legacy-modes/mode/shell";
+import { oneDark } from "@codemirror/theme-one-dark";
 import type {
   Container,
   LambdaFile,
@@ -28,6 +35,12 @@ const DEFAULT_ENTRY: Record<string, string> = {
   python: "index.py",
   sh: "index.sh",
 };
+
+function editorLanguage(runtime: string, filePath: string) {
+  if (runtime === "python") return python();
+  if (runtime === "sh") return StreamLanguage.define(shell);
+  return javascript({ typescript: /\.(?:[cm]?tsx?)$/i.test(filePath) });
+}
 
 export function LambdaPanel({
   functionId: initialFunctionId,
@@ -72,11 +85,16 @@ export function LambdaPanel({
   const [activePath, setActivePath] = useState("index.js");
   const [newFileName, setNewFileName] = useState("");
   const [newPackageName, setNewPackageName] = useState("");
+  const mainRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
-  const [editorHeight, setEditorHeight] = useState<number>();
+  const [assistantHeight, setAssistantHeight] = useState<number>();
 
   const isSaved = activeId !== null;
   const code = contents[activePath] ?? "";
+  const editorExtensions = useMemo(
+    () => [editorLanguage(runtime, activePath)],
+    [runtime, activePath],
+  );
 
   // Load runtimes, saved functions, and running containers on mount.
   useEffect(() => {
@@ -139,16 +157,21 @@ export function LambdaPanel({
   }, [runtime]);
 
   useLayoutEffect(() => {
-    if (!embedded || !activeId || !editorRef.current) {
-      setEditorHeight(undefined);
+    if (!embedded || !activeId || !mainRef.current || !editorRef.current) {
+      setAssistantHeight(undefined);
       return;
     }
+
+    const main = mainRef.current;
     const editor = editorRef.current;
-    const updateHeight = () =>
-      setEditorHeight(editor.getBoundingClientRect().height);
+    const updateHeight = () => {
+      const height = Math.ceil(editor.getBoundingClientRect().bottom - main.getBoundingClientRect().top);
+      setAssistantHeight((current) => (current === height ? current : height));
+    };
     const observer = new ResizeObserver(updateHeight);
-    updateHeight();
+    observer.observe(main);
     observer.observe(editor);
+    updateHeight();
     return () => observer.disconnect();
   }, [activeId, embedded]);
 
@@ -421,7 +444,7 @@ ${JSON.stringify(
         </div>
       )}
 
-      <div className={`panel-layout${embedded ? " panel-layout--full" : ""}`}>
+      <div className={`panel-layout${embedded ? activeId && functionAssistantContext ? " panel-layout--with-assistant" : " panel-layout--full" : ""}`}>
         {/* Sidebar — function list (hidden in embedded/detail mode) */}
         {!embedded && (
           <aside className="panel-sidebar">
@@ -499,7 +522,7 @@ ${JSON.stringify(
         )}
 
         {/* Main — editor + output */}
-        <div className="panel-main">
+        <div className="panel-main" ref={mainRef}>
           {/* Name + runtime + dependencies — single row */}
           <div className="lambda-meta">
             {isSaved ? (
@@ -609,15 +632,22 @@ ${JSON.stringify(
             }
           >
             <div className="lambda-editor-wrap" ref={editorRef}>
-              <textarea
+              <CodeMirror
                 className="lambda-editor"
                 value={code}
-                onChange={(e) => setCode(e.target.value)}
-                spellCheck={false}
-                placeholder={
-                  activePath === entryPoint ? PLACEHOLDERS[runtime] || "" : ""
-                }
-                rows={24}
+                height="520px"
+                theme={oneDark}
+                extensions={editorExtensions}
+                basicSetup={{
+                  lineNumbers: true,
+                  foldGutter: true,
+                  highlightActiveLine: true,
+                  highlightActiveLineGutter: true,
+                  bracketMatching: true,
+                  closeBrackets: true,
+                  indentOnInput: true,
+                }}
+                onChange={setCode}
               />
 
               <div className="lambda-editor-foot">
@@ -670,20 +700,6 @@ ${JSON.stringify(
                 </div>
               </div>
             </div>
-            {embedded && activeId && functionAssistantContext && (
-              <aside
-                className="function-assistant"
-                style={editorHeight ? { height: editorHeight } : undefined}
-              >
-                <AssistantBar
-                  key={activeId}
-                  embedded
-                  contextPrompt={functionAssistantContext}
-                  onChanged={refreshFunctionAfterAssistantChange}
-                  sessionStorageKey={`dockyard:function-assistant:${activeId}`}
-                />
-              </aside>
-            )}
           </div>
 
           {/* Output */}
@@ -720,6 +736,17 @@ ${JSON.stringify(
             </div>
           )}
         </div>
+        {embedded && activeId && functionAssistantContext && (
+          <aside className="function-assistant" style={assistantHeight ? { height: assistantHeight } : undefined}>
+            <AssistantBar
+              key={activeId}
+              embedded
+              contextPrompt={functionAssistantContext}
+              onChanged={refreshFunctionAfterAssistantChange}
+              sessionStorageKey={`dockyard:function-assistant:${activeId}`}
+            />
+          </aside>
+        )}
       </div>
 
       {/* Environment variables modal — stored separately from code, masked by default. */}
