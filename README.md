@@ -105,6 +105,23 @@ All optional — sensible defaults are used.
 | `MINIO_ENDPOINT`  | _(auto-detected)_         | Override the S3 API URL used to reach the persistent MinIO instance |
 | `DOCKYARD_DATABASE_MASTER_KEY` | _(optional override)_ | Secret used to AES-256-GCM encrypt saved MySQL/MongoDB credentials at rest |
 | `DOCKYARD_DATABASE_MASTER_KEY_FILE` | `~/.dockyard_database_master_key` | Compose secret file for the database credential encryption key |
+| `ASSISTANT_PROVIDER` | `anthropic` | Assistant provider: `anthropic` or `deepseek` |
+| `DEEPSEEK_API_KEY` / `DEEPSEEK_API_KEY_FILE` | _(unset)_ | DeepSeek API credential override |
+| `DEEPSEEK_MODEL` | `deepseek-v4-pro` | DeepSeek main assistant model |
+| `DEEPSEEK_TITLE_MODEL` | `deepseek-v4-flash` | DeepSeek assistant session-title model |
+
+### DeepSeek assistant provider
+
+Dockyard can use DeepSeek's Anthropic-compatible API for its assistant. Store
+the DeepSeek API key outside the repository, then set:
+
+```bash
+ASSISTANT_PROVIDER=deepseek
+DEEPSEEK_API_KEY_FILE=/path/to/deepseek-api-key
+```
+
+With Docker Compose, the key is mounted as `/run/secrets/deepseek_api_key`.
+Restart or recreate the `console` service after changing the provider or key.
 
 ### Managing a remote host (EC2, another server)
 

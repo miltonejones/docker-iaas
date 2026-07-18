@@ -11,6 +11,9 @@ services:
       USAGE_POLL_MS: '5000'
       HOST_COMMAND_PRESETS: "${HOST_COMMAND_PRESETS:-[]}"
       HOST_BUILD_HELPER_SOCKET: /app/data/host-build-helper.sock
+      ASSISTANT_PROVIDER: "${ASSISTANT_PROVIDER:-anthropic}"
+      DEEPSEEK_MODEL: "${DEEPSEEK_MODEL:-deepseek-v4-pro}"
+      DEEPSEEK_TITLE_MODEL: "${DEEPSEEK_TITLE_MODEL:-deepseek-v4-flash}"
     labels:
       iaas.system: 'true'
     volumes:
@@ -33,6 +36,9 @@ services:
       # to read private repos and to clone/commit/push. Optional — public-repo
       # reads work without it, but private repos and any commit/push require it.
       - github_token
+      # Optional DeepSeek API key. Set ASSISTANT_PROVIDER=deepseek to use
+      # DeepSeek's Anthropic-compatible API instead of Anthropic.
+      - deepseek_api_key
     restart: unless-stopped
     networks:
       # Shares dockyard-net with the containers/functions it manages (including
@@ -82,3 +88,7 @@ secrets:
     # commit/push report a clear "not configured" error until a real token is
     # added). Override with GITHUB_TOKEN_FILE if you keep it somewhere else.
     file: ${GITHUB_TOKEN_FILE:-/home/miltonejones/.github_token}
+  deepseek_api_key:
+    # Keep the key outside the repository. On EC2, set DEEPSEEK_API_KEY_FILE in
+    # .env to the EC2 user's owner-only key file before switching providers.
+    file: ${DEEPSEEK_API_KEY_FILE:-/dev/null}

@@ -37,18 +37,22 @@ import {
 
 export const assistantRouter = Router();
 
-/** ANTHROPIC_API_KEY takes precedence when set. Otherwise fall back, in
- *  order, to: the Docker Compose secret mounted at /run/secrets (production
- *  container — see docker-compose.yml), then ~/.antro (this machine's
- *  personal key file, for `npm run dev` on the host). Read once at startup,
- *  never logged, never written anywhere else. */
-function resolveApiKey(): string | undefined {
-  if (process.env.ANTHROPIC_API_KEY) return undefined; // let the SDK read it from env itself
-  const candidates = [
-    "/run/secrets/anthropic_api_key",
-    path.join(os.homedir(), ".antro"),
-  ];
+type AssistantProvider = 'anthropic' | 'deepseek';
+
+function assistantProvider(): AssistantProvider {
+  return process.env.ASSISTANT_PROVIDER === 'deepseek' ? 'deepseek' : 'anthropic';
+}
+
+/** Resolve the selected provider's credential once at startup. The key is
+ * never logged or persisted; Compose mounts the production values as secrets. */
+function resolveApiKey(provider: AssistantProvider): string | undefined {
+  const envKey = provider === 'deepseek' ? process.env.DEEPSEEK_API_KEY : process.env.ANTHROPIC_API_KEY;
+  if (envKey) return envKey;
+  const candidates = provider === 'deepseek'
+    ? [process.env.DEEPSEEK_API_KEY_FILE, '/run/secrets/deepseek_api_key', path.join(os.homedir(), '.deepseek_api_key')]
+    : [process.env.ANTHROPIC_API_KEY_FILE, '/run/secrets/anthropic_api_key', path.join(os.homedir(), '.antro')];
   for (const file of candidates) {
+    if (!file) continue;
     try {
       const key = fs.readFileSync(file, "utf8").trim();
       if (key) return key;
@@ -59,9 +63,17 @@ function resolveApiKey(): string | undefined {
   return undefined;
 }
 
+const PROVIDER = assistantProvider();
+const MAIN_MODEL = PROVIDER === 'deepseek'
+  ? process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro'
+  : process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
+const TITLE_MODEL = PROVIDER === 'deepseek'
+  ? process.env.DEEPSEEK_TITLE_MODEL || 'deepseek-v4-flash'
+  : process.env.ANTHROPIC_TITLE_MODEL || 'claude-haiku-4-5-20251001';
+
 const client = new Anthropic({
-  apiKey: resolveApiKey(),
-  baseURL: "https://api.anthropic.com",
+  apiKey: resolveApiKey(PROVIDER),
+  baseURL: PROVIDER === 'deepseek' ? 'https://api.deepseek.com/anthropic' : 'https://api.anthropic.com',
 });
 
 const SYSTEM = `You are the Dockyard.ai assistant. You translate a user's natural-language request into tool calls that manage Lambda functions, Gateway routes, containers, Docker images, storage buckets, and saved MySQL/MongoDB connections.
@@ -994,7 +1006,7 @@ async function respondStream(
       if (aborted) return;
 
       const stream = client.messages.stream({
-        model: "claude-opus-4-8",
+        model: MAIN_MODEL,
         // Tool calls that echo a whole file set back (replace_lambda_function_files,
         // write_container_file with a large payload, etc.) can otherwise blow past a
         // small cap mid-generation, truncating the tool_use JSON. Streaming already
@@ -1186,7 +1198,7 @@ assistantRouter.post("/title", async (req: Request, res: Response) => {
   }
   try {
     const out = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
+      model: TITLE_MODEL,
       max_tokens: 24,
       system:
         "Generate a short, descriptive title (3-6 words, title case, no quotes, no trailing punctuation, no emoji) summarizing what the user asked for. Reply with only the title.",
