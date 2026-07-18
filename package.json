@@ -3,11 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Personal container management, EC2-style.",
-  "workspaces": [
-    "server",
-    "web",
-    "relay"
-  ],
+  "workspaces": ["server", "web", "relay"],
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:server": "npm --workspace server run dev",
@@ -17,16 +13,5 @@
     "start": "npm --workspace server run start",
     "start:relay": "npm --workspace relay run start",
     "typecheck": "npm --workspace server run typecheck && npm --workspace web run typecheck && npm --workspace relay run typecheck"
-  },
-  "dependencies": {
-    "@anthropic-ai/sdk": "^0.112.3",
-    "@aws-sdk/client-s3": "^3.1090.0",
-    "@types/node": "^26.1.1",
-    "cors": "^2.8.6",
-    "dockerode": "^5.0.1",
-    "express": "^5.2.1",
-    "tar-stream": "^3.2.0",
-    "typescript": "^7.0.2",
-    "ws": "^8.21.1"
   }
 }
