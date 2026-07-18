@@ -1,0 +1,3 @@
+dockyard-ai.com {
+  reverse_proxy console:4300
+}
