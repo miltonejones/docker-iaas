@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type Anthropic from '@anthropic-ai/sdk';
 import tar from 'tar-stream';
-import { PutObjectCommand } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, ListObjectsV2Command, PutObjectCommand } from '@aws-sdk/client-s3';
 import { docker } from './docker.js';
 import { getS3Client } from './minio.js';
 
@@ -279,10 +279,36 @@ export async function pullGithubRepoToBucket(input: Record<string, unknown>) {
   if (!bucket) throw new Error('bucket is required.');
   const prefix = normalizedRepoPath(input.prefix).replace(/\/$/, '');
 
+  const clean = Boolean(input.clean);
+
   const tarball = await downloadRepoTarball(owner, repo, ref);
   const files = await extractTarballFiles(tarball);
 
   const s3 = getS3Client();
+
+  // When clean is requested, delete all existing objects under the prefix first.
+  if (clean) {
+    let token: string | undefined;
+    do {
+      const list = await s3.send(
+        new ListObjectsV2Command({
+          Bucket: bucket,
+          Prefix: prefix || undefined,
+          ContinuationToken: token,
+        }),
+      );
+      const keys = (list.Contents || []).map((o) => o.Key).filter((k): k is string => !!k);
+      if (keys.length > 0) {
+        await Promise.all(
+          keys.map((k) =>
+            s3.send(new DeleteObjectCommand({ Bucket: bucket, Key: k })),
+          ),
+        );
+      }
+      token = list.IsTruncated ? list.NextContinuationToken : undefined;
+    } while (token);
+  }
+
   for (const file of files) {
     const key = prefix ? `${prefix}/${file.relativePath}` : file.relativePath;
     await s3.send(
@@ -338,12 +364,24 @@ export async function pullGithubRepoToContainer(input: Record<string, unknown>) 
     throw new Error('Container is not running — start it before pulling files into it.');
   }
 
+  const clean = Boolean(input.clean);
+
+  // When clean is requested, empty the destination directory first.
+  if (clean && destPrefix) {
+    const exec = await container.exec({
+      Cmd: ['sh', '-c', `rm -rf /${destPrefix}/*`],
+      AttachStdout: true,
+      AttachStderr: true,
+    });
+    await exec.start({ hijack: false, stdin: false });
+  }
+
   const tarball = await downloadRepoTarball(owner, repo, ref);
   const files = await extractTarballFiles(tarball);
   const archive = await tarFilesForContainer(files, destPrefix);
   await container.putArchive(archive, { path: '/' });
 
-  return { owner, repo, ref: ref ?? null, id, path: `/${destPrefix}`, filesWritten: files.length };
+  return { owner, repo, ref: ref ?? null, id, path: `/${destPrefix}`, filesWritten: files.length, clean };
 }
 
 // ---------------------------------------------------------------------------
@@ -501,7 +539,7 @@ export const GITHUB_ASSISTANT_TOOLS: Anthropic.Tool[] = [
   {
     name: 'pull_github_repo_to_bucket',
     description:
-      "Download a GitHub repository's full contents (as of a branch/tag/commit) and write every file into a storage bucket, preserving the repo's folder structure under an optional prefix. Use this when the user wants to host or copy a whole GitHub repo into a bucket. The bucket must already exist. Requires confirmation.",
+      "Download a GitHub repository's full contents (as of a branch/tag/commit) and write every file into a storage bucket, preserving the repo's folder structure under an optional prefix. When clean is true, all existing objects under the prefix are deleted first so stale files from a previous pull don't linger. Use this when the user wants to host or copy a whole GitHub repo into a bucket. The bucket must already exist. Requires confirmation.",
     input_schema: {
       type: 'object',
       properties: {
@@ -510,6 +548,7 @@ export const GITHUB_ASSISTANT_TOOLS: Anthropic.Tool[] = [
         ref: { type: 'string', description: 'Branch, tag, or commit SHA; omit for the default branch' },
         bucket: { type: 'string', description: 'Existing destination bucket name' },
         prefix: { type: 'string', description: 'Optional key prefix to write files under, e.g. "site/"' },
+        clean: { type: 'boolean', description: 'If true, delete all existing objects under the prefix before pulling, ensuring a clean slate.' },
       },
       required: ['owner', 'repo', 'bucket'],
     },
@@ -517,7 +556,7 @@ export const GITHUB_ASSISTANT_TOOLS: Anthropic.Tool[] = [
   {
     name: 'pull_github_repo_to_container',
     description:
-      "Download a GitHub repository's full contents (as of a branch/tag/commit) and write every file into a running, non-system container's filesystem, preserving the repo's folder structure under the given destination directory. Use this when the user wants to deploy a whole GitHub repo onto a container. Requires confirmation.",
+      "Download a GitHub repository's full contents (as of a branch/tag/commit) and write every file into a running, non-system container's filesystem, preserving the repo's folder structure under the given destination directory. When clean is true, the destination directory is emptied first so stale files from a previous pull don't linger. Use this when the user wants to deploy a whole GitHub repo onto a container. Requires confirmation.",
     input_schema: {
       type: 'object',
       properties: {
@@ -526,6 +565,7 @@ export const GITHUB_ASSISTANT_TOOLS: Anthropic.Tool[] = [
         ref: { type: 'string', description: 'Branch, tag, or commit SHA; omit for the default branch' },
         id: { type: 'string', description: 'Target container id' },
         path: { type: 'string', description: 'Absolute destination directory inside the container, e.g. "/usr/share/nginx/html"' },
+        clean: { type: 'boolean', description: 'If true, delete the destination directory contents before pulling, ensuring a clean slate.' },
       },
       required: ['owner', 'repo', 'id', 'path'],
     },

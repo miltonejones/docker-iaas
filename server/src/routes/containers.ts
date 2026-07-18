@@ -56,6 +56,7 @@ interface LaunchBody {
   presetId?: string;
   image?: string;
   name?: string;
+  command?: string[];
   ports?: { container: string; host: number }[];
   env?: { key: string; value: string }[];
   volumes?: string[];
@@ -105,17 +106,23 @@ containersRouter.post('/', async (req: Request, res: Response) => {
         })
       : undefined;
 
+    // If an explicit Cmd is provided, skip the Tty keep-alive helper since the
+    // supplied command handles that itself (e.g. ["sleep","infinity"]).
+    const needsTty = !body.command && preset
+      ? ['ubuntu', 'debian', 'alpine', 'fedora', 'rockylinux', 'archlinux', 'node', 'python'].includes(preset.id)
+      : false;
+
     const container = await docker.createContainer({
       Image: image,
       name: body.name || undefined,
+      Cmd: body.command,
       Env: env.length ? env : undefined,
       ExposedPorts: Object.keys(exposedPorts).length ? exposedPorts : undefined,
       Labels: {
         ...(preset ? { 'iaas.preset': preset.id } : {}),
         ...(body.assistantManaged ? { 'iaas.assistant-managed': 'true' } : {}),
       },
-      // Keep interactive OS/runtime images alive so they show as "running".
-      Tty: preset ? ['ubuntu', 'debian', 'alpine', 'fedora', 'rockylinux', 'archlinux', 'node', 'python'].includes(preset.id) : false,
+      Tty: needsTty,
       HostConfig: {
         PortBindings: Object.keys(portBindings).length ? portBindings : undefined,
         RestartPolicy: { Name: 'unless-stopped' },
@@ -203,7 +210,7 @@ function readExecOutput(stream: NodeJS.ReadableStream): Promise<{ output: string
 // Execute a confirmed command in a running container that the assistant
 // created. Commands are passed directly to Docker (never through a host shell).
 containersRouter.post('/:id/exec', async (req: Request, res: Response) => {
-  const { command, workingDir } = req.body as Record<string, unknown>;
+  const { command, workingDir, background } = req.body as Record<string, unknown>;
   if (
     !Array.isArray(command) ||
     command.length === 0 ||
@@ -243,10 +250,22 @@ containersRouter.post('/:id/exec', async (req: Request, res: Response) => {
 
     const exec = await container.exec({
       Cmd: commandArgs,
-      AttachStdout: true,
-      AttachStderr: true,
+      AttachStdout: !background,
+      AttachStderr: !background,
       WorkingDir: workingDir,
     });
+
+    if (background) {
+      await exec.start({ hijack: false, stdin: false });
+      res.json({
+        command: commandArgs,
+        workingDir: workingDir ?? null,
+        background: true,
+        execId: exec.id,
+      });
+      return;
+    }
+
     const stream = await exec.start({ hijack: true, stdin: false });
     const { output, truncated } = await readExecOutput(stream);
     const result = await exec.inspect();
@@ -257,6 +276,187 @@ containersRouter.post('/:id/exec', async (req: Request, res: Response) => {
       output,
       truncated,
     });
+  } catch (err) {
+    res.status(502).json({ error: (err as Error).message });
+  }
+});
+
+// Update environment variables on a container. Docker doesn't support mutating
+// env on a running container, so this stops → snapshots config → removes
+// (keeping volumes) → recreates with merged env → starts.
+containersRouter.post('/:id/env', async (req: Request, res: Response) => {
+  const { env: newEnv } = req.body as { env?: { key: string; value: string }[] };
+  if (!newEnv || !Array.isArray(newEnv) || newEnv.length === 0) {
+    res.status(400).json({ error: 'env must be a non-empty array of { key, value }.' });
+    return;
+  }
+  for (const e of newEnv) {
+    if (typeof e.key !== 'string' || !e.key || typeof e.value !== 'string') {
+      res.status(400).json({ error: 'Each env entry needs a non-empty string key and a string value.' });
+      return;
+    }
+  }
+
+  try {
+    const container = docker.getContainer(req.params.id);
+    const info = await container.inspect();
+    if (info.Config?.Labels?.['iaas.system']) {
+      res.status(403).json({ error: 'System-managed containers cannot be updated here.' });
+      return;
+    }
+
+    // Stop the container so we can recreate it.
+    const wasRunning = info.State?.Running ?? false;
+    if (wasRunning) await container.stop();
+
+    // Merge old env with new env — new keys overwrite old ones.
+    const oldEnv: Record<string, string> = {};
+    for (const e of info.Config?.Env ?? []) {
+      const idx = e.indexOf('=');
+      if (idx > 0) oldEnv[e.slice(0, idx)] = e.slice(idx + 1);
+    }
+    for (const e of newEnv) oldEnv[e.key] = e.value;
+    const mergedEnv = Object.entries(oldEnv).map(([k, v]) => `${k}=${v}`);
+
+    // Snapshot the existing config we need to preserve.
+    const createOpts: Docker.ContainerCreateOptions = {
+      name: (info.Name || '').replace(/^\//, ''),
+      Image: info.Config?.Image ?? '',
+      Cmd: info.Config?.Cmd ?? undefined,
+      Env: mergedEnv,
+      ExposedPorts: info.Config?.ExposedPorts ?? undefined,
+      Labels: info.Config?.Labels ?? undefined,
+      Tty: info.Config?.Tty ?? false,
+      HostConfig: {
+        PortBindings: info.HostConfig?.PortBindings ?? undefined,
+        RestartPolicy: info.HostConfig?.RestartPolicy ?? undefined,
+        Mounts: info.Mounts?.map((m) => ({
+          Type: (m.Type as 'bind' | 'volume' | 'tmpfs') ?? 'volume',
+          Source: m.Source ?? '',
+          Target: m.Destination ?? '',
+        })),
+      },
+    };
+
+    // Remove old container (keep volumes) and recreate with merged env.
+    await container.remove({ v: false });
+    const newContainer = await docker.createContainer(createOpts);
+    if (wasRunning) await newContainer.start();
+
+    res.json({ id: newContainer.id, envUpdated: newEnv.map((e) => e.key) });
+  } catch (err) {
+    res.status(502).json({ error: (err as Error).message });
+  }
+});
+
+// Search-and-replace text inside a container file. Reads the file, applies a
+// literal search→replace, and writes it back.
+containersRouter.post('/:id/files/replace', async (req: Request, res: Response) => {
+  try {
+    const target = String(req.body?.path ?? '');
+    const rel = target.slice(1);
+    if (!target.startsWith('/') || rel === '' || /\.\.(?:\/|$)/.test(target) || !/^[\w./-]+$/.test(rel)) {
+      res.status(400).json({
+        error: 'path must be an absolute file path using only letters, digits, "/", ".", "-", "_" (no "..").',
+      });
+      return;
+    }
+    const search = String(req.body?.search ?? '');
+    if (!search) {
+      res.status(400).json({ error: 'search string is required.' });
+      return;
+    }
+    const replace = String(req.body?.replace ?? '');
+
+    const container = docker.getContainer(req.params.id);
+    const info = await container.inspect();
+    if (info.Config?.Labels?.['iaas.system']) {
+      res.status(403).json({ error: 'This container is system-managed and cannot be written to here.' });
+      return;
+    }
+    if (!info.State?.Running) {
+      res.status(409).json({ error: 'Container is not running — start it before replacing file content.' });
+      return;
+    }
+
+    // Read the file via an exec'd cat.
+    const readExec = await container.exec({
+      Cmd: ['cat', target],
+      AttachStdout: true,
+      AttachStderr: true,
+    });
+    const readStream = await readExec.start({ hijack: true, stdin: false });
+    const { output: currentContent } = await readExecOutput(readStream);
+    const readResult = await readExec.inspect();
+    if (readResult.ExitCode !== 0) {
+      res.status(404).json({ error: `File not found or unreadable: ${currentContent.slice(0, 200)}` });
+      return;
+    }
+
+    const replaced = currentContent.split(search).join(replace);
+    if (replaced === currentContent) {
+      res.json({ path: target, replaced: false, reason: 'Search string not found in file.' });
+      return;
+    }
+
+    // Write the modified content back.
+    const buf = Buffer.from(replaced, 'utf8');
+    const tarBuffer = await new Promise<Buffer>((resolve, reject) => {
+      const pack = tar.pack();
+      const chunks: Buffer[] = [];
+      pack.on('data', (c: Buffer) => chunks.push(c));
+      pack.on('end', () => resolve(Buffer.concat(chunks)));
+      pack.on('error', reject);
+      pack.entry({ name: rel, size: buf.length, mode: 0o644 }, buf);
+      pack.finalize();
+    });
+    await container.putArchive(tarBuffer, { path: '/' });
+    res.json({ path: target, replaced: true, occurrences: currentContent.split(search).length - 1 });
+  } catch (err) {
+    res.status(502).json({ error: (err as Error).message });
+  }
+});
+
+// Bulk-write multiple text files into a running container in a single call.
+containersRouter.post('/:id/files/bulk', async (req: Request, res: Response) => {
+  try {
+    const files: { path: string; content: string }[] = req.body?.files;
+    if (!Array.isArray(files) || files.length === 0) {
+      res.status(400).json({ error: 'files must be a non-empty array of { path, content }.' });
+      return;
+    }
+
+    const container = docker.getContainer(req.params.id);
+    const info = await container.inspect();
+    if (info.Config?.Labels?.['iaas.system']) {
+      res.status(403).json({ error: 'This container is system-managed and cannot be written to here.' });
+      return;
+    }
+    if (!info.State?.Running) {
+      res.status(409).json({ error: 'Container is not running — start it before writing files.' });
+      return;
+    }
+
+    // Build a single tar with all files.
+    const tarBuffer = await new Promise<Buffer>((resolve, reject) => {
+      const pack = tar.pack();
+      const chunks: Buffer[] = [];
+      pack.on('data', (c: Buffer) => chunks.push(c));
+      pack.on('end', () => resolve(Buffer.concat(chunks)));
+      pack.on('error', reject);
+      for (const file of files) {
+        const rel = file.path.replace(/^\//, '');
+        if (!rel || /\.\.(?:\/|$)/.test(file.path) || !/^[\w./-]+$/.test(rel)) {
+          reject(new Error(`Invalid path: "${file.path}". Must be an absolute path using letters, digits, "/", ".", "-", "_" (no "..").`));
+          return;
+        }
+        const buf = Buffer.from(file.content, 'utf8');
+        pack.entry({ name: rel, size: buf.length, mode: 0o644 }, buf);
+      }
+      pack.finalize();
+    });
+    await container.putArchive(tarBuffer, { path: '/' });
+    res.json({ ok: true, filesWritten: files.length });
   } catch (err) {
     res.status(502).json({ error: (err as Error).message });
   }

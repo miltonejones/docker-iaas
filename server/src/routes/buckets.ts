@@ -148,3 +148,75 @@ bucketsRouter.delete('/:name/objects/*', async (req: Request, res: Response) => 
     res.status(502).json({ error: (err as Error).message });
   }
 });
+
+// Search-and-replace literal text in a bucket object. Reads the object, applies
+// the replacement, and writes it back.
+bucketsRouter.post('/:name/objects/replace', express.json(), async (req: Request, res: Response) => {
+  const key = String(req.body?.key ?? '').trim();
+  if (!key) {
+    res.status(400).json({ error: 'An object key is required.' });
+    return;
+  }
+  const search = String(req.body?.search ?? '');
+  if (!search) {
+    res.status(400).json({ error: 'search string is required.' });
+    return;
+  }
+  const replace = String(req.body?.replace ?? '');
+
+  try {
+    const out = await getS3Client().send(new GetObjectCommand({ Bucket: req.params.name, Key: key }));
+    const chunks: Buffer[] = [];
+    for await (const chunk of out.Body as AsyncIterable<Buffer>) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    const current = Buffer.concat(chunks).toString('utf8');
+    const replaced = current.split(search).join(replace);
+    if (replaced === current) {
+      res.json({ key, replaced: false, reason: 'Search string not found in object.' });
+      return;
+    }
+    await getS3Client().send(
+      new PutObjectCommand({
+        Bucket: req.params.name,
+        Key: key,
+        Body: replaced,
+        ContentType: out.ContentType || 'application/octet-stream',
+      }),
+    );
+    res.json({ key, replaced: true, occurrences: current.split(search).length - 1 });
+  } catch (err) {
+    const code = (err as { Code?: string; name?: string }).Code || (err as Error).name;
+    if (code === 'NoSuchKey') {
+      res.status(404).json({ error: `Object "${key}" not found in bucket "${req.params.name}".` });
+      return;
+    }
+    res.status(502).json({ error: (err as Error).message });
+  }
+});
+
+// Bulk-write multiple objects into a bucket in a single call.
+bucketsRouter.post('/:name/objects/bulk', express.json(), async (req: Request, res: Response) => {
+  const objects: { key: string; content: string; contentType?: string }[] = req.body?.objects;
+  if (!Array.isArray(objects) || objects.length === 0) {
+    res.status(400).json({ error: 'objects must be a non-empty array of { key, content, contentType? }.' });
+    return;
+  }
+  try {
+    await Promise.all(
+      objects.map((obj) =>
+        getS3Client().send(
+          new PutObjectCommand({
+            Bucket: req.params.name,
+            Key: obj.key,
+            Body: obj.content,
+            ContentType: obj.contentType || 'text/plain',
+          }),
+        ),
+      ),
+    );
+    res.json({ ok: true, objectsWritten: objects.length });
+  } catch (err) {
+    res.status(502).json({ error: (err as Error).message });
+  }
+});

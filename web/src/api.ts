@@ -77,6 +77,7 @@ export interface LaunchRequest {
   presetId?: string;
   image?: string;
   name?: string;
+  command?: string[];
   ports?: { container: string; host: number }[];
   env?: { key: string; value: string }[];
   volumes?: string[];
@@ -122,14 +123,37 @@ export const api = {
       body: JSON.stringify({ path, content }),
     }).then((r) => json<{ ok: true; path: string }>(r)),
 
-  containerExec: (id: string, command: string[], workingDir?: string) =>
+  containerExec: (id: string, command: string[], workingDir?: string, background?: boolean) =>
     fetch(`/api/containers/${id}/exec`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command, workingDir }),
+      body: JSON.stringify({ command, workingDir, background }),
     }).then((r) =>
-      json<{ command: string[]; workingDir: string | null; exitCode: number | null; output: string; truncated: boolean }>(r),
+      json<{ command: string[]; workingDir: string | null; exitCode?: number | null; output?: string; truncated?: boolean; background?: boolean; execId?: string }>(r),
     ),
+
+  containerUpdateEnv: (id: string, env: { key: string; value: string }[]) =>
+    fetch(`/api/containers/${id}/env`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ env }),
+    }).then((r) => json<{ id: string; envUpdated: string[] }>(r)),
+
+  containerReplaceFile: (id: string, path: string, search: string, replace: string) =>
+    fetch(`/api/containers/${id}/files/replace`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, search, replace }),
+    }).then((r) =>
+      json<{ path: string; replaced: boolean; occurrences?: number; reason?: string }>(r),
+    ),
+
+  containerWriteFiles: (id: string, files: { path: string; content: string }[]) =>
+    fetch(`/api/containers/${id}/files/bulk`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ files }),
+    }).then((r) => json<{ ok: true; filesWritten: number }>(r)),
 
   hostFileToBucket: (sourcePath: string, bucket: string, key: string, contentType?: string) =>
     fetch('/api/host-files/to-bucket', {
@@ -152,19 +176,19 @@ export const api = {
       body: JSON.stringify({ preset, id, path }),
     }).then((r) => json<{ ok: true; preset: string; id: string; path: string; size: number }>(r)),
 
-  githubPullToBucket: (owner: string, repo: string, bucket: string, ref?: string, prefix?: string) =>
+  githubPullToBucket: (owner: string, repo: string, bucket: string, ref?: string, prefix?: string, clean?: boolean) =>
     fetch('/api/github/pull-to-bucket', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ owner, repo, bucket, ref, prefix }),
+      body: JSON.stringify({ owner, repo, bucket, ref, prefix, clean }),
     }).then((r) => json<{ owner: string; repo: string; ref: string | null; bucket: string; prefix: string | null; filesWritten: number }>(r)),
 
-  githubPullToContainer: (owner: string, repo: string, id: string, path: string, ref?: string) =>
+  githubPullToContainer: (owner: string, repo: string, id: string, path: string, ref?: string, clean?: boolean) =>
     fetch('/api/github/pull-to-container', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ owner, repo, id, path, ref }),
-    }).then((r) => json<{ owner: string; repo: string; ref: string | null; id: string; path: string; filesWritten: number }>(r)),
+      body: JSON.stringify({ owner, repo, id, path, ref, clean }),
+    }).then((r) => json<{ owner: string; repo: string; ref: string | null; id: string; path: string; filesWritten: number; clean?: boolean }>(r)),
 
   githubCommitAndPush: (
     owner: string,
@@ -310,6 +334,22 @@ export const api = {
       headers: { 'Content-Type': contentType },
       body: content,
     }).then((r) => json<{ key: string }>(r)),
+
+  bucketReplaceObject: (name: string, key: string, search: string, replace: string) =>
+    fetch(`/api/buckets/${encodeURIComponent(name)}/objects/replace`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, search, replace }),
+    }).then((r) =>
+      json<{ key: string; replaced: boolean; occurrences?: number; reason?: string }>(r),
+    ),
+
+  bucketWriteObjects: (name: string, objects: { key: string; content: string; contentType?: string }[]) =>
+    fetch(`/api/buckets/${encodeURIComponent(name)}/objects/bulk`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ objects }),
+    }).then((r) => json<{ ok: true; objectsWritten: number }>(r)),
 
   bucketObjectUrl: (name: string, key: string) =>
     `/api/buckets/${encodeURIComponent(name)}/objects/${key.split('/').map(encodeURIComponent).join('/')}`,

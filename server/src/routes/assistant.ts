@@ -87,19 +87,20 @@ Rules:
 - For multi-step requests (e.g. "create a function and attach a gateway route to it"), call one tool at a time and wait for its real result before calling the next one — never invent an id.
 - Default runtime is "node" unless the user names another ("python" or "sh").
 - When writing a function's "code", write complete, runnable source for the chosen runtime. Functions invoked through a gateway route follow this contract: the incoming request arrives as JSON in the DOCKYARD_REQUEST environment variable, shaped like { httpMethod, path, headers, queryStringParameters, body, isBase64Encoded } (body may be null). The function must print exactly one JSON object to stdout shaped like { "statusCode": number, "headers"?: object, "body": string, "isBase64Encoded"?: boolean }. Do not print anything else to stdout.
-- When a gateway route targets a lambda function, targetType must be "lambda" and targetId must be the id returned by the create_lambda_function call. When it targets a bucket, targetType must be "bucket" and targetId is simply the bucket's name.
+- When a gateway route targets a lambda function, targetType must be \"lambda\" and targetId must be the id returned by the create_lambda_function call. When it targets a bucket, targetType must be \"bucket\" and targetId is simply the bucket's name.\n    - All gateway routes are reachable at /gw/{name} — always tell the user this prefix when confirming a route was created (e.g. \"Your site is live at /gw/my-site\").
 - gateway route "pathPattern" is matched by EXACT string equality against the incoming request path (with the route's own name already stripped from the front) — there is no wildcard, glob, or prefix support. A trailing "/*" or "/:id" will never match anything real; do not use them. To match every path and method under a route (a whole static site, or a REST resource with multiple sub-paths like "/todos" and "/todos/{id}"), omit both "method" and "pathPattern" entirely rather than guessing a pattern.
 - A gateway route "name" is a group that can hold multiple method/pathPattern/target combinations — e.g. GET /todos going to one target and POST /todos/{id} going to another, all under the same name. create_gateway_route only accepts one method/pathPattern/targetId combination per call, so build up a multi-endpoint route by calling create_gateway_route once per combination, reusing the same "name" each time (this mirrors the "+ Add endpoint" button in the Gateway UI, which adds one endpoint to an existing named route). Never claim this isn't supported — it is; it just takes one tool call per endpoint, same as any other multi-step request.
-- To host a static website on a BUCKET (the default, simplest path): create the bucket first if it doesn't already exist (check with list_buckets), write each file with write_bucket_object (e.g. "index.html", "style.css", "script.js" — one tool call per file), then create_gateway_route with targetType "bucket" and targetId set to the bucket name, omitting method and pathPattern so every file in the site is reachable. Requests to "/" or a path with no file extension serve "index.html" (SPA-style fallback).
-- To host a site on an OS CONTAINER instead (when the user asks for a container/VM/server, needs a long-running process, dynamic requests, or explicitly wants it on a container rather than a bucket): call launch_container with a serving image — prefer "nginx:alpine" for static sites because its default command serves /usr/share/nginx/html on port 80 with no extra setup. Write each site file with write_container_file to that directory (e.g. "/usr/share/nginx/html/index.html", "/usr/share/nginx/html/style.css" — one call per file). Then create_gateway_route with targetType "container", targetId set to the container id returned by launch_container, targetPort 80, omitting method and pathPattern so every path reaches the container. Use this path only when a container is genuinely wanted; otherwise default to the bucket path.
-- Containers launched through this assistant can run confirmed commands with execute_container_command. Pass command as an argument array, never as a shell string: for example, ["npm", "ci"] or ["npx", "ng", "build"]. Set workingDir when the project is not in the container's default working directory. Use this for install/build/test steps only after the container is running and its project files are present.
+- To host a static website on a BUCKET (the default, simplest path): create the bucket first if it doesn't already exist (check with list_buckets), write the files with write_bucket_objects (accepts an array of { key, content } — prefer this bulk form for multi-file sites), then create_gateway_route with targetType "bucket" and targetId set to the bucket name, omitting method and pathPattern so every file in the site is reachable. Requests to "/" or a path with no file extension serve "index.html" (SPA-style fallback). For a quick single-file edit, use replace_in_bucket_object instead of reading and rewriting the whole file.
+- To host a site on an OS CONTAINER instead (when the user asks for a container/VM/server, needs a long-running process, dynamic requests, or explicitly wants it on a container rather than a bucket): call launch_container with a serving image — prefer "nginx:alpine" for static sites because its default command serves /usr/share/nginx/html on port 80 with no extra setup. Write the site files with write_container_files (accepts an array of { path, content } — prefer this bulk form), then create_gateway_route with targetType "container", targetId set to the container id returned by launch_container, targetPort 80, omitting method and pathPattern so every path reaches the container. For a quick single-file edit, use replace_in_container_file instead of rewriting the whole file. Use this path only when a container is genuinely wanted; otherwise default to the bucket path.
+- When launching a container for builds or development (not a serving container with a real server process), pass command: ["sleep", "infinity"] to launch_container to keep it alive — images like node:22-alpine exit immediately otherwise because their default CMD is just "node" with no script.
+- Containers launched through this assistant can run confirmed commands with execute_container_command. Pass command as an argument array, never as a shell string: for example, ["npm", "ci"] or ["npx", "ng", "build"]. Set workingDir when the project is not in the container's default working directory. To start a long-running server (e.g. a Node.js API), set background: true so the command runs detached and doesn't block — the tool returns immediately. To update environment variables on a running container, use update_container_env — it stops, merges the new vars with existing ones, recreates the container, and starts it again.
 - The host filesystem is available read-only within Dockyard's configured host-files mount. Use list_host_directory to inspect one directory at a time, then read_host_file to read an explicitly requested text file. Both require absolute host paths (for example, "/home/me/project"). Do not read files the user has not requested or that are likely to contain secrets (such as .env files, SSH keys, credential stores, or private keys). Host file reads are capped at 512 KiB and 50,000 characters; binary files cannot be read. To copy one host file to a bucket, use copy_host_file_to_bucket. To copy one host file to a container folder, use copy_host_file_to_container. Both require confirmation and accept the source as its absolute HOST path. Host file transfers support regular files up to 200 MiB.
 - To build a configured host project and deploy its artifacts to a container, first call list_host_build_presets to find the exact preset, then call run_host_build_preset with its name, target container id, and destination directory. Presets contain fixed host-side commands and artifact directories; never invent a command, command arguments, working directory, or artifact path.
 - For database work, always resolve the saved connection id first (list_database_connections unless it is already known). Use inspect_database_schema to explore structure, run_database_read_query for bounded read-only access, execute_database_mutation for one confirmed write, execute_database_migration for confirmed schema/multi-step changes, execute_database_access_grant for structured MySQL GRANT or MongoDB grantRolesToUser requests, create_database_backup to generate a backup job, restore_database_backup to restore from a prior backup job id, and list_database_jobs / get_database_job to inspect backup or restore history.
 - For MySQL reads, run_database_read_query must receive one read-only SQL statement in the sql field. For MongoDB reads, use run_database_read_query with collection plus mode/find/aggregate/count and JSON filter/projection/sort/pipeline fields as needed. Never use execute_database_mutation or execute_database_migration for a read-only request.
-- Destructive or disruptive actions (delete_*, prune_*, container_action) still go through the normal tool-call flow — the user reviews and confirms every tool call before it executes, so call the tool directly rather than asking "are you sure?" in text first. write_container_file, host-file copies, and launch_container are no exception: call them directly; the user confirms before they run.
+- Destructive or disruptive actions (delete_*, prune_*, container_action) still go through the normal tool-call flow — the user reviews and confirms every tool call before it executes, so call the tool directly rather than asking "are you sure?" in text first. write_container_file, write_container_files, write_bucket_objects, replace_in_container_file, replace_in_bucket_object, update_container_env, host-file copies, and launch_container are no exception: call them directly; the user confirms before they run.
 - Database writes, migrations, grants, backups, restores, and saved-connection create/update/delete/test actions are also confirmed by the user before client execution, so call the appropriate tool directly instead of asking for a second textual confirmation.
-- For GitHub: use list_github_repo_files and read_github_file to browse or read one repo's content (public repos need no token; private repos need a configured GitHub token and fail with a clear error otherwise). When the user wants to pull an ENTIRE repo (not just one file) onto Dockyard, use pull_github_repo_to_bucket (bucket must already exist) or pull_github_repo_to_container (container must be running) — these download the whole repo tree and write every file, preserving folder structure; do not try to read and re-write each file individually for a whole-repo pull. To commit and push changes back to GitHub, use commit_and_push_github_files with the complete new content of every changed file — it clones (or refreshes an existing local clone), commits, and pushes to the given branch (or the repo's default branch); this always requires a configured GitHub token. All four mutating GitHub tools (the two pull tools and commit_and_push_github_files) require user confirmation — call them directly rather than asking a second time in text.
+- For GitHub: use list_github_repo_files and read_github_file to browse or read one repo's content (public repos need no token; private repos need a configured GitHub token and fail with a clear error otherwise). When the user wants to pull an ENTIRE repo (not just one file) onto Dockyard, use pull_github_repo_to_bucket (bucket must already exist) or pull_github_repo_to_container (container must be running) — these download the whole repo tree and write every file, preserving folder structure; do not try to read and re-write each file individually for a whole-repo pull. Pass clean: true to delete the destination first, ensuring stale files from a previous pull don't linger. To commit and push changes back to GitHub, use commit_and_push_github_files with the complete new content of every changed file — it clones (or refreshes an existing local clone), commits, and pushes to the given branch (or the repo's default branch); this always requires a configured GitHub token. All four mutating GitHub tools (the two pull tools and commit_and_push_github_files) require user confirmation — call them directly rather than asking a second time in text.
 - When done, give a short (1-2 sentence) confirmation of what was done — no more.`;
 
 const tools: Anthropic.Tool[] = [
@@ -135,7 +136,7 @@ const tools: Anthropic.Tool[] = [
   {
     name: "create_gateway_route",
     description:
-      'Create an API Gateway route pointing at a target resource. Call this when the user wants to expose or attach an endpoint. For targetType "lambda", targetId is the id returned by create_lambda_function. For targetType "bucket", targetId is just the bucket name (no lookup needed) — use this to serve a static site written with write_bucket_object. For targetType "container", targetId is the container id returned by launch_container and targetPort is the port the server listens on inside that container (e.g. 80 for nginx) — use this to serve a site hosted on an OS container written with write_container_file.',
+      'Create an API Gateway route pointing at a target resource. The route will be reachable at /gw/{name} — remember to tell the user that prefix. Call this when the user wants to expose or attach an endpoint. For targetType "lambda", targetId is the id returned by create_lambda_function. For targetType "bucket", targetId is just the bucket name (no lookup needed) — use this to serve a static site written with write_bucket_object. For targetType "container", targetId is the container id returned by launch_container and targetPort is the port the server listens on inside that container (e.g. 80 for nginx) — use this to serve a site hosted on an OS container written with write_container_file.',
     input_schema: {
       type: "object",
       properties: {
@@ -247,7 +248,7 @@ const tools: Anthropic.Tool[] = [
   {
     name: "launch_container",
     description:
-      "Launch a new Docker container, either from a named preset or a raw image.",
+      "Launch a new Docker container, either from a named preset or a raw image. Pass command to override the image's default CMD — useful for keeping build images alive with [\"sleep\",\"infinity\"] when they'd otherwise exit immediately.",
     input_schema: {
       type: "object",
       properties: {
@@ -261,6 +262,11 @@ const tools: Anthropic.Tool[] = [
             'Docker image (e.g. "redis:7-alpine"), if not using a preset',
         },
         name: { type: "string", description: "Container name" },
+        command: {
+          type: "array",
+          description: 'Override the default CMD, e.g. ["sleep","infinity"] or ["tail","-f","/dev/null"]. Pass as separate string arguments, not a shell string.',
+          items: { type: "string" },
+        },
         ports: {
           type: "array",
           description: "Port mappings",
@@ -345,6 +351,10 @@ const tools: Anthropic.Tool[] = [
         workingDir: {
           type: "string",
           description: 'Optional absolute project directory inside the container, e.g. "/workspace"',
+        },
+        background: {
+          type: "boolean",
+          description: 'If true, start the command detached and return immediately without waiting for output. Use for long-running servers (e.g. a Node.js API) that should run in the background.',
         },
       },
       required: ["id", "command"],
@@ -689,6 +699,106 @@ const tools: Anthropic.Tool[] = [
         },
       },
       required: ["id"],
+    },
+  },
+  {
+    name: "update_container_env",
+    description:
+      "Update (add, change, or merge) environment variables on a container. Stops the container, merges the new env vars with existing ones, recreates the container with the same image/config, and starts it again if it was running. Requires user confirmation.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Container id" },
+        env: {
+          type: "array",
+          description: "Environment variables to set/update",
+          items: {
+            type: "object",
+            properties: { key: { type: "string" }, value: { type: "string" } },
+            required: ["key", "value"],
+          },
+        },
+      },
+      required: ["id", "env"],
+    },
+  },
+  {
+    name: "replace_in_container_file",
+    description:
+      "Search-and-replace literal text in one file inside a running container. Reads the file, replaces all occurrences of the search string with the replacement, and writes it back. Use this instead of raw sed for safer, more discoverable edits. Requires user confirmation.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Container id" },
+        path: { type: "string", description: "Absolute file path inside the container" },
+        search: { type: "string", description: "Literal string to find (not a regex)" },
+        replace: { type: "string", description: "Replacement string" },
+      },
+      required: ["id", "path", "search", "replace"],
+    },
+  },
+  {
+    name: "replace_in_bucket_object",
+    description:
+      "Search-and-replace literal text in one object (file) inside a storage bucket. Reads the object, replaces all occurrences of the search string with the replacement, and writes it back. Use this instead of reading the whole file and rewriting it. Requires user confirmation.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Bucket name" },
+        key: { type: "string", description: "Object key within the bucket" },
+        search: { type: "string", description: "Literal string to find (not a regex)" },
+        replace: { type: "string", description: "Replacement string" },
+      },
+      required: ["name", "key", "search", "replace"],
+    },
+  },
+  {
+    name: "write_container_files",
+    description:
+      "Write (create or overwrite) multiple text files inside a running container in a single call. Takes an array of { path, content } — each path is an absolute container path. Use this for multi-file site deploys to avoid one round trip per file. Requires user confirmation.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Container id" },
+        files: {
+          type: "array",
+          description: "Files to write",
+          items: {
+            type: "object",
+            properties: {
+              path: { type: "string", description: "Absolute container path, e.g. \"/usr/share/nginx/html/index.html\"" },
+              content: { type: "string", description: "Complete file content" },
+            },
+            required: ["path", "content"],
+          },
+        },
+      },
+      required: ["id", "files"],
+    },
+  },
+  {
+    name: "write_bucket_objects",
+    description:
+      "Write (create or overwrite) multiple objects in a storage bucket in a single call. Takes an array of { key, content, contentType? }. Use this for multi-file static site deploys to avoid one round trip per file. Requires user confirmation.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Bucket name" },
+        objects: {
+          type: "array",
+          description: "Objects to write",
+          items: {
+            type: "object",
+            properties: {
+              key: { type: "string", description: "Object key/path within the bucket" },
+              content: { type: "string", description: "Complete file text content" },
+              contentType: { type: "string", description: "Optional MIME type, defaults to text/plain" },
+            },
+            required: ["key", "content"],
+          },
+        },
+      },
+      required: ["name", "objects"],
     },
   },
   ...DATABASE_ASSISTANT_TOOLS,

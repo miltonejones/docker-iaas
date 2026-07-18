@@ -18,7 +18,7 @@ export function LaunchModal({ preset, onClose, onLaunched, prefill, replaceId }:
   const [ports, setPorts] = useState(
     (prefill?.ports ?? preset.ports).map((p) => ({ ...p })),
   );
-  const [env, setEnv] = useState(
+  const [env, setEnv] = useState<Preset['env']>(
     (prefill?.env ?? preset.env).map((e) => ({ ...e })),
   );
   const [submitting, setSubmitting] = useState(false);

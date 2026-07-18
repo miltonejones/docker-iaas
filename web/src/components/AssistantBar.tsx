@@ -52,6 +52,11 @@ const ACTION_LABEL: Record<string, string> = {
   pull_github_repo_to_bucket: 'Pull GitHub repo into bucket',
   pull_github_repo_to_container: 'Pull GitHub repo into container',
   commit_and_push_github_files: 'Commit and push to GitHub',
+  update_container_env: 'Update container env vars',
+  replace_in_container_file: 'Replace text in container file',
+  replace_in_bucket_object: 'Replace text in bucket file',
+  write_container_files: 'Write container files',
+  write_bucket_objects: 'Write bucket files',
 };
 
 const LOOKUP_LABEL: Record<string, string> = {
@@ -455,11 +460,12 @@ export function AssistantBar({
       sessionStorageKey ? localStorage.getItem(sessionStorageKey) : null
     );
     if (!savedSessionId) return;
+    const sessionToLoad = savedSessionId;
     let cancelled = false;
     async function load() {
       setBusy(true);
       try {
-        const session = await api.assistantGetSession(savedSessionId);
+        const session = await api.assistantGetSession(sessionToLoad);
         if (cancelled) return;
         setSessionId(session.id);
         setSessionName(session.name);
@@ -558,6 +564,9 @@ export function AssistantBar({
           presetId: str(input.presetId),
           image: str(input.image),
           name: str(input.name),
+          command: Array.isArray(input.command) && input.command.every((p) => typeof p === 'string')
+            ? (input.command as string[])
+            : undefined,
           ports: Array.isArray(input.ports) ? (input.ports as { container: string; host: number }[]) : undefined,
           env: Array.isArray(input.env) ? (input.env as { key: string; value: string }[]) : undefined,
           autoStart: true,
@@ -582,6 +591,7 @@ export function AssistantBar({
           String(input.id ?? ''),
           input.command as string[],
           str(input.workingDir),
+          bool(input.background),
         );
 
       case 'copy_host_file_to_container':
@@ -589,6 +599,32 @@ export function AssistantBar({
           String(input.sourcePath ?? ''),
           String(input.id ?? ''),
           String(input.path ?? ''),
+        );
+
+      case 'update_container_env':
+        if (!Array.isArray(input.env) || input.env.some((e) => typeof (e as { key: string }).key !== 'string')) {
+          throw new Error('update_container_env requires an env array of { key, value }.');
+        }
+        return api.containerUpdateEnv(
+          String(input.id ?? ''),
+          input.env as { key: string; value: string }[],
+        );
+
+      case 'replace_in_container_file':
+        return api.containerReplaceFile(
+          String(input.id ?? ''),
+          String(input.path ?? ''),
+          String(input.search ?? ''),
+          String(input.replace ?? ''),
+        );
+
+      case 'write_container_files':
+        if (!Array.isArray(input.files) || input.files.length === 0) {
+          throw new Error('write_container_files requires a non-empty files array.');
+        }
+        return api.containerWriteFiles(
+          String(input.id ?? ''),
+          input.files as { path: string; content: string }[],
         );
 
       case 'delete_container':
@@ -623,6 +659,23 @@ export function AssistantBar({
           String(input.bucket ?? ''),
           String(input.key ?? ''),
           str(input.contentType),
+        );
+
+      case 'replace_in_bucket_object':
+        return api.bucketReplaceObject(
+          String(input.name ?? ''),
+          String(input.key ?? ''),
+          String(input.search ?? ''),
+          String(input.replace ?? ''),
+        );
+
+      case 'write_bucket_objects':
+        if (!Array.isArray(input.objects) || input.objects.length === 0) {
+          throw new Error('write_bucket_objects requires a non-empty objects array.');
+        }
+        return api.bucketWriteObjects(
+          String(input.name ?? ''),
+          input.objects as { key: string; content: string; contentType?: string }[],
         );
 
       case 'run_host_build_preset':
@@ -707,6 +760,7 @@ export function AssistantBar({
           String(input.bucket ?? ''),
           str(input.ref),
           str(input.prefix),
+          bool(input.clean),
         );
 
       case 'pull_github_repo_to_container':
@@ -716,6 +770,7 @@ export function AssistantBar({
           String(input.id ?? ''),
           String(input.path ?? ''),
           str(input.ref),
+          bool(input.clean),
         );
 
       case 'commit_and_push_github_files':

@@ -87,6 +87,43 @@ docker compose up --build
 `/:/host:ro` with `HOST_DISK_PATH=/host` (so the gauge reports the *host*
 disk, not the container overlay).
 
+## Deploying to the Dockyard EC2 host
+
+The production host is `ec2-user@54.162.111.41`, accessed with
+`~/.ssh/dockyard-key.pem`. Its application directory is
+`/home/ec2-user/docker-iaas`. It is a synchronized source directory, not a
+Git checkout.
+
+From the repository root, deploy committed source while retaining the
+server-only configuration, persistent data, and credentials:
+
+```bash
+git push origin main
+rsync -az --delete \
+  --exclude '.git/' \
+  --exclude 'node_modules/' \
+  --exclude 'data/' \
+  --exclude '.env' \
+  --exclude '.claude/' \
+  -e 'ssh -i ~/.ssh/dockyard-key.pem' \
+  ./ ec2-user@54.162.111.41:/home/ec2-user/docker-iaas/
+ssh -i ~/.ssh/dockyard-key.pem ec2-user@54.162.111.41 \
+  'cd /home/ec2-user/docker-iaas && docker compose up --build -d --remove-orphans'
+```
+
+`data/` holds persistent Dockyard/MinIO state; `.env` selects the live
+provider and key-file locations; `.claude/` contains host-local assistant
+state. Do not overwrite any of them during a release. Caddy owns ports 80 and
+443 and proxies `dockyard-ai.com` to the localhost-only `console` service.
+
+Verify the rollout:
+
+```bash
+ssh -i ~/.ssh/dockyard-key.pem ec2-user@54.162.111.41 \
+  'cd /home/ec2-user/docker-iaas && docker compose ps && curl -fsS http://127.0.0.1:4300/api/system/ping'
+curl -fsSI https://dockyard-ai.com/
+```
+
 ## Configuration
 
 All optional — sensible defaults are used.

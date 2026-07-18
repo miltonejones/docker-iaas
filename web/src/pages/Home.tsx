@@ -107,7 +107,7 @@ export function HomePage({ snapshot, live, onPrune, pruning, runningCount, total
             <>
               <div className="home-traffic__chart" role="img" aria-label="Gateway requests by hour">
                 {hourlyTraffic.map((bucket, index) => (
-                  <div className="home-traffic__bar-wrap" key={bucket.start}>
+                  <div className="home-traffic__bar-wrap" key={bucket.start.toISOString()}>
                     <div
                       className="home-traffic__bar"
                       style={{ height: `${Math.max(3, (bucket.requestCount / maxHourlyRequests) * 100)}%` }}
