@@ -842,15 +842,65 @@ export function AssistantBar({
       setLog((l) => [...l, { kind: 'action', text: `Skipped: ${ACTION_LABEL[action.name] ?? action.name}` }]);
       entry = { toolUseId: action.id, ok: false, content: 'The user declined this action.' };
     } else {
-      try {
-        setActiveActionName(ACTION_LABEL[action.name] ?? action.name);
-        const result = await runAction(action, edits[action.id] ?? action.input);
-        setLog((l) => [...l, { kind: 'action', text: `Done: ${ACTION_LABEL[action.name] ?? action.name}`, result }]);
-        onChanged?.();
-        entry = { toolUseId: action.id, ok: true, content: result };
-      } catch (err) {
-        setLog((l) => [...l, { kind: 'error', text: (err as Error).message }]);
-        entry = { toolUseId: action.id, ok: false, content: { error: (err as Error).message } };
+      const input = edits[action.id] ?? action.input;
+      const isStreamingExec =
+        action.name === 'execute_container_command' &&
+        !(input.background === true || input.background === 'true');
+
+      if (isStreamingExec) {
+        try {
+          const id = String(input.id ?? '');
+          const cmd = input.command as string[];
+          const wd = typeof input.workingDir === 'string' ? input.workingDir : undefined;
+
+          if (!Array.isArray(cmd) || cmd.some((part) => typeof part !== 'string')) {
+            throw new Error('Container command must be an array of string arguments.');
+          }
+
+          setActiveActionName('Running container command');
+          let streamed = '';
+          setLog((l) => [...l, { kind: 'action', text: `$ ${cmd.join(' ')}\n` }]);
+
+          const stream = await api.containerExecStream(id, cmd, wd);
+          let exitCode: number | null = null;
+          for await (const event of stream) {
+            if (event.type === 'output') {
+              streamed += event.text as string;
+              setLog((l) => {
+                const copy = [...l];
+                copy[copy.length - 1] = { kind: 'action', text: `$ ${cmd.join(' ')}\n${streamed}` };
+                return copy;
+              });
+            } else if (event.type === 'done') {
+              exitCode = (event.exitCode as number) ?? null;
+            } else if (event.type === 'error') {
+              throw new Error(event.message as string);
+            }
+          }
+
+          const finalText = `$ ${cmd.join(' ')}\n${streamed}${streamed ? '\n' : ''}Exit: ${exitCode ?? 'unknown'}`;
+          setLog((l) => {
+            const copy = [...l];
+            copy[copy.length - 1] = { kind: 'action', text: finalText, result: { exitCode, output: streamed } };
+            return copy;
+          });
+
+          entry = { toolUseId: action.id, ok: true, content: { exitCode, output: streamed } };
+        } catch (err) {
+          setLog((l) => [...l, { kind: 'error', text: (err as Error).message }]);
+          entry = { toolUseId: action.id, ok: false, content: { error: (err as Error).message } };
+        }
+      } else {
+        try {
+          setActiveActionName(ACTION_LABEL[action.name] ?? action.name);
+          const result = await runAction(action, input);
+          setLog((l) => [...l, { kind: 'action', text: `Done: ${ACTION_LABEL[action.name] ?? action.name}`, result }]);
+          onChanged?.();
+          entry = { toolUseId: action.id, ok: true, content: result };
+        } catch (err) {
+          setLog((l) => [...l, { kind: 'error', text: (err as Error).message }]);
+          entry = { toolUseId: action.id, ok: false, content: { error: (err as Error).message } };
+        }
       }
 
     }

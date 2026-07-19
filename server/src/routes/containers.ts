@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import type Docker from 'dockerode';
 import tar from 'tar-stream';
 import { docker, dockyardNetworkConfig, ensureImage } from '../docker.js';
+import { getAuthUser } from '../auth.js';
 import { findPreset } from '../presets.js';
 
 export const containersRouter = Router();
@@ -43,10 +44,20 @@ function toView(c: Docker.ContainerInfo): ContainerView {
 
 // List all containers, including sizes (size=true) so the UI can show per-
 // instance disk footprint next to the fleet-wide totals.
-containersRouter.get('/', async (_req: Request, res: Response) => {
+containersRouter.get('/', async (req: Request, res: Response) => {
   try {
+    const userId = getAuthUser(req)?.userId;
     const list = await docker.listContainers({ all: true, size: true });
-    res.json(list.map(toView));
+    const filtered = userId
+      ? list.filter((c) => {
+          const owner = c.Labels?.['iaas.owner'];
+          const system = c.Labels?.['iaas.system'];
+          // System containers and containers owned by this user are visible.
+          // Legacy containers with no owner label are also visible (back compat).
+          return system || owner === userId || !owner;
+        })
+      : list;
+    res.json(filtered.map(toView));
   } catch (err) {
     res.status(502).json({ error: (err as Error).message });
   }
@@ -68,6 +79,7 @@ interface LaunchBody {
 // is not present locally, creates the container, and starts it by default.
 containersRouter.post('/', async (req: Request, res: Response) => {
   const body = req.body as LaunchBody;
+  const userId = getAuthUser(req)?.userId;
   const preset = body.presetId ? findPreset(body.presetId) : undefined;
   const image = body.image || preset?.image;
   if (!image) {
@@ -121,6 +133,7 @@ containersRouter.post('/', async (req: Request, res: Response) => {
       Labels: {
         ...(preset ? { 'iaas.preset': preset.id } : {}),
         ...(body.assistantManaged ? { 'iaas.assistant-managed': 'true' } : {}),
+        ...(userId ? { 'iaas.owner': userId } : {}),
       },
       Tty: needsTty,
       HostConfig: {
@@ -281,11 +294,109 @@ containersRouter.post('/:id/exec', async (req: Request, res: Response) => {
   }
 });
 
+// Streaming variant of exec — sends output lines in real-time via SSE.
+// Same validation and security model as /:id/exec.
+containersRouter.post('/:id/exec/stream', async (req: Request, res: Response) => {
+  const { command, workingDir } = req.body as Record<string, unknown>;
+  if (
+    !Array.isArray(command) ||
+    command.length === 0 ||
+    command.length > 32 ||
+    command.some((part) => typeof part !== 'string' || !part || part.length > 4096)
+  ) {
+    res.status(400).json({ error: 'command must be a non-empty array of up to 32 non-empty string arguments.' });
+    return;
+  }
+  const commandArgs = command as string[];
+  if (
+    workingDir !== undefined &&
+    (typeof workingDir !== 'string' ||
+      !workingDir.startsWith('/') ||
+      /\.\.(?:\/|$)/.test(workingDir) ||
+      workingDir.length > 4096)
+  ) {
+    res.status(400).json({ error: 'workingDir must be an absolute container path without "..".' });
+    return;
+  }
+
+  try {
+    const container = docker.getContainer(req.params.id);
+    const info = await container.inspect();
+    if (info.Config?.Labels?.['iaas.system']) {
+      res.status(403).json({ error: 'System-managed containers cannot execute assistant commands.' });
+      return;
+    }
+    if (info.Config?.Labels?.['iaas.assistant-managed'] !== 'true') {
+      res.status(403).json({ error: 'Assistant commands are limited to containers created by the assistant.' });
+      return;
+    }
+    if (!info.State?.Running) {
+      res.status(409).json({ error: 'Container is not running — start it before executing a command.' });
+      return;
+    }
+
+    const exec = await container.exec({
+      Cmd: commandArgs,
+      AttachStdout: true,
+      AttachStderr: true,
+      WorkingDir: workingDir,
+    });
+
+    res.set({
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    });
+    res.status(200);
+
+    const send = (data: Record<string, unknown>) => {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    send({ type: 'start', command: commandArgs, workingDir: workingDir ?? null });
+
+    const stream = await exec.start({ hijack: true, stdin: false });
+    let buf = Buffer.alloc(0);
+
+    stream.on('data', (chunk: Buffer) => {
+      buf = Buffer.concat([buf, chunk]);
+      while (buf.length >= 8) {
+        const len = buf.readUInt32BE(4);
+        if (buf.length < 8 + len) break;
+        const payload = buf.subarray(8, 8 + len).toString('utf8');
+        buf = buf.subarray(8 + len);
+        send({ type: 'output', text: payload });
+      }
+    });
+
+    stream.on('end', async () => {
+      try {
+        const result = await exec.inspect();
+        send({ type: 'done', exitCode: result.ExitCode ?? null });
+      } catch (err) {
+        send({ type: 'done', exitCode: null, error: (err as Error).message });
+      }
+      res.end();
+    });
+
+    stream.on('error', (err) => {
+      if (!res.writableFinished) {
+        send({ type: 'error', message: (err as Error).message });
+      }
+      res.end();
+    });
+  } catch (err) {
+    if (!res.headersSent) {
+      res.status(502).json({ error: (err as Error).message });
+    }
+  }
+});
+
 // Update environment variables on a container. Docker doesn't support mutating
 // env on a running container, so this stops → snapshots config → removes
 // (keeping volumes) → recreates with merged env → starts.
 containersRouter.post('/:id/env', async (req: Request, res: Response) => {
-  const { env: newEnv } = req.body as { env?: { key: string; value: string }[] };
+  const { env: newEnv, persist } = req.body as { env?: { key: string; value: string }[]; persist?: boolean };
   if (!newEnv || !Array.isArray(newEnv) || newEnv.length === 0) {
     res.status(400).json({ error: 'env must be a non-empty array of { key, value }.' });
     return;
@@ -296,6 +407,8 @@ containersRouter.post('/:id/env', async (req: Request, res: Response) => {
       return;
     }
   }
+
+  let snapshotImage: string | null = null;
 
   try {
     const container = docker.getContainer(req.params.id);
@@ -309,6 +422,18 @@ containersRouter.post('/:id/env', async (req: Request, res: Response) => {
     const wasRunning = info.State?.Running ?? false;
     if (wasRunning) await container.stop();
 
+    // --- Persist writable layer ---
+    // When persist is true, snapshot the container's filesystem into a
+    // temporary image via docker commit. The new container is created from
+    // that snapshot, preserving every runtime file (deployed sites, installed
+    // packages, config edits). The temp image is cleaned up afterwards.
+    let image = info.Config?.Image ?? '';
+    if (persist) {
+      snapshotImage = `dockyard-snapshot-${req.params.id}-${Date.now()}`;
+      await container.commit({ repo: snapshotImage });
+      image = snapshotImage;
+    }
+
     // Merge old env with new env — new keys overwrite old ones.
     const oldEnv: Record<string, string> = {};
     for (const e of info.Config?.Env ?? []) {
@@ -318,10 +443,14 @@ containersRouter.post('/:id/env', async (req: Request, res: Response) => {
     for (const e of newEnv) oldEnv[e.key] = e.value;
     const mergedEnv = Object.entries(oldEnv).map(([k, v]) => `${k}=${v}`);
 
-    // Snapshot the existing config we need to preserve.
+    // Snapshot the existing config we need to preserve, including the
+    // container's network attachments so gateway-reachable containers stay
+    // connected after recreation.
+    const networks = info.NetworkSettings?.Networks ?? {};
+    const networkNames = Object.keys(networks);
     const createOpts: Docker.ContainerCreateOptions = {
       name: (info.Name || '').replace(/^\//, ''),
-      Image: info.Config?.Image ?? '',
+      Image: image,
       Cmd: info.Config?.Cmd ?? undefined,
       Env: mergedEnv,
       ExposedPorts: info.Config?.ExposedPorts ?? undefined,
@@ -336,6 +465,9 @@ containersRouter.post('/:id/env', async (req: Request, res: Response) => {
           Target: m.Destination ?? '',
         })),
       },
+      ...(networkNames.length > 0
+        ? { NetworkingConfig: { EndpointsConfig: Object.fromEntries(networkNames.map((n) => [n, {}])) } }
+        : {}),
     };
 
     // Remove old container (keep volumes) and recreate with merged env.
@@ -343,7 +475,17 @@ containersRouter.post('/:id/env', async (req: Request, res: Response) => {
     const newContainer = await docker.createContainer(createOpts);
     if (wasRunning) await newContainer.start();
 
-    res.json({ id: newContainer.id, envUpdated: newEnv.map((e) => e.key) });
+    // The new container runs from the snapshot image — deleting it would
+    // corrupt the container (it stays listed but all operations 404).
+    // The snapshot outlives the container and becomes reclaimable by
+    // prune_images after the container is removed.
+    if (snapshotImage) {
+      docker.getImage(snapshotImage).inspect().catch(() => {
+        /* image exists check — no action needed */
+      });
+    }
+
+    res.json({ id: newContainer.id, envUpdated: newEnv.map((e) => e.key), persisted: !!snapshotImage });
   } catch (err) {
     res.status(502).json({ error: (err as Error).message });
   }
@@ -386,10 +528,17 @@ containersRouter.post('/:id/files/replace', async (req: Request, res: Response) 
       AttachStderr: true,
     });
     const readStream = await readExec.start({ hijack: true, stdin: false });
-    const { output: currentContent } = await readExecOutput(readStream);
+    const { output: currentContent, truncated } = await readExecOutput(readStream);
     const readResult = await readExec.inspect();
     if (readResult.ExitCode !== 0) {
       res.status(404).json({ error: `File not found or unreadable: ${currentContent.slice(0, 200)}` });
+      return;
+    }
+
+    if (truncated) {
+      res.status(413).json({
+        error: `File exceeds the 256 KiB read limit for search-and-replace. Read the file manually and use write_container_file to replace it, or use execute_container_command with sed.`,
+      });
       return;
     }
 

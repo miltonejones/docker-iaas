@@ -150,6 +150,20 @@ export const api = {
       json<{ command: string[]; workingDir: string | null; exitCode?: number | null; output?: string; truncated?: boolean; background?: boolean; execId?: string }>(r),
     ),
 
+  /** Streaming variant of containerExec — returns an async generator of SSE
+   *  events: {type:'start', command, workingDir}, {type:'output', text},
+   *  {type:'done', exitCode}, or {type:'error', message}. */
+  containerExecStream: (id: string, command: string[], workingDir?: string, signal?: AbortSignal) =>
+    fetch(`/api/containers/${id}/exec/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command, workingDir }),
+      signal,
+    }).then((r) => {
+      if (!r.ok) throw new Error(`Exec stream failed: ${r.statusText}`);
+      return parseSSE(r);
+    }),
+
   containerUpdateEnv: (id: string, env: { key: string; value: string }[], persist?: boolean) =>
     fetch(`/api/containers/${id}/env`, {
       method: 'POST',
