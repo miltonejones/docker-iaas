@@ -1089,7 +1089,10 @@ export function AssistantBar({
                         <span className="assistant-log__action-chevron">
                           <AppIcon name={expandedActions.has(i) ? 'chevron-down' : 'chevron-right'} />
                         </span>
-                        <span><AppIcon name="check" /> {entry.text}</span>
+                        <span className="assistant-log__action-label"><AppIcon name="check" /> {entry.text.includes('\n') ? entry.text.split('\n')[0] : entry.text}</span>
+                        {entry.text.includes('\n') && (
+                          <pre className="assistant-log__action-output">{entry.text}</pre>
+                        )}
                         {expandedActions.has(i) && entry.result !== undefined && (
                           <pre className="assistant-log__action-result">
                             {typeof entry.result === 'string'
