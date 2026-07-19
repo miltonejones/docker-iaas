@@ -1527,6 +1527,19 @@ textarea:focus {
 .pending-action-card .field:last-of-type {
   margin-bottom: 12px;
 }
+.pending-action-card textarea {
+  background: #282c34;
+  color: #abb2bf;
+  border-color: #3e4451;
+  font-family: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  tab-size: 2;
+}
+.pending-action-card textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
 .pending-action-card__actions {
   display: flex;
   justify-content: flex-end;
