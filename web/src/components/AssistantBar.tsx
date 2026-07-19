@@ -180,6 +180,7 @@ function parseLambdaFiles(value: unknown): LambdaFile[] | undefined {
 
 interface Props {
   onClose?: () => void;
+  onPin?: () => void;
   /** Called after any create so pages showing that data can refresh next time they mount. */
   onChanged?: () => void;
   /** A prompt already submitted from the toolbar search box — run it
@@ -194,16 +195,21 @@ interface Props {
   contextPrompt?: string;
   /** Browser storage key for resuming the latest session in an embedded assistant. */
   sessionStorageKey?: string;
+  /** Called when the active session id changes so the parent can track it.
+   *  Passed `null` when the session is reset to a fresh (unsaved) state. */
+  onSessionId?: (id: string | null) => void;
 }
 
 export function AssistantBar({
   onClose,
+  onPin,
   onChanged,
   initialPrompt,
   initialSessionId,
   embedded = false,
   contextPrompt,
   sessionStorageKey,
+  onSessionId,
 }: Props) {
   const [prompt, setPrompt] = useState('');
   const [log, setLog] = useState<LogEntry[]>([]);
@@ -215,6 +221,7 @@ export function AssistantBar({
   const [activeActionName, setActiveActionName] = useState<string | null>(null);
   const [thinkingWord, setThinkingWord] = useState(() => THINKING_WORDS[Math.floor(Math.random() * THINKING_WORDS.length)]);
   const [copiedMessage, setCopiedMessage] = useState<number | null>(null);
+  const [expandedActions, setExpandedActions] = useState<Set<number>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Keep the active conversation on its newest streamed or newly added entry.
@@ -242,6 +249,9 @@ export function AssistantBar({
   // separate answers. The ref survives that double-invoke since only the
   // effect (not the component instance) is torn down and rerun.
   const firedInitialPrompt = useRef(false);
+  const titleGeneratedRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionName, setSessionName] = useState('');
@@ -264,25 +274,31 @@ export function AssistantBar({
       setSessionSaving(true);
       const state: AssistantSessionState = { messages: rawMessages, log, pending, resolved };
       try {
-        if (!sessionId) {
+        if (!sessionIdRef.current) {
           const custom = sessionName.trim();
           const name = custom || deriveSessionName(log);
           const created = await api.assistantCreateSession(name, state);
           if (cancelled) return;
+          sessionIdRef.current = created.id;
           setSessionId(created.id);
           setSessionName(created.name);
+          onSessionId?.(created.id);
           if (sessionStorageKey) localStorage.setItem(sessionStorageKey, created.id);
           // If the user didn't name it themselves, ask Claude for a friendly
           // title and rename the session once. Best-effort and non-blocking —
           // saving already completed with the placeholder name, so a failure
           // here just leaves the truncated-first-message heuristic in place.
-          if (!custom) {
+          // Uses a ref guard so the title update survives useEffect re-runs
+          // (which would otherwise cancel the in-flight request when busy
+          // changes).
+          if (!custom && !titleGeneratedRef.current) {
+            titleGeneratedRef.current = true;
             const firstUser = log.find((e) => e.kind === 'user')?.text ?? '';
             const lastAssistant = [...log].reverse().find((e) => e.kind === 'assistant')?.text ?? '';
             api
               .assistantGenerateTitle(firstUser, lastAssistant)
               .then(({ name: title }) => {
-                if (cancelled || !title) return;
+                if (!title) return;
                 setSessionName(title);
                 return api.assistantUpdateSession(created.id, { name: title });
               })
@@ -291,7 +307,7 @@ export function AssistantBar({
               });
           }
         } else {
-          await api.assistantUpdateSession(sessionId, { state });
+          await api.assistantUpdateSession(sessionId!, { state });
         }
       } catch (err) {
         if (!cancelled) setError((err as Error).message);
@@ -308,7 +324,10 @@ export function AssistantBar({
 
   function resetToNewSession() {
     if (sessionStorageKey) localStorage.removeItem(sessionStorageKey);
+    titleGeneratedRef.current = false;
+    sessionIdRef.current = null;
     setSessionId(null);
+    onSessionId?.(null);
     setSessionName('');
     setPrompt('');
     setLog([]);
@@ -325,8 +344,11 @@ export function AssistantBar({
     setError(null);
     try {
       const session = await api.assistantGetSession(id);
+      sessionIdRef.current = session.id;
       setSessionId(session.id);
       setSessionName(session.name);
+      onSessionId?.(session.id);
+      titleGeneratedRef.current = true; // already has a name
       setLog(session.state.log ?? []);
       setRawMessages(session.state.messages ?? []);
       setPending(session.state.pending ?? []);
@@ -429,18 +451,31 @@ export function AssistantBar({
     }
   }
 
+
+  function cancelTurn() {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setLog((l) => [...l, { kind: 'action', text: 'Cancelled' }]);
+    setPending([]);
+    setRawMessages([]);
+    setBusy(false);
+  }
+
   async function askWithText(text: string) {
     setBusy(true);
     setError(null);
     setLog((l) => [...l, { kind: 'user', text }]);
     setPrompt('');
     try {
+      const aborter = new AbortController();
+      abortRef.current = aborter;
       const request = contextPrompt
         ? `${contextPrompt}\n\nUser request: ${text}`
         : text;
-      const stream = await api.assistantPlanStream(request, rawMessages);
+      const stream = await api.assistantPlanStream(request, rawMessages, abortRef.current!.signal);
       await consumeTurnStream(stream);
     } catch (err) {
+      if ((err as Error).name === 'AbortError') return;
       setError((err as Error).message);
     } finally {
       setBusy(false);
@@ -449,7 +484,8 @@ export function AssistantBar({
 
   async function ask() {
     const text = prompt.trim();
-    if (!text || busy) return;
+    if (!text) return;
+    if (busy) cancelTurn();
     await askWithText(text);
   }
 
@@ -467,8 +503,10 @@ export function AssistantBar({
       try {
         const session = await api.assistantGetSession(sessionToLoad);
         if (cancelled) return;
+        sessionIdRef.current = session.id;
         setSessionId(session.id);
         setSessionName(session.name);
+        onSessionId?.(session.id);
         setLog(session.state.log ?? []);
         setRawMessages(session.state.messages ?? []);
         setPending(session.state.pending ?? []);
@@ -608,6 +646,7 @@ export function AssistantBar({
         return api.containerUpdateEnv(
           String(input.id ?? ''),
           input.env as { key: string; value: string }[],
+          bool(input.persist),
         );
 
       case 'replace_in_container_file':
@@ -799,7 +838,7 @@ export function AssistantBar({
       try {
         setActiveActionName(ACTION_LABEL[action.name] ?? action.name);
         const result = await runAction(action, edits[action.id] ?? action.input);
-        setLog((l) => [...l, { kind: 'action', text: `Done: ${ACTION_LABEL[action.name] ?? action.name}` }]);
+        setLog((l) => [...l, { kind: 'action', text: `Done: ${ACTION_LABEL[action.name] ?? action.name}`, result }]);
         onChanged?.();
         entry = { toolUseId: action.id, ok: true, content: result };
       } catch (err) {
@@ -823,9 +862,11 @@ export function AssistantBar({
     }
 
     try {
-      const stream = await api.assistantConfirmStream(rawMessages, nextResolved);
+      if (!abortRef.current) abortRef.current = new AbortController();
+      const stream = await api.assistantConfirmStream(rawMessages, nextResolved, abortRef.current.signal);
       await consumeTurnStream(stream);
     } catch (err) {
+      if ((err as Error).name === 'AbortError') return;
       setError((err as Error).message);
     } finally {
       setActiveActionName(null);
@@ -841,6 +882,15 @@ export function AssistantBar({
     // decide intentionally reads the current turn state from this render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoApprove, busy, pending]);
+
+  function toggleActionResult(index: number) {
+    setExpandedActions((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }
 
   function editField(actionId: string, key: string, value: unknown) {
     setEdits((s) => ({ ...s, [actionId]: { ...s[actionId], [key]: value } }));
@@ -886,19 +936,19 @@ export function AssistantBar({
             </button>
           )}
           {!embedded && (
-            <button className="btn btn--ghost" onClick={onClose}>
-              <AppIcon name="close" /> Close
-            </button>
+            <span style={{ display: 'flex', gap: 4 }}>
+              {onPin && (
+                <button className="btn btn--ghost" onClick={onPin} title="Pin to workspace" disabled={busy}>
+                  <AppIcon name="external" /> Pin
+                </button>
+              )}
+              <button className="btn btn--ghost" onClick={onClose}>
+                <AppIcon name="close" /> Close
+              </button>
+            </span>
           )}
         </div>
-        {embedded && (
-          <div className="assistant-panel__session">
-            <span className="muted">{sessionSaving ? 'Saving…' : sessionName || 'New conversation'}</span>
-          </div>
-        )}
-
-        {!embedded && (
-          <div className="assistant-session-bar">
+        <div className="assistant-session-bar">
             <input
               className="assistant-session-bar__name"
               value={sessionName}
@@ -917,7 +967,6 @@ export function AssistantBar({
               </button>
             </div>
           </div>
-        )}
 
         {!embedded && sessionsOpen && (
           <div className="assistant-sessions-panel">
@@ -943,8 +992,8 @@ export function AssistantBar({
           </div>
         )}
 
-        <div className="assistant-panel__scroll" ref={embedded ? logRef : undefined}>
-          <div className="assistant-log" ref={embedded ? undefined : logRef}>
+        <div className="assistant-panel__scroll">
+          <div className="assistant-log" ref={logRef}>
             {log.length === 0 && (
               <p className="muted empty-sm">
                 {embedded
@@ -979,7 +1028,19 @@ export function AssistantBar({
                         </button>
                       </>
                     ) : entry.kind === 'action' ? (
-                      <><AppIcon name="check" /> {entry.text}</>
+                      <div className="assistant-log__action" onClick={() => toggleActionResult(i)}>
+                        <span className="assistant-log__action-chevron">
+                          <AppIcon name={expandedActions.has(i) ? 'chevron-down' : 'chevron-right'} />
+                        </span>
+                        <span><AppIcon name="check" /> {entry.text}</span>
+                        {expandedActions.has(i) && entry.result !== undefined && (
+                          <pre className="assistant-log__action-result">
+                            {typeof entry.result === 'string'
+                              ? entry.result
+                              : JSON.stringify(entry.result, null, 2)}
+                          </pre>
+                        )}
+                      </div>
                     ) : (
                       entry.text
                     )}
@@ -997,7 +1058,6 @@ export function AssistantBar({
                 {activeActionName ? `Running ${activeActionName} — ${thinkingWord}…` : `${thinkingWord}…`}
               </div>
             )}
-          </div>
 
           {pending.map((action) => {
           const destructive = DESTRUCTIVE.has(action.name);
@@ -1064,25 +1124,32 @@ export function AssistantBar({
             <span>Auto-approve tool actions</span>
             <span className="muted">(includes destructive actions)</span>
           </label>
+          </div>
         </div>
 
-        {pending.length === 0 && (
+        {(pending.length === 0 || busy || pending.length > 0) && (
           <div className="assistant-input">
             <input
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && ask()}
               placeholder="Describe what to create..."
-              disabled={busy}
+              disabled={busy && pending.length === 0}
               autoFocus
             />
-            <button
-              className="btn btn--primary assistant-input__send"
-              disabled={busy || !prompt.trim()}
+            {busy ? (
+              <button className="btn btn--danger assistant-input__send" onClick={cancelTurn} title="Stop assistant">
+                <AppIcon name="close" />
+              </button>
+            ) : (
+              <button
+                className="btn btn--primary assistant-input__send"
+                disabled={!prompt.trim()}
               onClick={ask}
             >
               {busy ? 'Thinking…' : <><AppIcon name="send" /> Ask</>}
             </button>
+            )}
           </div>
         )}
       </div>

@@ -10,6 +10,8 @@ import { BucketsPage } from './pages/Buckets';
 import { GatewayPage } from './pages/Gateway';
 import { DatabasesPage } from './pages/Databases';
 import { AssistantBar } from './components/AssistantBar';
+import { LoginPage } from './components/LoginPage';
+import { useAuth } from './AuthContext';
 import { emitRefresh } from './refresh';
 import { AppIcon } from './icons';
 
@@ -23,19 +25,41 @@ const SERVICES = [
 ] as const;
 
 function ServiceNav() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const location = useLocation();
+  const current = SERVICES.find((s) => location.pathname === s.path || (s.path !== '/' && location.pathname.startsWith(s.path)));
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
   return (
-    <nav className="service-nav">
-      {SERVICES.map((s) => (
-        <NavLink
-          key={s.path}
-          to={s.path}
-          end={s.path === '/'}
-          className={({ isActive }) => `service-nav__btn${isActive ? ' service-nav__btn--active' : ''}`}
-        >
-          <AppIcon name={s.icon} /> {s.label}
-        </NavLink>
-      ))}
-    </nav>
+    <div className="service-dropdown" ref={ref}>
+      <button className="service-dropdown__btn" onClick={() => setOpen(!open)}>
+        <AppIcon name={current?.icon || 'menu'} /> {current?.label || 'Menu'} <span className="service-dropdown__chevron">{open ? '▴' : '▾'}</span>
+      </button>
+      {open && (
+        <div className="service-dropdown__menu">
+          {SERVICES.map((s) => (
+            <NavLink
+              key={s.path}
+              to={s.path}
+              end={s.path === '/'}
+              className={({ isActive }) => `service-dropdown__item${isActive ? ' service-dropdown__item--active' : ''}`}
+              onClick={() => setOpen(false)}
+            >
+              <AppIcon name={s.icon} /> {s.label}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -133,6 +157,7 @@ function Breadcrumbs() {
 }
 
 export function App() {
+  const { token, email, logout } = useAuth();
   const [presets, setPresets] = useState<Preset[]>([]);
   const [containers, setContainers] = useState<Container[]>([]);
   const [usage, setUsage] = useState<UsageSnapshot | null>(null);
@@ -144,6 +169,8 @@ export function App() {
     prompt?: string;
     sessionId?: string;
   } | null>(null);
+  const [assistantPinned, setAssistantPinned] = useState(false);
+  const [assistantSessionId, setAssistantSessionId] = useState<string | undefined>(undefined);
   const [modalKey, setModalKey] = useState(0);
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const [sessionsList, setSessionsList] = useState<AssistantSessionSummary[]>([]);
@@ -256,6 +283,8 @@ export function App() {
 
   const running = containers.filter((c) => c.state === 'running' && !c.system).length;
 
+  if (!token) return <LoginPage />;
+
   return (
     <BrowserRouter>
       <div className="app">
@@ -276,6 +305,8 @@ export function App() {
               </div>
             </Link>
             <ServiceNav />
+          </div>
+          <div className="topbar__center">
             <label className="assistant-search">
               <span className="assistant-search__icon"><AppIcon name="assistant" /></span>
               <input
@@ -285,6 +316,11 @@ export function App() {
                 placeholder="Ask Dockyard.ai to do something..."
               />
             </label>
+          </div>
+          <div className="topbar__right">
+            <button className="btn btn--ghost btn--sm" onClick={logout} title={`Sign out (${email})`}>
+              <AppIcon name="user" />
+            </button>
           </div>
         </header>
 
@@ -325,25 +361,22 @@ export function App() {
           </div>
         )}
 
-        {assistantModal && (
+        {assistantModal && !assistantPinned && (
           <AssistantBar
             key={modalKey}
             initialPrompt={assistantModal.prompt}
             initialSessionId={assistantModal.sessionId}
-            onClose={() => setAssistantModal(null)}
-            onChanged={() => {
-              // App holds container state (header/Home/Containers all read it),
-              // so refresh that here, then broadcast so whichever page is
-              // mounted (Functions/Buckets/Gateway/Home) reloads its own data.
-              refreshContainers();
-              emitRefresh();
-            }}
+            onClose={() => { setAssistantModal(null); setAssistantSessionId(undefined); }}
+            onPin={() => setAssistantPinned(true)}
+            onChanged={() => { refreshContainers(); emitRefresh(); }}
+            onSessionId={(id) => setAssistantSessionId(id ?? undefined)}
           />
         )}
 
         <Breadcrumbs />
 
-        <main className="content">
+        <div className="workspace">
+          <main className="content">
           <Routes>
               <Route
                 path="/"
@@ -401,6 +434,30 @@ export function App() {
               <Route path="/gateway" element={<GatewayPage />} />
             </Routes>
           </main>
+          {assistantModal && assistantPinned && (
+            <aside className="assistant-pinned-panel">
+              <div className="assistant-pinned-panel__head">
+                <span>Ask Dockyard</span>
+                <span>
+                  <button className="btn btn--ghost btn--sm" onClick={() => setAssistantPinned(false)} title="Unpin to modal">
+                    <AppIcon name="external" /> Unpin
+                  </button>
+                  <button className="btn btn--ghost btn--sm" onClick={() => { setAssistantModal(null); setAssistantPinned(false); }}>
+                    <AppIcon name="close" /> Close
+                  </button>
+                </span>
+              </div>
+              <AssistantBar
+                key={modalKey}
+                embedded
+                initialPrompt={assistantModal.prompt}
+                initialSessionId={assistantModal.sessionId ?? assistantSessionId}
+                onClose={() => { setAssistantModal(null); setAssistantPinned(false); }}
+                onChanged={() => { refreshContainers(); emitRefresh(); }}
+              />
+            </aside>
+          )}
+        </div>
 
         <footer className="app-footer">
           <span className="muted">Deploy anything. Ask for the rest.</span>
