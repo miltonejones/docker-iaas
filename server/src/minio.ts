@@ -26,6 +26,17 @@ export async function ensureMinio(): Promise<void> {
 
   const existing = await docker.listContainers({ all: true, filters: { name: [CONTAINER_NAME] } });
   if (existing.length > 0) {
+    // Sync SQLite credentials to the running container's env so the S3
+    // client doesn't produce a signature mismatch when the SQLite db was
+    // recreated or migrated separately from the MinIO data volume.
+    const info = await docker.getContainer(existing[0].Id).inspect();
+    const env = info.Config?.Env || [];
+    const containerUser = env.find((e) => e.startsWith('MINIO_ROOT_USER='))?.split('=')[1];
+    const containerPass = env.find((e) => e.startsWith('MINIO_ROOT_PASSWORD='))?.split('=')[1];
+    if (containerUser && containerPass) {
+      if (containerUser !== accessKey) setSetting('minio_root_user', containerUser);
+      if (containerPass !== secretKey) setSetting('minio_root_password', containerPass);
+    }
     if (existing[0].State !== 'running') {
       await docker.getContainer(existing[0].Id).start();
     }
