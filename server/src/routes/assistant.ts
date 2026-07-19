@@ -2,6 +2,7 @@ import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
 import { Router, type Request, type Response } from "express";
+import { getAuthUser } from "../auth.js";
 import Anthropic from "@anthropic-ai/sdk";
 import {
   GetObjectCommand,
@@ -19,6 +20,9 @@ import {
   createAssistantSession,
   updateAssistantSession,
   deleteAssistantSession,
+  listAssistantIssues,
+  getAssistantIssue,
+  createAssistantIssue,
 } from "../db.js";
 import { getS3Client } from "../minio.js";
 import { PRESETS } from "../presets.js";
@@ -87,13 +91,13 @@ Rules:
 - For multi-step requests (e.g. "create a function and attach a gateway route to it"), call one tool at a time and wait for its real result before calling the next one — never invent an id.
 - Default runtime is "node" unless the user names another ("python" or "sh").
 - When writing a function's "code", write complete, runnable source for the chosen runtime. Functions invoked through a gateway route follow this contract: the incoming request arrives as JSON in the DOCKYARD_REQUEST environment variable, shaped like { httpMethod, path, headers, queryStringParameters, body, isBase64Encoded } (body may be null). The function must print exactly one JSON object to stdout shaped like { "statusCode": number, "headers"?: object, "body": string, "isBase64Encoded"?: boolean }. Do not print anything else to stdout.
-- When a gateway route targets a lambda function, targetType must be \"lambda\" and targetId must be the id returned by the create_lambda_function call. When it targets a bucket, targetType must be \"bucket\" and targetId is simply the bucket's name.\n    - All gateway routes are reachable at /gw/{name} — always tell the user this prefix when confirming a route was created (e.g. \"Your site is live at /gw/my-site\").
+- When a gateway route targets a lambda function, targetType must be \"lambda\" and targetId must be the id returned by the create_lambda_function call. When it targets a bucket, targetType must be \"bucket\" and targetId is simply the bucket's name.\n    - All gateway routes are reachable at /gw/{name} — always tell the user the full URL when confirming a route was created. Critical: the backend receives the request with /gw/ stripped but the route name preserved — /gw/my-site/about → /my-site/about on the backend. When configuring a reverse proxy (nginx, etc.) or SPA, account for the /{name}/ path prefix (base href, asset paths, API endpoint prefixes all need it).
 - gateway route "pathPattern" is matched by EXACT string equality against the incoming request path (with the route's own name already stripped from the front) — there is no wildcard, glob, or prefix support. A trailing "/*" or "/:id" will never match anything real; do not use them. To match every path and method under a route (a whole static site, or a REST resource with multiple sub-paths like "/todos" and "/todos/{id}"), omit both "method" and "pathPattern" entirely rather than guessing a pattern.
 - A gateway route "name" is a group that can hold multiple method/pathPattern/target combinations — e.g. GET /todos going to one target and POST /todos/{id} going to another, all under the same name. create_gateway_route only accepts one method/pathPattern/targetId combination per call, so build up a multi-endpoint route by calling create_gateway_route once per combination, reusing the same "name" each time (this mirrors the "+ Add endpoint" button in the Gateway UI, which adds one endpoint to an existing named route). Never claim this isn't supported — it is; it just takes one tool call per endpoint, same as any other multi-step request.
 - To host a static website on a BUCKET (the default, simplest path): create the bucket first if it doesn't already exist (check with list_buckets), write the files with write_bucket_objects (accepts an array of { key, content } — prefer this bulk form for multi-file sites), then create_gateway_route with targetType "bucket" and targetId set to the bucket name, omitting method and pathPattern so every file in the site is reachable. Requests to "/" or a path with no file extension serve "index.html" (SPA-style fallback). For a quick single-file edit, use replace_in_bucket_object instead of reading and rewriting the whole file.
 - To host a site on an OS CONTAINER instead (when the user asks for a container/VM/server, needs a long-running process, dynamic requests, or explicitly wants it on a container rather than a bucket): call launch_container with a serving image — prefer "nginx:alpine" for static sites because its default command serves /usr/share/nginx/html on port 80 with no extra setup. Write the site files with write_container_files (accepts an array of { path, content } — prefer this bulk form), then create_gateway_route with targetType "container", targetId set to the container id returned by launch_container, targetPort 80, omitting method and pathPattern so every path reaches the container. For a quick single-file edit, use replace_in_container_file instead of rewriting the whole file. Use this path only when a container is genuinely wanted; otherwise default to the bucket path.
 - When launching a container for builds or development (not a serving container with a real server process), pass command: ["sleep", "infinity"] to launch_container to keep it alive — images like node:22-alpine exit immediately otherwise because their default CMD is just "node" with no script.
-- Containers launched through this assistant can run confirmed commands with execute_container_command. Pass command as an argument array, never as a shell string: for example, ["npm", "ci"] or ["npx", "ng", "build"]. Set workingDir when the project is not in the container's default working directory. To start a long-running server (e.g. a Node.js API), set background: true so the command runs detached and doesn't block — the tool returns immediately. To update environment variables on a running container, use update_container_env — it stops, merges the new vars with existing ones, recreates the container, and starts it again.
+- Containers launched through this assistant can run confirmed commands with execute_container_command. Pass command as an argument array, never as a shell string: for example, ["npm", "ci"] or ["npx", "ng", "build"]. Set workingDir when the project is not in the container's default working directory. To start a long-running server (e.g. a Node.js API), set background: true so the command runs detached and doesn't block — the tool returns immediately. To update environment variables on a running container, use update_container_env — it stops, merges the new vars with existing ones, recreates the container, and starts it again. Pass persist: true to snapshot the writable layer before recreating so runtime files survive.
 - The host filesystem is available read-only within Dockyard's configured host-files mount. Use list_host_directory to inspect one directory at a time, then read_host_file to read an explicitly requested text file. Both require absolute host paths (for example, "/home/me/project"). Do not read files the user has not requested or that are likely to contain secrets (such as .env files, SSH keys, credential stores, or private keys). Host file reads are capped at 512 KiB and 50,000 characters; binary files cannot be read. To copy one host file to a bucket, use copy_host_file_to_bucket. To copy one host file to a container folder, use copy_host_file_to_container. Both require confirmation and accept the source as its absolute HOST path. Host file transfers support regular files up to 200 MiB.
 - To build a configured host project and deploy its artifacts to a container, first call list_host_build_presets to find the exact preset, then call run_host_build_preset with its name, target container id, and destination directory. Presets contain fixed host-side commands and artifact directories; never invent a command, command arguments, working directory, or artifact path.
 - For database work, always resolve the saved connection id first (list_database_connections unless it is already known). Use inspect_database_schema to explore structure, run_database_read_query for bounded read-only access, execute_database_mutation for one confirmed write, execute_database_migration for confirmed schema/multi-step changes, execute_database_access_grant for structured MySQL GRANT or MongoDB grantRolesToUser requests, create_database_backup to generate a backup job, restore_database_backup to restore from a prior backup job id, and list_database_jobs / get_database_job to inspect backup or restore history.
@@ -136,7 +140,7 @@ const tools: Anthropic.Tool[] = [
   {
     name: "create_gateway_route",
     description:
-      'Create an API Gateway route pointing at a target resource. The route will be reachable at /gw/{name} — remember to tell the user that prefix. Call this when the user wants to expose or attach an endpoint. For targetType "lambda", targetId is the id returned by create_lambda_function. For targetType "bucket", targetId is just the bucket name (no lookup needed) — use this to serve a static site written with write_bucket_object. For targetType "container", targetId is the container id returned by launch_container and targetPort is the port the server listens on inside that container (e.g. 80 for nginx) — use this to serve a site hosted on an OS container written with write_container_file.',
+      'Create an API Gateway route pointing at a target resource. The route will be reachable at /gw/{name}. Important: the backend receives the request with the /gw/ prefix stripped but the route name preserved — e.g. /gw/my-site/about becomes /my-site/about on the backend. Tell the user this so they configure their server/app correctly (e.g. nginx needs to serve from /{name}/..., and SPA base href or asset paths must account for the route name prefix). Call this when the user wants to expose or attach an endpoint. For targetType "lambda", targetId is the id returned by create_lambda_function. For targetType "bucket", targetId is just the bucket name (no lookup needed) — use this to serve a static site written with write_bucket_object. For targetType "container", targetId is the container id returned by launch_container and targetPort is the port the server listens on inside that container (e.g. 80 for nginx) — use this to serve a site hosted on an OS container written with write_container_file.',
     input_schema: {
       type: "object",
       properties: {
@@ -704,7 +708,7 @@ const tools: Anthropic.Tool[] = [
   {
     name: "update_container_env",
     description:
-      "Update (add, change, or merge) environment variables on a container. Stops the container, merges the new env vars with existing ones, recreates the container with the same image/config, and starts it again if it was running. Requires user confirmation.",
+      "Update (add, change, or merge) environment variables on a container. Stops the container, merges the new env vars with existing ones, recreates the container with the same image/config, and starts it again if it was running. By default, recreating from the image wipes the container's writable filesystem layer. Pass persist: true to snapshot the writable layer first via docker commit — this preserves all runtime files (deployed sites, installed packages, config edits) across the env update. Requires user confirmation.",
     input_schema: {
       type: "object",
       properties: {
@@ -717,6 +721,10 @@ const tools: Anthropic.Tool[] = [
             properties: { key: { type: "string" }, value: { type: "string" } },
             required: ["key", "value"],
           },
+        },
+        persist: {
+          type: "boolean",
+          description: "If true, snapshot the writable filesystem layer before recreating so runtime files survive the env update.",
         },
       },
       required: ["id", "env"],
@@ -801,6 +809,49 @@ const tools: Anthropic.Tool[] = [
       required: ["name", "objects"],
     },
   },
+  {
+    name: "report_issue",
+    description:
+      "Report a bug, error, missing feature, or operational issue. Persists a structured report to the Dockyard issue store so it can be reviewed later. Use this when you encounter an error that prevented you from completing a user request, or when a user explicitly asks you to log an issue. Include a clear summary, a category (bug, error, missing_feature, performance, security, or general), and any relevant contextual details such as the resource ids, tool names, error messages, and reproduction steps.",
+    input_schema: {
+      type: "object",
+      properties: {
+        summary: { type: "string", description: "Short one-line description of the issue" },
+        category: {
+          type: "string",
+          enum: ["bug", "error", "missing_feature", "performance", "security", "general"],
+          description: "Issue category",
+        },
+        details: {
+          type: "object",
+          description: "Structured details: what happened, expected outcome, relevant resource ids, tool names, error messages, reproduction steps, and any context that helps diagnose the issue.",
+        },
+      },
+      required: ["summary"],
+    },
+  },
+  {
+    name: "list_issues",
+    description:
+      "List recently reported issues from the issue store, newest first. Use this to check whether a problem has already been reported before filing a duplicate.",
+    input_schema: {
+      type: "object",
+      properties: {
+        limit: { type: "number", description: "Maximum results (default 20, max 50)" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_issue",
+    description:
+      "Read one reported issue by id, including its full details.",
+    input_schema: {
+      type: "object",
+      properties: { issueId: { type: "string", description: "Issue id, e.g. iss-abc123" } },
+      required: ["issueId"],
+    },
+  },
   ...DATABASE_ASSISTANT_TOOLS,
   ...GITHUB_ASSISTANT_TOOLS,
 ];
@@ -824,6 +875,8 @@ const READ_ONLY_TOOLS = new Set([
   "list_host_build_presets",
   "list_host_directory",
   "read_host_file",
+  "list_issues",
+  "get_issue",
   ...DATABASE_ASSISTANT_READ_ONLY_TOOLS,
   ...GITHUB_ASSISTANT_READ_ONLY_TOOLS,
 ]);
@@ -843,6 +896,7 @@ async function streamToString(body: unknown): Promise<string> {
 async function executeReadOnlyTool(
   name: string,
   input: Record<string, unknown>,
+  userId?: string,
 ): Promise<unknown> {
   switch (name) {
     case "list_containers": {
@@ -1016,6 +1070,16 @@ async function executeReadOnlyTool(
       return listHostDirectory(input.sourcePath);
     case "read_host_file":
       return readHostTextFile(input.sourcePath);
+    case "list_issues": {
+      const limitRaw = Number(input.limit);
+      const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(50, Math.trunc(limitRaw))) : 20;
+      return listAssistantIssues(limit, userId).map(toIssueSummary);
+    }
+    case "get_issue": {
+      const row = getAssistantIssue(String(input.issueId ?? ""), userId);
+      if (!row) return { error: `Issue "${input.issueId}" not found.` };
+      return toIssueSummary(row);
+    }
     default:
       if (DATABASE_ASSISTANT_READ_ONLY_TOOLS.has(name)) {
         return executeDatabaseAssistantReadOnlyTool(name, input);
@@ -1030,9 +1094,10 @@ async function executeReadOnlyTool(
 async function safeExecuteReadOnly(
   name: string,
   input: Record<string, unknown>,
+  userId?: string,
 ): Promise<{ ok: boolean; content: unknown }> {
   try {
-    return { ok: true, content: await executeReadOnlyTool(name, input) };
+    return { ok: true, content: await executeReadOnlyTool(name, input, userId) };
   } catch (err) {
     return { ok: false, content: { error: (err as Error).message } };
   }
@@ -1176,6 +1241,7 @@ async function respondStream(
             const r = await safeExecuteReadOnly(
               b.name,
               b.input as Record<string, unknown>,
+              getAuthUser(req)?.userId,
             );
             return { toolUseId: b.id, ok: r.ok, content: r.content };
           }),
@@ -1201,7 +1267,7 @@ async function respondStream(
       // back to Claude without involving the client.
       const resolved = await Promise.all(
         readOnlyCalls.map((b) =>
-          safeExecuteReadOnly(b.name, b.input as Record<string, unknown>),
+          safeExecuteReadOnly(b.name, b.input as Record<string, unknown>, getAuthUser(req)?.userId),
         ),
       );
       if (aborted) return;
@@ -1307,28 +1373,60 @@ assistantRouter.post("/title", async (req: Request, res: Response) => {
     return;
   }
   try {
-    const out = await client.messages.create({
-      model: TITLE_MODEL,
-      max_tokens: 24,
-      system:
-        "Generate a short, descriptive title (3-6 words, title case, no quotes, no trailing punctuation, no emoji) summarizing what the user asked for. Reply with only the title.",
-      messages: [
-        {
-          role: "user",
-          content: `User asked: ${userText}\n\nAssistant replied: ${(reply || "").slice(0, 600)}`,
+    let title: string | null = null;
+
+    if (PROVIDER === 'deepseek') {
+      const deepseekRes = await fetch('https://api.deepseek.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${resolveApiKey('deepseek')}`,
         },
-      ],
-    });
-    const title = extractText(out.content)
-      .replace(/\s+/g, " ")
-      .trim()
-      .replace(/^["'“”]+|["'“”]+$/g, "")
-      .slice(0, 80);
+        body: JSON.stringify({
+          model: 'deepseek-chat',
+          max_tokens: 32,
+          messages: [
+            {
+              role: 'user',
+              content: `Summarize this conversation in 3-6 words, title case, no quotes or punctuation:\n\nUser: ${userText}\nAssistant: ${(reply || "").slice(0, 600)}`,
+            },
+          ],
+        }),
+      });
+      const body = await deepseekRes.json() as { choices?: { message?: { content?: string } }[] };
+      title = body.choices?.[0]?.message?.content?.trim() ?? null;
+    } else {
+      const out = await client.messages.create({
+        model: TITLE_MODEL,
+        max_tokens: 32,
+        system: "Generate a short, descriptive title summarizing what the user asked for. Reply with only the title.",
+        messages: [
+          {
+            role: "user",
+            content: `User asked: ${userText}\n\nAssistant replied: ${(reply || "").slice(0, 600)}`,
+          },
+        ],
+      });
+      title = extractText(out.content).replace(/\s+/g, " ").trim().slice(0, 80);
+    }
+
     res.json({ name: title || userText.slice(0, 60) });
   } catch (err) {
     res.status(502).json({ error: (err as Error).message });
   }
 });
+
+function toIssueSummary(r: import("../db.js").AssistantIssueRow) {
+  let details: unknown = {};
+  try { details = JSON.parse(r.details_json); } catch { /* ok */ }
+  return {
+    id: r.id,
+    summary: r.summary,
+    category: r.category,
+    details,
+    createdAt: r.created_at,
+  };
+}
 
 function toSessionSummary(r: {
   id: string;
@@ -1354,9 +1452,10 @@ function toSessionFull(r: import("../db.js").AssistantSessionRow) {
   return { ...toSessionSummary(r), state };
 }
 
-assistantRouter.get("/sessions", (_req: Request, res: Response) => {
+assistantRouter.get("/sessions", (req: Request, res: Response) => {
   try {
-    res.json(listAssistantSessions().map(toSessionSummary));
+    const userId = getAuthUser(req)?.userId;
+    res.json(listAssistantSessions(userId).map(toSessionSummary));
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -1364,7 +1463,8 @@ assistantRouter.get("/sessions", (_req: Request, res: Response) => {
 
 assistantRouter.get("/sessions/:id", (req: Request, res: Response) => {
   try {
-    const row = getAssistantSession(req.params.id);
+    const userId = getAuthUser(req)?.userId;
+    const row = getAssistantSession(req.params.id, userId);
     if (!row) {
       res.status(404).json({ error: "Session not found." });
       return;
@@ -1377,6 +1477,7 @@ assistantRouter.get("/sessions/:id", (req: Request, res: Response) => {
 
 assistantRouter.post("/sessions", (req: Request, res: Response) => {
   try {
+    const userId = getAuthUser(req)?.userId;
     const { name, state } = req.body as { name?: string; state?: unknown };
     if (!name?.trim()) {
       res.status(400).json({ error: "A session name is required." });
@@ -1387,6 +1488,7 @@ assistantRouter.post("/sessions", (req: Request, res: Response) => {
       id,
       name.trim(),
       JSON.stringify(state ?? {}),
+      userId,
     );
     res.status(201).json(toSessionFull(row));
   } catch (err) {
@@ -1419,6 +1521,42 @@ assistantRouter.delete("/sessions/:id", (req: Request, res: Response) => {
       return;
     }
     res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Assistant issue reporting
+// ---------------------------------------------------------------------------
+
+assistantRouter.get("/issues", (req: Request, res: Response) => {
+  try {
+    const userId = getAuthUser(req)?.userId;
+    const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 20));
+    res.json(listAssistantIssues(limit, userId).map(toIssueSummary));
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+assistantRouter.post("/issues", (req: Request, res: Response) => {
+  try {
+    const userId = getAuthUser(req)?.userId;
+    const { summary, category, details } = req.body as {
+      summary?: string;
+      category?: string;
+      details?: Record<string, unknown>;
+    };
+    if (!summary?.trim()) {
+      res.status(400).json({ error: "A summary is required." });
+      return;
+    }
+    const row = createAssistantIssue(
+      { summary: summary.trim(), category, details },
+      userId,
+    );
+    res.status(201).json(toIssueSummary(row));
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

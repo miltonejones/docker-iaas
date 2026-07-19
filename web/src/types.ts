@@ -361,6 +361,8 @@ export interface AssistantResolvedResult {
 export interface AssistantLogEntry {
   kind: 'user' | 'assistant' | 'action' | 'error';
   text: string;
+  /** Api response from a tool execution, shown when the user expands an action entry. */
+  result?: unknown;
 }
 
 /** Everything needed to resume an Ask Dockyard conversation exactly where it
@@ -399,4 +401,12 @@ export interface BuildCacheEntry {
   created: string;
   inUse: boolean;
   shared: boolean;
+}
+
+export interface AssistantIssue {
+  id: string;
+  summary: string;
+  category: string;
+  details: unknown;
+  createdAt: string;
 }

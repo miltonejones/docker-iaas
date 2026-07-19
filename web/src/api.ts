@@ -59,6 +59,24 @@ async function* parseSSE(response: Response): AsyncGenerator<Record<string, unkn
   }
 }
 
+/** Module-level auth header provider — set by AuthContext on mount. */
+let authHeaders: () => Record<string, string> = () => ({});
+
+export function setAuthHeadersProvider(fn: () => Record<string, string>) {
+  authHeaders = fn;
+}
+
+// Intercept global fetch to inject auth headers on same-origin /api/ requests.
+const _originalFetch = globalThis.fetch;
+globalThis.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  if (url.startsWith('/api/')) {
+    const headers = { ...authHeaders(), ...(init?.headers as Record<string, string> || {}) };
+    return _originalFetch(input, { ...init, headers });
+  }
+  return _originalFetch(input, init);
+} as typeof fetch;
+
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let msg = res.statusText;
@@ -132,12 +150,12 @@ export const api = {
       json<{ command: string[]; workingDir: string | null; exitCode?: number | null; output?: string; truncated?: boolean; background?: boolean; execId?: string }>(r),
     ),
 
-  containerUpdateEnv: (id: string, env: { key: string; value: string }[]) =>
+  containerUpdateEnv: (id: string, env: { key: string; value: string }[], persist?: boolean) =>
     fetch(`/api/containers/${id}/env`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ env }),
-    }).then((r) => json<{ id: string; envUpdated: string[] }>(r)),
+      body: JSON.stringify({ env, persist }),
+    }).then((r) => json<{ id: string; envUpdated: string[]; persisted: boolean }>(r)),
 
   containerReplaceFile: (id: string, path: string, search: string, replace: string) =>
     fetch(`/api/containers/${id}/files/replace`, {
@@ -512,11 +530,12 @@ export const api = {
    *  conversation so far — pass it on every follow-up prompt in the same
    *  session so the model retains context (e.g. "the function" resolving to
    *  whatever was just discussed), not just the latest message in isolation. */
-  assistantPlanStream: (prompt: string, messages?: unknown[]) =>
+  assistantPlanStream: (prompt: string, messages?: unknown[], signal?: AbortSignal) =>
     fetch('/api/assistant/plan', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt, messages }),
+      signal,
     }).then((r) => {
       if (!r.ok) throw new Error(`Assistant plan failed: ${r.statusText}`);
       return parseSSE(r);
@@ -534,11 +553,13 @@ export const api = {
   assistantConfirmStream: (
     messages: unknown[],
     results: { toolUseId: string; ok: boolean; content: unknown }[],
+    signal?: AbortSignal,
   ) =>
     fetch('/api/assistant/confirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ messages, results }),
+      signal,
     }).then((r) => {
       if (!r.ok) throw new Error(`Assistant confirm failed: ${r.statusText}`);
       return parseSSE(r);
@@ -575,6 +596,13 @@ export const api = {
 
   assistantDeleteSession: (id: string) =>
     fetch(`/api/assistant/sessions/${id}`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r)),
+
+  assistantReportIssue: (summary: string, category?: string, details?: Record<string, unknown>) =>
+    fetch('/api/assistant/issues', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ summary, category, details }),
+    }).then((r) => json<{ id: string; summary: string; category: string; details: unknown; createdAt: string }>(r)),
 };
 
 /** Subscribe to the live usage stream. Returns an unsubscribe function. */

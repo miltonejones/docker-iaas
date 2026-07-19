@@ -120,6 +120,33 @@ export function initDb(): void {
   }
 
   db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      network_name TEXT NOT NULL,
+      port_range_start INTEGER NOT NULL,
+      port_range_end INTEGER NOT NULL,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // Migration: add user_id columns to existing resource tables.
+  try { db.exec('ALTER TABLE functions ADD COLUMN user_id TEXT REFERENCES users(id)'); } catch { /* ok */ }
+  try { db.exec('ALTER TABLE routes ADD COLUMN user_id TEXT REFERENCES users(id)'); } catch { /* ok */ }
+  try { db.exec('ALTER TABLE database_connections ADD COLUMN user_id TEXT REFERENCES users(id)'); } catch { /* ok */ }
+  try { db.exec('ALTER TABLE assistant_sessions ADD COLUMN user_id TEXT REFERENCES users(id)'); } catch { /* ok */ }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS bucket_owners (
+      bucket_name TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+
+  db.exec(`
     CREATE TABLE IF NOT EXISTS function_env (
       function_id TEXT NOT NULL,
       key TEXT NOT NULL,
@@ -196,6 +223,18 @@ export function initDb(): void {
   `);
 
   db.exec(`
+    CREATE TABLE IF NOT EXISTS assistant_issues (
+      id TEXT PRIMARY KEY,
+      summary TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'general',
+      details_json TEXT NOT NULL DEFAULT '{}',
+      user_id TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+
+  db.exec(`
     CREATE TABLE IF NOT EXISTS database_jobs (
       id TEXT PRIMARY KEY,
       connection_id TEXT NOT NULL,
@@ -247,23 +286,34 @@ export interface RouteRow {
   target_port: number | null;
   method: string | null;
   path_pattern: string | null;
+  user_id: string | null;
   created_at: string;
   updated_at: string;
 }
 
-export function listRoutes(): RouteRow[] {
+export function listRoutes(userId?: string): RouteRow[] {
+  if (userId) {
+    return db.prepare('SELECT * FROM routes WHERE user_id = ? OR user_id IS NULL ORDER BY created_at DESC').all(userId) as RouteRow[];
+  }
   return db.prepare('SELECT * FROM routes ORDER BY created_at DESC').all() as RouteRow[];
 }
 
-export function getRoute(id: string): RouteRow | undefined {
-  return db.prepare('SELECT * FROM routes WHERE id = ?').get(id) as RouteRow | undefined;
+export function getRoute(id: string, userId?: string): RouteRow | undefined {
+  const row = db.prepare('SELECT * FROM routes WHERE id = ?').get(id) as RouteRow | undefined;
+  if (row && userId && row.user_id !== userId && row.user_id !== null) return undefined;
+  return row;
 }
 
-export function getRouteByName(name: string): RouteRow | undefined {
-  return db.prepare('SELECT * FROM routes WHERE name = ?').get(name) as RouteRow | undefined;
+export function getRouteByName(name: string, userId?: string): RouteRow | undefined {
+  const row = db.prepare('SELECT * FROM routes WHERE name = ?').get(name) as RouteRow | undefined;
+  if (row && userId && row.user_id !== userId && row.user_id !== null) return undefined;
+  return row;
 }
 
-export function getRoutesByName(name: string): RouteRow[] {
+export function getRoutesByName(name: string, userId?: string): RouteRow[] {
+  if (userId) {
+    return db.prepare('SELECT * FROM routes WHERE name = ? AND (user_id = ? OR user_id IS NULL) ORDER BY method DESC, path_pattern DESC').all(name, userId) as RouteRow[];
+  }
   return db.prepare('SELECT * FROM routes WHERE name = ? ORDER BY method DESC, path_pattern DESC').all(name) as RouteRow[];
 }
 
@@ -275,11 +325,12 @@ export function createRoute(
   targetPort: number | null,
   method?: string | null,
   pathPattern?: string | null,
+  userId?: string,
 ): RouteRow {
   const now = new Date().toISOString();
   db.prepare(
-    'INSERT INTO routes (id, name, target_type, target_id, target_port, method, path_pattern, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-  ).run(id, name, targetType, targetId, targetPort, method || null, pathPattern || null, now, now);
+    'INSERT INTO routes (id, name, target_type, target_id, target_port, method, path_pattern, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  ).run(id, name, targetType, targetId, targetPort, method || null, pathPattern || null, userId || null, now, now);
   return getRoute(id)!;
 }
 
@@ -583,20 +634,26 @@ export interface LambdaFunctionRow {
   code: string;
   packages: string;
   entry_point: string | null;
+  user_id: string | null;
   created_at: string;
   updated_at: string;
 }
 
-export function listFunctions(): LambdaFunctionRow[] {
+export function listFunctions(userId?: string): LambdaFunctionRow[] {
+  if (userId) {
+    return db
+      .prepare('SELECT * FROM functions WHERE user_id = ? OR user_id IS NULL ORDER BY updated_at DESC')
+      .all(userId) as LambdaFunctionRow[];
+  }
   return db
     .prepare('SELECT * FROM functions ORDER BY updated_at DESC')
     .all() as LambdaFunctionRow[];
 }
 
-export function getFunction(id: string): LambdaFunctionRow | undefined {
-  return db.prepare('SELECT * FROM functions WHERE id = ?').get(id) as
-    | LambdaFunctionRow
-    | undefined;
+export function getFunction(id: string, userId?: string): LambdaFunctionRow | undefined {
+  const row = db.prepare('SELECT * FROM functions WHERE id = ?').get(id) as LambdaFunctionRow | undefined;
+  if (row && userId && row.user_id !== userId && row.user_id !== null) return undefined;
+  return row;
 }
 
 export function createFunction(
@@ -606,11 +663,12 @@ export function createFunction(
   code: string,
   packages?: string,
   entryPoint?: string | null,
+  userId?: string,
 ): LambdaFunctionRow {
   const now = new Date().toISOString();
   db.prepare(
-    'INSERT INTO functions (id, name, runtime, code, packages, entry_point, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-  ).run(id, name, runtime, code, packages || '', entryPoint || null, now, now);
+    'INSERT INTO functions (id, name, runtime, code, packages, entry_point, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  ).run(id, name, runtime, code, packages || '', entryPoint || null, userId || null, now, now);
   return getFunction(id)!;
 }
 
@@ -714,21 +772,28 @@ export interface AssistantSessionSummaryRow {
   updated_at: string;
 }
 
-export function listAssistantSessions(): AssistantSessionSummaryRow[] {
+export function listAssistantSessions(userId?: string): AssistantSessionSummaryRow[] {
+  if (userId) {
+    return db
+      .prepare('SELECT id, name, created_at, updated_at FROM assistant_sessions WHERE user_id = ? OR user_id IS NULL ORDER BY updated_at DESC')
+      .all(userId) as AssistantSessionSummaryRow[];
+  }
   return db
     .prepare('SELECT id, name, created_at, updated_at FROM assistant_sessions ORDER BY updated_at DESC')
     .all() as AssistantSessionSummaryRow[];
 }
 
-export function getAssistantSession(id: string): AssistantSessionRow | undefined {
-  return db.prepare('SELECT * FROM assistant_sessions WHERE id = ?').get(id) as AssistantSessionRow | undefined;
+export function getAssistantSession(id: string, userId?: string): AssistantSessionRow | undefined {
+  const row = db.prepare('SELECT * FROM assistant_sessions WHERE id = ?').get(id) as AssistantSessionRow | undefined;
+  if (row && userId && (row as unknown as { user_id: string | null }).user_id !== userId) return undefined;
+  return row;
 }
 
-export function createAssistantSession(id: string, name: string, state: string): AssistantSessionRow {
+export function createAssistantSession(id: string, name: string, state: string, userId?: string): AssistantSessionRow {
   const now = new Date().toISOString();
   db.prepare(
-    'INSERT INTO assistant_sessions (id, name, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
-  ).run(id, name, state, now, now);
+    'INSERT INTO assistant_sessions (id, name, state, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+  ).run(id, name, state, userId || null, now, now);
   return getAssistantSession(id)!;
 }
 
@@ -771,16 +836,21 @@ export interface DatabaseConnectionRow {
   last_test_error: string | null;
 }
 
-export function listDatabaseConnections(): DatabaseConnectionRow[] {
+export function listDatabaseConnections(userId?: string): DatabaseConnectionRow[] {
+  if (userId) {
+    return db
+      .prepare('SELECT * FROM database_connections WHERE user_id = ? OR user_id IS NULL ORDER BY updated_at DESC')
+      .all(userId) as DatabaseConnectionRow[];
+  }
   return db
     .prepare('SELECT * FROM database_connections ORDER BY updated_at DESC')
     .all() as DatabaseConnectionRow[];
 }
 
-export function getDatabaseConnection(id: string): DatabaseConnectionRow | undefined {
-  return db.prepare('SELECT * FROM database_connections WHERE id = ?').get(id) as
-    | DatabaseConnectionRow
-    | undefined;
+export function getDatabaseConnection(id: string, userId?: string): DatabaseConnectionRow | undefined {
+  const row = db.prepare('SELECT * FROM database_connections WHERE id = ?').get(id) as DatabaseConnectionRow | undefined;
+  if (row && userId && (row as unknown as { user_id: string | null }).user_id !== userId && (row as unknown as { user_id: string | null }).user_id !== null) return undefined;
+  return row;
 }
 
 export function createDatabaseConnection(
@@ -789,13 +859,14 @@ export function createDatabaseConnection(
   engine: string,
   summaryJson: string,
   encryptedConfig: string,
+  userId?: string,
 ): DatabaseConnectionRow {
   const now = new Date().toISOString();
   db.prepare(
     `INSERT INTO database_connections
-      (id, name, engine, summary_json, encrypted_config, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-  ).run(id, name, engine, summaryJson, encryptedConfig, now, now);
+      (id, name, engine, summary_json, encrypted_config, user_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, name, engine, summaryJson, encryptedConfig, userId || null, now, now);
   return getDatabaseConnection(id)!;
 }
 
@@ -1037,6 +1108,130 @@ export function createDatabaseJob(fields: {
     fields.finishedAt ?? null,
   );
   return getDatabaseJob(fields.id)!;
+}
+
+// ---------------------------------------------------------------------------
+// Assistant issue reporting — persisted error/diagnostic reports the
+// assistant can write and read back for debugging and observability.
+// ---------------------------------------------------------------------------
+
+export interface AssistantIssueRow {
+  id: string;
+  summary: string;
+  category: string;
+  details_json: string;
+  user_id: string | null;
+  created_at: string;
+}
+
+export function listAssistantIssues(limit = 50, userId?: string): AssistantIssueRow[] {
+  if (userId) {
+    return db
+      .prepare('SELECT * FROM assistant_issues WHERE user_id = ? OR user_id IS NULL ORDER BY created_at DESC LIMIT ?')
+      .all(userId, limit) as AssistantIssueRow[];
+  }
+  return db
+    .prepare('SELECT * FROM assistant_issues ORDER BY created_at DESC LIMIT ?')
+    .all(limit) as AssistantIssueRow[];
+}
+
+export function getAssistantIssue(id: string, userId?: string): AssistantIssueRow | undefined {
+  const row = db.prepare('SELECT * FROM assistant_issues WHERE id = ?').get(id) as AssistantIssueRow | undefined;
+  if (row && userId && row.user_id !== userId && row.user_id !== null) return undefined;
+  return row;
+}
+
+export function createAssistantIssue(
+  details: { summary: string; category?: string; details?: Record<string, unknown> },
+  userId?: string,
+): AssistantIssueRow {
+  const id = `iss-${Math.random().toString(36).slice(2, 8)}`;
+  const now = new Date().toISOString();
+  db.prepare(
+    'INSERT INTO assistant_issues (id, summary, category, details_json, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+  ).run(id, details.summary, details.category || 'general', JSON.stringify(details.details ?? {}), userId ?? null, now);
+  return getAssistantIssue(id)!;
+}
+
+// ---------------------------------------------------------------------------
+// Users (multi-tenant auth)
+// ---------------------------------------------------------------------------
+
+export interface UserRow {
+  id: string;
+  email: string;
+  password_hash: string;
+  network_name: string;
+  port_range_start: number;
+  port_range_end: number;
+  created_at: string;
+}
+
+const USER_PORT_RANGE_SIZE = 100;
+const USER_PORT_BASE = 5000;
+
+/** Allocate the next available port range for a new user. */
+function allocatePortRange(): { start: number; end: number } {
+  const existing = db.prepare('SELECT MAX(port_range_end) AS max_end FROM users').get() as { max_end: number | null };
+  const start = (existing?.max_end ?? USER_PORT_BASE - 1) + 1;
+  return { start, end: start + USER_PORT_RANGE_SIZE - 1 };
+}
+
+export function getUserById(id: string): UserRow | undefined {
+  return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow | undefined;
+}
+
+export function hasUsers(): boolean {
+  const row = db.prepare('SELECT COUNT(*) AS count FROM users').get() as { count: number };
+  return row.count > 0;
+}
+
+export function getUserByEmail(email: string): UserRow | undefined {
+  return db.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase()) as UserRow | undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Bucket ownership — buckets are in MinIO, not SQLite, so we track ownership
+// separately.
+// ---------------------------------------------------------------------------
+
+export function setBucketOwner(bucketName: string, userId: string): void {
+  db.prepare(
+    'INSERT OR REPLACE INTO bucket_owners (bucket_name, user_id, created_at) VALUES (?, ?, ?)',
+  ).run(bucketName, userId, new Date().toISOString());
+}
+
+export function getBucketOwner(bucketName: string): string | null {
+  const row = db.prepare('SELECT user_id FROM bucket_owners WHERE bucket_name = ?').get(bucketName) as { user_id: string } | undefined;
+  return row?.user_id ?? null;
+}
+
+export function listUserBuckets(userId: string): string[] {
+  const rows = db.prepare('SELECT bucket_name FROM bucket_owners WHERE user_id = ?').all(userId) as { bucket_name: string }[];
+  return rows.map((r) => r.bucket_name);
+}
+
+export function createUser(email: string, passwordHash: string): UserRow {
+  const id = `usr-${Math.random().toString(36).slice(2, 8)}`;
+  const networkName = `dockyard-${id}`;
+  const { start, end } = allocatePortRange();
+  const now = new Date().toISOString();
+
+  const isFirst = !hasUsers();
+
+  db.prepare(
+    'INSERT INTO users (id, email, password_hash, network_name, port_range_start, port_range_end, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+  ).run(id, email.toLowerCase(), passwordHash, networkName, start, end, now);
+
+  // First user claims all existing resources (legacy data with null user_id).
+  if (isFirst) {
+    db.prepare('UPDATE functions SET user_id = ? WHERE user_id IS NULL').run(id);
+    db.prepare('UPDATE routes SET user_id = ? WHERE user_id IS NULL').run(id);
+    db.prepare('UPDATE database_connections SET user_id = ? WHERE user_id IS NULL').run(id);
+    db.prepare('UPDATE assistant_sessions SET user_id = ? WHERE user_id IS NULL').run(id);
+  }
+
+  return getUserById(id)!;
 }
 
 export function updateDatabaseJob(

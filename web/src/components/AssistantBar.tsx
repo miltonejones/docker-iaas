@@ -821,6 +821,13 @@ export function AssistantBar({
           str(input.branch),
         );
 
+      case 'report_issue':
+        return api.assistantReportIssue(
+          String(input.summary ?? ''),
+          str(input.category),
+          input.details as Record<string, unknown> | undefined,
+        );
+
       default:
         throw new Error(`Unknown action "${action.name}".`);
     }
