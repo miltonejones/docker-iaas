@@ -418,6 +418,7 @@ export const api = {
 
   gatewayCreate: (route: {
     name: string;
+    displayName?: string;
     targetType: string;
     targetId: string;
     targetPort?: number;

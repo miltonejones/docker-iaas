@@ -47,6 +47,7 @@ export function initDb(): void {
     CREATE TABLE IF NOT EXISTS routes (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
+      display_name TEXT,
       target_type TEXT NOT NULL,
       target_id TEXT NOT NULL,
       target_port INTEGER,
@@ -56,6 +57,9 @@ export function initDb(): void {
       updated_at TEXT NOT NULL
     )
   `);
+
+  // Migration: add display_name if upgrading from older schema.
+  try { db.exec('ALTER TABLE routes ADD COLUMN display_name TEXT'); } catch { /* ok */ }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS gateway_traffic_events (
@@ -281,6 +285,7 @@ export function setSetting(key: string, value: string): void {
 export interface RouteRow {
   id: string;
   name: string;
+  display_name: string | null;
   target_type: string;
   target_id: string;
   target_port: number | null;
@@ -326,11 +331,12 @@ export function createRoute(
   method?: string | null,
   pathPattern?: string | null,
   userId?: string,
+  displayName?: string | null,
 ): RouteRow {
   const now = new Date().toISOString();
   db.prepare(
-    'INSERT INTO routes (id, name, target_type, target_id, target_port, method, path_pattern, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-  ).run(id, name, targetType, targetId, targetPort, method || null, pathPattern || null, userId || null, now, now);
+    'INSERT INTO routes (id, name, display_name, target_type, target_id, target_port, method, path_pattern, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  ).run(id, name, displayName || null, targetType, targetId, targetPort, method || null, pathPattern || null, userId || null, now, now);
   return getRoute(id)!;
 }
 

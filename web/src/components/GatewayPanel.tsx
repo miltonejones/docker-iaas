@@ -120,15 +120,19 @@ export function GatewayList() {
           <table className="table">
             <thead>
               <tr>
+                <th>Name</th>
                 <th>Route</th>
-                <th>Endpoints</th>
+                <th>EP</th>
                 <th>Targets</th>
-                <th className="num">Requests (24h)</th>
+                <th className="num">Req (24h)</th>
               </tr>
             </thead>
             <tbody>
               {groups.map((group) => (
                 <tr key={group[0].name} onClick={() => navigate(`/gateway/${group[0].name}`)}>
+                  <td>
+                    <span>{group[0].displayName || group[0].name}</span>
+                  </td>
                   <td className="mono">
                     <a
                       href={`/gw/${group[0].name}/`}

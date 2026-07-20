@@ -151,7 +151,11 @@ const tools: Anthropic.Tool[] = [
         name: {
           type: "string",
           description:
-            "Route name: lowercase letters/digits/hyphens, starting with a letter or digit",
+            "Route name: lowercase letters/digits/hyphens, starting with a letter or digit. This is the URL segment: /gw/{name}.",
+        },
+        displayName: {
+          type: "string",
+          description: "Optional human-readable display name shown in the UI instead of the URL slug.",
         },
         targetType: { type: "string", enum: ["lambda", "container", "bucket"] },
         targetId: { type: "string" },

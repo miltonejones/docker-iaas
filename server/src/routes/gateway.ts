@@ -55,6 +55,7 @@ function toJson(r: import('../db.js').RouteRow) {
   return {
     id: r.id,
     name: r.name,
+    displayName: r.display_name || null,
     targetType: r.target_type,
     targetId: r.target_id,
     targetPort: r.target_port,
@@ -253,8 +254,9 @@ gatewayRouter.get('/traffic/requests', (req: Request, res: Response) => {
 
 gatewayRouter.post('/', (req: Request, res: Response) => {
   try {
-    const { name, targetType, targetId, targetPort, method, pathPattern } = req.body as {
+    const { name, displayName, targetType, targetId, targetPort, method, pathPattern } = req.body as {
       name?: string;
+      displayName?: string;
       targetType?: string;
       targetId?: string;
       targetPort?: number;
@@ -313,6 +315,7 @@ gatewayRouter.post('/', (req: Request, res: Response) => {
       methodNorm,
       pathNorm,
       userId,
+      displayName?.trim() || null,
     );
     res.status(201).json(toJson(row));
   } catch (err) {

@@ -675,6 +675,7 @@ export function AssistantBar({
       case 'create_gateway_route':
         return api.gatewayCreate({
           name: String(input.name ?? ''),
+          displayName: str(input.displayName),
           targetType: String(input.targetType ?? ''),
           targetId: String(input.targetId ?? ''),
           targetPort: input.targetPort != null && input.targetPort !== '' ? Number(input.targetPort) : undefined,

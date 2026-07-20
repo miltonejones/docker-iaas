@@ -158,6 +158,7 @@ export interface BucketListing {
 export interface GatewayRoute {
   id: string;
   name: string;
+  displayName: string | null;
   targetType: 'bucket' | 'container' | 'lambda';
   targetId: string;
   targetPort: number | null;
