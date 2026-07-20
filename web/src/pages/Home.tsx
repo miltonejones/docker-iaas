@@ -140,6 +140,11 @@ export function HomePage({ snapshot, live, onPrune, pruning, runningCount, total
         <section className="panel">
           <div className="panel__head">
             <h2>Gateway links <span className="count">{gatewayLinks.length}</span></h2>
+            {gatewayLinks.length > 6 && (
+              <button className="btn btn--ghost btn--sm" onClick={() => navigate('/gateway')}>
+                View all →
+              </button>
+            )}
           </div>
           {gatewayLinks.length === 0 ? (
             <p className="empty">No bucket or web-app gateway links yet.</p>
@@ -147,10 +152,13 @@ export function HomePage({ snapshot, live, onPrune, pruning, runningCount, total
             <div className="table-wrap">
               <table className="table">
                 <tbody>
-                  {gatewayLinks.map((route) => (
+                  {gatewayLinks.slice(0, 6).map((route) => (
                     <tr key={route.name}>
-                      <td className="mono">
+                      <td>
                         <AppIcon name={route.targetType === 'bucket' ? 'bucket' : 'container'} />{' '}
+                        <strong>{route.displayName || route.name}</strong>
+                      </td>
+                      <td className="mono muted">
                         <a href={`/gw/${route.name}/`} target="_blank" rel="noreferrer">
                           /gw/{route.name}/ <AppIcon name="external" />
                         </a>
