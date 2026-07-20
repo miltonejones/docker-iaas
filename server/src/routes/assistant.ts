@@ -275,6 +275,10 @@ const tools: Anthropic.Tool[] = [
             'Docker image (e.g. "redis:7-alpine"), if not using a preset',
         },
         name: { type: "string", description: "Container name" },
+        description: {
+          type: "string",
+          description: "Optional free-text note describing the container's purpose, shown in list_containers and inspect_container output.",
+        },
         command: {
           type: "array",
           description: 'Override the default CMD, e.g. ["sleep","infinity"] or ["tail","-f","/dev/null"]. Pass as separate string arguments, not a shell string.',
@@ -961,6 +965,7 @@ async function executeReadOnlyTool(
         name: (c.Names?.[0] || "").replace(/^\//, ""),
         image: c.Image,
         state: c.State,
+        description: c.Labels?.["iaas.description"] || undefined,
       }));
     }
     case "list_functions":
@@ -1086,6 +1091,7 @@ async function executeReadOnlyTool(
         })),
         restartPolicy: info.HostConfig?.RestartPolicy?.Name ?? "no",
         labels: info.Config?.Labels ?? {},
+        description: info.Config?.Labels?.["iaas.description"] || undefined,
       };
     }
     case "list_presets":

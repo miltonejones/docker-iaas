@@ -700,6 +700,7 @@ export function AssistantBar({
           presetId: str(input.presetId),
           image: str(input.image),
           name: str(input.name),
+          description: str(input.description),
           command: Array.isArray(input.command) && input.command.every((p) => typeof p === 'string')
             ? (input.command as string[])
             : undefined,
