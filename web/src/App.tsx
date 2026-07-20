@@ -324,7 +324,13 @@ export function App() {
             </label>
           </div>
           <div className="topbar__right">
-            <button className="btn btn--ghost btn--sm" onClick={logout} title={`Sign out (${email})`}>
+            <button
+              className="btn btn--ghost btn--sm"
+              onClick={() => {
+                if (confirm('Sign out of Dockyard.ai?')) logout();
+              }}
+              title={`Sign out (${email})`}
+            >
               <AppIcon name="logout" />
             </button>
           </div>

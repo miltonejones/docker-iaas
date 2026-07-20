@@ -30,6 +30,23 @@ const ACTIVE_MS = Number(process.env.POLL_INTERVAL_ACTIVE_MS) || 1_000;
 
 let running = true;
 
+// Track recently seen issue summaries to detect true duplicates.
+// Key: normalized summary, Value: timestamp when first seen.
+const recentSummaries = new Map();
+const DEDUPE_WINDOW_MS = 10 * 60_000; // 10 minutes
+
+function isDuplicate(summary) {
+  const key = summary.trim().toLowerCase();
+  const now = Date.now();
+  // Purge expired entries
+  for (const [k, ts] of recentSummaries) {
+    if (now - ts > DEDUPE_WINDOW_MS) recentSummaries.delete(k);
+  }
+  if (recentSummaries.has(key)) return true;
+  recentSummaries.set(key, now);
+  return false;
+}
+
 fs.mkdirSync(LOG_DIR, { recursive: true });
 
 function notify(summary, body = "") {
@@ -196,17 +213,12 @@ async function consumeOne() {
 
   const issue = body.issue;
 
-  // Skip if there are already uncommitted changes — likely a duplicate
-  // while a previous fix is still in-flight.
-  const { execSync: _exec } = await import("node:child_process");
-  try {
-    const pending = _exec("git diff --stat", { cwd: CODEBASE_PATH, encoding: "utf8", timeout: 5_000 }).trim();
-    if (pending) {
-      log(`Skipping ${issue.id} — uncommitted changes already present (likely duplicate):\n${pending}`);
-      notify(`⏭️ Skipped duplicate: ${issue.summary}`, "Uncommitted changes already present");
-      return true; // consumed from queue but skipped
-    }
-  } catch { /* proceed if git diff fails */ }
+  // Skip if we've seen this exact summary recently — true duplicate.
+  if (isDuplicate(issue.summary)) {
+    log(`Skipping ${issue.id} — duplicate summary: "${issue.summary}"`);
+    notify(`⏭️ Skipped duplicate: ${issue.summary}`, `Same summary seen within ${DEDUPE_WINDOW_MS / 60_000} min`);
+    return true;
+  }
 
   log(`Processing issue ${issue.id}: ${issue.summary}`);
   notify(`🐛 ${issue.summary}`, `Category: ${issue.category || "general"}\nID: ${issue.id}`);
