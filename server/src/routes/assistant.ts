@@ -102,7 +102,7 @@ Rules:
 - To host a static website on a BUCKET (the default, simplest path): create the bucket first if it doesn't already exist (check with list_buckets), write the files with write_bucket_objects (accepts an array of { key, content } — prefer this bulk form for multi-file sites), then create_gateway_route with targetType "bucket" and targetId set to the bucket name, omitting method and pathPattern so every file in the site is reachable. Requests to "/" or a path with no file extension serve "index.html" (SPA-style fallback). For a quick single-file edit, use replace_in_bucket_object instead of reading and rewriting the whole file.
 - To host a site on an OS CONTAINER instead (when the user asks for a container/VM/server, needs a long-running process, dynamic requests, or explicitly wants it on a container rather than a bucket): call launch_container with a serving image — prefer "nginx:alpine" for static sites because its default command serves /usr/share/nginx/html on port 80 with no extra setup. Write the site files with write_container_files (accepts an array of { path, content } — prefer this bulk form), then create_gateway_route with targetType "container", targetId set to the container id returned by launch_container, targetPort 80, omitting method and pathPattern so every path reaches the container. For a quick single-file edit, use replace_in_container_file instead of rewriting the whole file. Use this path only when a container is genuinely wanted; otherwise default to the bucket path.
 - When launching a container for builds or development (not a serving container with a real server process), pass command: ["sleep", "infinity"] to launch_container to keep it alive — images like node:22-alpine exit immediately otherwise because their default CMD is just "node" with no script.
-- Containers launched through this assistant can run confirmed commands with execute_container_command. Pass command as an argument array, never as a shell string: for example, ["npm", "ci"] or ["npx", "ng", "build"]. Set workingDir when the project is not in the container's default working directory. To start a long-running server (e.g. a Node.js API), set background: true so the command runs detached and doesn't block — the tool returns immediately. IMPORTANT: background execs do NOT capture stdout/stderr; use get_container_logs for the container's primary process output, or run commands non-background to see their output inline. For one-shot commands whose output you need (builds, installs, file listings), always run them non-background. To update environment variables on a running container, use update_container_env — it stops, merges the new vars with existing ones, recreates the container, and starts it again. Pass persist: true to snapshot the writable layer before recreating so runtime files survive.
+- Containers launched through this assistant can run confirmed commands with execute_container_command. Pass command as an argument array, never as a shell string: for example, ["npm", "ci"] or ["npx", "ng", "build"]. Set workingDir when the project is not in the container's default working directory. To start a long-running server (e.g. a Node.js API), set background: true so the command runs detached and doesn't block — the tool returns immediately. IMPORTANT: background execs do NOT capture stdout/stderr; use get_container_logs for the container's primary process output, or run commands non-background to see their output inline. For one-shot commands whose output you need (builds, installs, file listings), always run them non-background. To update environment variables on a running container, use update_container_env — it stops, merges the new vars with existing ones, recreates the container, and starts it again. Pass persist: true to snapshot the writable layer before recreating so runtime files survive. The same tool also accepts a description parameter to add or update the iaas.description label on an already-running container (e.g. one launched before the description feature existed) — pass env, description, or both.
 - The host filesystem is available read-only within Dockyard's configured host-files mount. Use list_host_directory to inspect one directory at a time, then read_host_file to read an explicitly requested text file. Both require absolute host paths (for example, "/home/me/project"). Do not read files the user has not requested or that are likely to contain secrets (such as .env files, SSH keys, credential stores, or private keys). Host file reads are capped at 512 KiB and 50,000 characters; binary files cannot be read. To copy one host file to a bucket, use copy_host_file_to_bucket. To copy one host file to a container folder, use copy_host_file_to_container. Both require confirmation and accept the source as its absolute HOST path. Host file transfers support regular files up to 200 MiB.
 - To build a configured host project and deploy its artifacts to a container, first call list_host_build_presets to find the exact preset, then call run_host_build_preset with its name, target container id, and destination directory. Presets contain fixed host-side commands and artifact directories; never invent a command, command arguments, working directory, or artifact path.
 - For database work, always resolve the saved connection id first (list_database_connections unless it is already known). Use inspect_database_schema to explore structure, run_database_read_query for bounded read-only access, execute_database_mutation for one confirmed write, execute_database_migration for confirmed schema/multi-step changes, execute_database_access_grant for structured MySQL GRANT or MongoDB grantRolesToUser requests, create_database_backup to generate a backup job, restore_database_backup to restore from a prior backup job id, and list_database_jobs / get_database_job to inspect backup or restore history.
@@ -735,26 +735,30 @@ const tools: Anthropic.Tool[] = [
   {
     name: "update_container_env",
     description:
-      "Update (add, change, or merge) environment variables on a container. Stops the container, merges the new env vars with existing ones, recreates the container with the same image/config, and starts it again if it was running. By default, recreating from the image wipes the container's writable filesystem layer. Pass persist: true to snapshot the writable layer first via docker commit — this preserves all runtime files (deployed sites, installed packages, config edits) across the env update. Requires user confirmation.",
+      "Update (add, change, or merge) environment variables and/or the description on a container. Stops the container, merges the new env vars with existing ones, recreates the container with the same image/config, and starts it again if it was running. By default, recreating from the image wipes the container's writable filesystem layer. Pass persist: true to snapshot the writable layer first via docker commit — this preserves all runtime files (deployed sites, installed packages, config edits) across the update. Pass description to add or update the iaas.description label on an existing container (pass an empty string to clear it) — use this to retroactively add a description to a container that was launched before one was set. Provide env, description, or both. Requires user confirmation.",
     input_schema: {
       type: "object",
       properties: {
         id: { type: "string", description: "Container id" },
         env: {
           type: "array",
-          description: "Environment variables to set/update",
+          description: "Environment variables to set/update. Optional if only updating description.",
           items: {
             type: "object",
             properties: { key: { type: "string" }, value: { type: "string" } },
             required: ["key", "value"],
           },
         },
+        description: {
+          type: "string",
+          description: "New free-text description to set as the container's iaas.description label. Pass an empty string to clear an existing description.",
+        },
         persist: {
           type: "boolean",
-          description: "If true, snapshot the writable filesystem layer before recreating so runtime files survive the env update.",
+          description: "If true, snapshot the writable filesystem layer before recreating so runtime files survive the update.",
         },
       },
-      required: ["id", "env"],
+      required: ["id"],
     },
   },
   {

@@ -52,7 +52,7 @@ const ACTION_LABEL: Record<string, string> = {
   pull_github_repo_to_bucket: 'Pull GitHub repo into bucket',
   pull_github_repo_to_container: 'Pull GitHub repo into container',
   commit_and_push_github_files: 'Commit and push to GitHub',
-  update_container_env: 'Update container env vars',
+  update_container_env: 'Update container env/description',
   replace_in_container_file: 'Replace text in container file',
   replace_in_bucket_object: 'Replace text in bucket file',
   write_container_files: 'Write container files',
@@ -740,13 +740,18 @@ export function AssistantBar({
         );
 
       case 'update_container_env':
-        if (!Array.isArray(input.env) || input.env.some((e) => typeof (e as { key: string }).key !== 'string')) {
-          throw new Error('update_container_env requires an env array of { key, value }.');
+        if (input.env != null && (!Array.isArray(input.env) || input.env.some((e) => typeof (e as { key: string }).key !== 'string'))) {
+          throw new Error('update_container_env env, if provided, must be an array of { key, value }.');
+        }
+        if (!Array.isArray(input.env) && typeof input.description !== 'string') {
+          throw new Error('update_container_env requires an env array and/or a description string.');
         }
         return api.containerUpdateEnv(
           String(input.id ?? ''),
-          input.env as { key: string; value: string }[],
+          Array.isArray(input.env) ? (input.env as { key: string; value: string }[]) : undefined,
           bool(input.persist),
+          // Preserve an empty string here (unlike str()) so it can clear the label.
+          typeof input.description === 'string' ? input.description : undefined,
         );
 
       case 'replace_in_container_file':

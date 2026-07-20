@@ -171,12 +171,14 @@ export const api = {
       json<{ output: string; exitCode: number | null; truncated: boolean }>(r),
     ),
 
-  containerUpdateEnv: (id: string, env: { key: string; value: string }[], persist?: boolean) =>
+  containerUpdateEnv: (id: string, env?: { key: string; value: string }[], persist?: boolean, description?: string) =>
     fetch(`/api/containers/${id}/env`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ env, persist }),
-    }).then((r) => json<{ id: string; envUpdated: string[]; persisted: boolean }>(r)),
+      body: JSON.stringify({ env, persist, description }),
+    }).then((r) =>
+      json<{ id: string; envUpdated: string[]; descriptionUpdated: boolean; description?: string; persisted: boolean }>(r),
+    ),
 
   containerReplaceFile: (id: string, path: string, search: string, replace: string) =>
     fetch(`/api/containers/${id}/files/replace`, {

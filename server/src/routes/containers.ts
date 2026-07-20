@@ -464,19 +464,28 @@ containersRouter.post('/:id/exec/stream', async (req: Request, res: Response) =>
   }
 });
 
-// Update environment variables on a container. Docker doesn't support mutating
-// env on a running container, so this stops → snapshots config → removes
-// (keeping volumes) → recreates with merged env → starts.
+// Update environment variables and/or the description label on a container.
+// Docker doesn't support mutating env or labels on a running container, so
+// this stops → snapshots config → removes (keeping volumes) → recreates with
+// merged env/labels → starts.
 containersRouter.post('/:id/env', async (req: Request, res: Response) => {
-  const { env: newEnv, persist } = req.body as { env?: { key: string; value: string }[]; persist?: boolean };
-  if (!newEnv || !Array.isArray(newEnv) || newEnv.length === 0) {
-    res.status(400).json({ error: 'env must be a non-empty array of { key, value }.' });
+  const { env: newEnv, persist, description } = req.body as {
+    env?: { key: string; value: string }[];
+    persist?: boolean;
+    description?: string;
+  };
+  const hasEnvUpdate = Array.isArray(newEnv) && newEnv.length > 0;
+  const hasDescriptionUpdate = typeof description === 'string';
+  if (!hasEnvUpdate && !hasDescriptionUpdate) {
+    res.status(400).json({ error: 'Provide a non-empty env array of { key, value } and/or a description string.' });
     return;
   }
-  for (const e of newEnv) {
-    if (typeof e.key !== 'string' || !e.key || typeof e.value !== 'string') {
-      res.status(400).json({ error: 'Each env entry needs a non-empty string key and a string value.' });
-      return;
+  if (hasEnvUpdate) {
+    for (const e of newEnv!) {
+      if (typeof e.key !== 'string' || !e.key || typeof e.value !== 'string') {
+        res.status(400).json({ error: 'Each env entry needs a non-empty string key and a string value.' });
+        return;
+      }
     }
   }
 
@@ -512,8 +521,17 @@ containersRouter.post('/:id/env', async (req: Request, res: Response) => {
       const idx = e.indexOf('=');
       if (idx > 0) oldEnv[e.slice(0, idx)] = e.slice(idx + 1);
     }
-    for (const e of newEnv) oldEnv[e.key] = e.value;
+    if (hasEnvUpdate) for (const e of newEnv!) oldEnv[e.key] = e.value;
     const mergedEnv = Object.entries(oldEnv).map(([k, v]) => `${k}=${v}`);
+
+    // Merge labels, updating/clearing iaas.description when requested. An
+    // empty string clears the label (removes the description).
+    const mergedLabels: Record<string, string> = { ...(info.Config?.Labels ?? {}) };
+    if (hasDescriptionUpdate) {
+      const trimmed = description!.trim();
+      if (trimmed) mergedLabels['iaas.description'] = trimmed;
+      else delete mergedLabels['iaas.description'];
+    }
 
     // Snapshot the existing config we need to preserve, including the
     // container's network attachments so gateway-reachable containers stay
@@ -526,7 +544,7 @@ containersRouter.post('/:id/env', async (req: Request, res: Response) => {
       Cmd: info.Config?.Cmd ?? undefined,
       Env: mergedEnv,
       ExposedPorts: info.Config?.ExposedPorts ?? undefined,
-      Labels: info.Config?.Labels ?? undefined,
+      Labels: mergedLabels,
       Tty: info.Config?.Tty ?? false,
       HostConfig: {
         PortBindings: info.HostConfig?.PortBindings ?? undefined,
@@ -557,7 +575,13 @@ containersRouter.post('/:id/env', async (req: Request, res: Response) => {
       });
     }
 
-    res.json({ id: newContainer.id, envUpdated: newEnv.map((e) => e.key), persisted: !!snapshotImage });
+    res.json({
+      id: newContainer.id,
+      envUpdated: hasEnvUpdate ? newEnv!.map((e) => e.key) : [],
+      descriptionUpdated: hasDescriptionUpdate,
+      description: mergedLabels['iaas.description'],
+      persisted: !!snapshotImage,
+    });
   } catch (err) {
     res.status(502).json({ error: (err as Error).message });
   }
