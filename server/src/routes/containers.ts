@@ -48,15 +48,20 @@ containersRouter.get('/', async (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
     const list = await docker.listContainers({ all: true, size: true });
+    // Lambda invocations spin up a fresh, disposable container per call and
+    // tear it down immediately after — surfacing those in the container list
+    // would just be create/destroy noise, so they're filtered out entirely
+    // regardless of who's asking.
+    const withoutEphemeral = list.filter((c) => !c.Labels?.['iaas.ephemeral']);
     const filtered = userId
-      ? list.filter((c) => {
+      ? withoutEphemeral.filter((c) => {
           const owner = c.Labels?.['iaas.owner'];
           const system = c.Labels?.['iaas.system'];
           // System containers and containers owned by this user are visible.
           // Legacy containers with no owner label are also visible (back compat).
           return system || owner === userId || !owner;
         })
-      : list;
+      : withoutEphemeral;
     res.json(filtered.map(toView));
   } catch (err) {
     res.status(502).json({ error: (err as Error).message });

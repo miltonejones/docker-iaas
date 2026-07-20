@@ -159,6 +159,7 @@ async function ensureCachedImage(def: RuntimeDef, packages: string[], cacheTag: 
         AttachStdout: true,
         AttachStderr: true,
         HostConfig: { AutoRemove: false },
+        Labels: { 'iaas.ephemeral': 'lambda' },
       });
       await builder.start();
       const waitResult = await builder.wait();
@@ -253,6 +254,7 @@ export async function runLambda(
       AttachStdout: true,
       AttachStderr: true,
       Env: extraEnv,
+      Labels: { 'iaas.ephemeral': 'lambda' },
       HostConfig: {
         AutoRemove: false, // we remove manually after reading logs
         Memory: 256 * 1024 * 1024, // 256 MB limit
