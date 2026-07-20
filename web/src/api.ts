@@ -141,11 +141,11 @@ export const api = {
       body: JSON.stringify({ path, content }),
     }).then((r) => json<{ ok: true; path: string }>(r)),
 
-  containerExec: (id: string, command: string[], workingDir?: string, background?: boolean) =>
+  containerExec: (id: string, command: string[], workingDir?: string, background?: boolean, timeoutSeconds?: number) =>
     fetch(`/api/containers/${id}/exec`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command, workingDir, background }),
+      body: JSON.stringify({ command, workingDir, background, timeoutSeconds }),
     }).then((r) =>
       json<{ command: string[]; workingDir: string | null; exitCode?: number | null; output?: string; truncated?: boolean; background?: boolean; execId?: string }>(r),
     ),
@@ -153,16 +153,22 @@ export const api = {
   /** Streaming variant of containerExec — returns an async generator of SSE
    *  events: {type:'start', command, workingDir}, {type:'output', text},
    *  {type:'done', exitCode}, or {type:'error', message}. */
-  containerExecStream: (id: string, command: string[], workingDir?: string, signal?: AbortSignal) =>
+  containerExecStream: (id: string, command: string[], workingDir?: string, timeoutSeconds?: number, signal?: AbortSignal) =>
     fetch(`/api/containers/${id}/exec/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command, workingDir }),
+      body: JSON.stringify({ command, workingDir, timeoutSeconds }),
       signal,
     }).then((r) => {
       if (!r.ok) throw new Error(`Exec stream failed: ${r.statusText}`);
       return parseSSE(r);
     }),
+
+  /** Retrieve output from a background exec. */
+  containerExecOutput: (execId: string) =>
+    fetch(`/api/containers/execs/${encodeURIComponent(execId)}/output`).then((r) =>
+      json<{ output: string; exitCode: number | null; truncated: boolean }>(r),
+    ),
 
   containerUpdateEnv: (id: string, env: { key: string; value: string }[], persist?: boolean) =>
     fetch(`/api/containers/${id}/env`, {

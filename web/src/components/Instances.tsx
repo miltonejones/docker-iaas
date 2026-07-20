@@ -86,7 +86,7 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                         {c.name || c.id.slice(0, 12)}
                       </button>
                     </td>
-                    <td className="mono muted">{c.image}</td>
+                    <td className="mono muted truncate" title={c.image}>{c.image}</td>
                     <td>
                       <span className={`state state--${running ? 'up' : 'down'}`}>{c.state}</span>
                     </td>

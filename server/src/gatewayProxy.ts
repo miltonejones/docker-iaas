@@ -288,15 +288,34 @@ async function handleContainer(route: RouteRow, req: Request, res: Response): Pr
     const binding = info.NetworkSettings?.Ports?.[`${port}/tcp`]?.[0];
     if (!binding?.HostPort) {
       sendGatewayJsonError(
-        req,
-        res,
-        502,
-        'container_port_unpublished',
+        req, res, 502, 'container_port_unpublished',
         `Container port ${port} is not published to the host — required to reach it from this process.`,
       );
       return;
     }
     target = `http://${remoteDockerHost() ?? '127.0.0.1'}:${binding.HostPort}`;
+  }
+
+  // WebSocket upgrade — pipe the raw socket directly to the container.
+  if (req.headers.upgrade?.toLowerCase() === 'websocket') {
+    const http = await import('node:http');
+    const wsTarget = target.replace(/^http/, 'ws') + req.url;
+    const proxyReq = http.request(wsTarget, {
+      headers: { ...req.headers, host: new URL(target).host },
+    });
+    proxyReq.on('upgrade', (proxyRes, socket, head) => {
+      res.writeHead(proxyRes.statusCode ?? 101, proxyRes.headers);
+      socket.write(head);
+      socket.pipe(res.socket as unknown as NodeJS.WritableStream);
+      (res.socket as unknown as NodeJS.ReadableStream).pipe(socket);
+    });
+    proxyReq.on('error', (err) => {
+      if (!res.headersSent) {
+        sendGatewayJsonError(req, res, 502, 'container_proxy_error', err.message);
+      }
+    });
+    proxyReq.end();
+    return;
   }
 
   const proxy = createProxyMiddleware({ target, changeOrigin: true });

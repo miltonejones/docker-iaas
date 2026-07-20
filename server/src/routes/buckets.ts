@@ -1,5 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import express from 'express';
+import { getAuthUser } from '../auth.js';
+import { setBucketOwner, getBucketOwner, listUserBuckets } from '../db.js';
 import {
   ListBucketsCommand,
   CreateBucketCommand,
@@ -33,11 +35,16 @@ async function bucketStats(name: string): Promise<{ size: number; objectCount: n
   return { size, objectCount };
 }
 
-bucketsRouter.get('/', async (_req: Request, res: Response) => {
+bucketsRouter.get('/', async (req: Request, res: Response) => {
   try {
+    const userId = getAuthUser(req)?.userId;
+    const userBuckets = userId ? listUserBuckets(userId) : null;
     const out = await getS3Client().send(new ListBucketsCommand({}));
+    const userFiltered = userBuckets
+      ? (out.Buckets || []).filter((b) => userBuckets.includes(b.Name!))
+      : (out.Buckets || []);
     const withStats = await Promise.all(
-      (out.Buckets || []).map(async (b) => {
+      userFiltered.map(async (b) => {
         try {
           const { size, objectCount } = await bucketStats(b.Name!);
           return { name: b.Name, creationDate: b.CreationDate, size, objectCount };
@@ -54,12 +61,14 @@ bucketsRouter.get('/', async (_req: Request, res: Response) => {
 
 bucketsRouter.post('/', express.json(), async (req: Request, res: Response) => {
   const name = (req.body?.name || '').trim();
+  const userId = getAuthUser(req)?.userId;
   if (!name) {
     res.status(400).json({ error: 'A bucket name is required.' });
     return;
   }
   try {
     await getS3Client().send(new CreateBucketCommand({ Bucket: name }));
+    if (userId) setBucketOwner(name, userId);
     res.status(201).json({ name });
   } catch (err) {
     res.status(502).json({ error: (err as Error).message });
@@ -67,6 +76,14 @@ bucketsRouter.post('/', express.json(), async (req: Request, res: Response) => {
 });
 
 bucketsRouter.delete('/:name', async (req: Request, res: Response) => {
+  const userId = getAuthUser(req)?.userId;
+  if (userId) {
+    const owner = getBucketOwner(req.params.name);
+    if (owner && owner !== userId) {
+      res.status(403).json({ error: 'Bucket does not belong to your account.' });
+      return;
+    }
+  }
   try {
     await getS3Client().send(new DeleteBucketCommand({ Bucket: req.params.name }));
     res.json({ ok: true });
@@ -102,10 +119,10 @@ bucketsRouter.get('/:name/objects', async (req: Request, res: Response) => {
 });
 
 bucketsRouter.put(
-  '/:name/objects/*',
+  '/:name/objects/:key(.*)',
   express.raw({ type: '*/*', limit: '200mb' }),
   async (req: Request, res: Response) => {
-    const key = req.params[0];
+    const key = req.params.key;
     if (!key) {
       res.status(400).json({ error: 'An object key is required.' });
       return;
@@ -126,8 +143,8 @@ bucketsRouter.put(
   },
 );
 
-bucketsRouter.get('/:name/objects/*', async (req: Request, res: Response) => {
-  const key = req.params[0];
+bucketsRouter.get('/:name/objects/:key(.*)', async (req: Request, res: Response) => {
+  const key = req.params.key;
   try {
     const out = await getS3Client().send(new GetObjectCommand({ Bucket: req.params.name, Key: key }));
     res.set('Content-Type', out.ContentType || 'application/octet-stream');
@@ -139,8 +156,8 @@ bucketsRouter.get('/:name/objects/*', async (req: Request, res: Response) => {
   }
 });
 
-bucketsRouter.delete('/:name/objects/*', async (req: Request, res: Response) => {
-  const key = req.params[0];
+bucketsRouter.delete('/:name/objects/:key(.*)', async (req: Request, res: Response) => {
+  const key = req.params.key;
   try {
     await getS3Client().send(new DeleteObjectCommand({ Bucket: req.params.name, Key: key }));
     res.json({ ok: true });

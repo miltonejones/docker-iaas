@@ -362,10 +362,24 @@ const tools: Anthropic.Tool[] = [
         },
         background: {
           type: "boolean",
-          description: 'If true, start the command detached and return immediately without waiting for output. Use for long-running servers (e.g. a Node.js API) that should run in the background.',
+          description: 'If true, start the command detached and return immediately. The output is captured in the background and can be retrieved later with get_container_exec_output using the returned execId.',
+        },
+        timeoutSeconds: {
+          type: "number",
+          description: 'Optional timeout in seconds (1-600, max 10 min). Command is terminated after this window; partial output is returned.',
         },
       },
       required: ["id", "command"],
+    },
+  },
+  {
+    name: "get_container_exec_output",
+    description:
+      "Retrieve the captured stdout/stderr and exit code from a background exec. Pass the execId returned by a prior execute_container_command call with background:true. Output is buffered and available for 5 minutes after the command finishes.",
+    input_schema: {
+      type: "object",
+      properties: { execId: { type: "string", description: "Exec id from the background execute_container_command result" } },
+      required: ["execId"],
     },
   },
   {
@@ -910,6 +924,7 @@ const READ_ONLY_TOOLS = new Set([
   "read_host_file",
   "list_container_files",
   "probe_container_endpoint",
+  "get_container_exec_output",
   "list_issues",
   "get_issue",
   ...DATABASE_ASSISTANT_READ_ONLY_TOOLS,
@@ -1128,6 +1143,21 @@ async function executeReadOnlyTool(
         typeof input.path === "string" ? input.path : undefined,
         typeof input.method === "string" ? input.method : undefined,
       );
+    case "get_container_exec_output": {
+      const execId = String(input.execId ?? "");
+      const url = `http://127.0.0.1:${process.env.PORT || 4300}/api/containers/execs/${encodeURIComponent(execId)}/output`;
+      const http = await import("node:http");
+      return new Promise((resolve, reject) => {
+        http.get(url, (hres) => {
+          let data = "";
+          hres.on("data", (c: string) => data += c);
+          hres.on("end", () => {
+            try { resolve(JSON.parse(data)); }
+            catch { reject(new Error(`Failed to parse exec output response`)); }
+          });
+        }).on("error", reject);
+      });
+    }
     default:
       if (DATABASE_ASSISTANT_READ_ONLY_TOOLS.has(name)) {
         return executeDatabaseAssistantReadOnlyTool(name, input);

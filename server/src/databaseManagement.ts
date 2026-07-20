@@ -727,18 +727,18 @@ export function applyConnectionUpdate(row: DatabaseConnectionRow, body: unknown)
   return { name, engine, config, summary: buildSummary(config) };
 }
 
-export function listConnectionDetails(): DatabaseConnectionDetail[] {
-  return listDatabaseConnections().map(toDetail);
+export function listConnectionDetails(userId?: string): DatabaseConnectionDetail[] {
+  return listDatabaseConnections(userId).map(toDetail);
 }
 
-export function getConnectionDetail(id: string): DatabaseConnectionDetail {
-  const row = getDatabaseConnection(ensureConnectionId(id));
+export function getConnectionDetail(id: string, userId?: string): DatabaseConnectionDetail {
+  const row = getDatabaseConnection(ensureConnectionId(id), userId);
   if (!row) throw new HttpError(404, 'Saved database connection not found.' );
   return toDetail(row);
 }
 
-export function getStoredConnection(id: string): { row: DatabaseConnectionRow; config: StoredConnectionConfig; detail: DatabaseConnectionDetail } {
-  const row = getDatabaseConnection(ensureConnectionId(id));
+export function getStoredConnection(id: string, userId?: string): { row: DatabaseConnectionRow; config: StoredConnectionConfig; detail: DatabaseConnectionDetail } {
+  const row = getDatabaseConnection(ensureConnectionId(id), userId);
   if (!row) throw new HttpError(404, 'Saved database connection not found.' );
   return { row, config: decryptConfig(row.encrypted_config), detail: toDetail(row) };
 }

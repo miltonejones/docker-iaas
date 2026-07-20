@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import tar from 'tar-stream';
 import { docker, dockyardNetworkConfig, ensureImage } from '../docker.js';
+import { getAuthUser } from '../auth.js';
 import {
   listFunctions,
   getFunction,
@@ -429,9 +430,10 @@ function toJson(r: import('../db.js').LambdaFunctionRow) {
   };
 }
 
-lambdaRouter.get('/functions', (_req: Request, res: Response) => {
+lambdaRouter.get('/functions', (req: Request, res: Response) => {
   try {
-    res.json(listFunctions().map(toJson));
+    const userId = getAuthUser(req)?.userId;
+    res.json(listFunctions(userId).map(toJson));
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -440,7 +442,8 @@ lambdaRouter.get('/functions', (_req: Request, res: Response) => {
 // Get a single function.
 lambdaRouter.get('/functions/:id', (req: Request, res: Response) => {
   try {
-    const row = getFunction(req.params.id);
+    const userId = getAuthUser(req)?.userId;
+    const row = getFunction(req.params.id, userId);
     if (!row) {
       res.status(404).json({ error: 'Function not found.' });
       return;
@@ -468,7 +471,7 @@ lambdaRouter.post('/functions', (req: Request, res: Response) => {
     }
     const id = `fn-${Math.random().toString(36).slice(2, 8)}`;
     const resolvedEntry = entryPoint?.trim() || RUNTIMES[runtime || 'node']?.defaultEntry || null;
-    const row = createFunction(id, name.trim(), runtime || 'node', code || '', packages || '', resolvedEntry);
+    const row = createFunction(id, name.trim(), runtime || 'node', code || '', packages || '', resolvedEntry, getAuthUser(req)?.userId);
     if (files?.length) {
       setFunctionFiles(id, files.filter((f) => f.path && f.path !== resolvedEntry));
     }
@@ -525,7 +528,8 @@ lambdaRouter.delete('/functions/:id', (req: Request, res: Response) => {
 
 lambdaRouter.get('/functions/:id/env', (req: Request, res: Response) => {
   try {
-    if (!getFunction(req.params.id)) {
+    const userId = getAuthUser(req)?.userId;
+    if (!getFunction(req.params.id, userId)) {
       res.status(404).json({ error: 'Function not found.' });
       return;
     }
@@ -537,7 +541,8 @@ lambdaRouter.get('/functions/:id/env', (req: Request, res: Response) => {
 
 lambdaRouter.put('/functions/:id/env', (req: Request, res: Response) => {
   try {
-    if (!getFunction(req.params.id)) {
+    const userId = getAuthUser(req)?.userId;
+    if (!getFunction(req.params.id, userId)) {
       res.status(404).json({ error: 'Function not found.' });
       return;
     }

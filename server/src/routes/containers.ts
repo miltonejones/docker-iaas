@@ -222,8 +222,20 @@ function readExecOutput(stream: NodeJS.ReadableStream): Promise<{ output: string
 
 // Execute a confirmed command in a running container that the assistant
 // created. Commands are passed directly to Docker (never through a host shell).
+// Buffer for background exec output, keyed by exec id.
+const backgroundExecOutputs = new Map<string, { output: string; exitCode: number | null; truncated: boolean }>();
+
+containersRouter.get('/execs/:execId/output', async (req: Request, res: Response) => {
+  const entry = backgroundExecOutputs.get(req.params.execId);
+  if (!entry) {
+    res.status(404).json({ error: `Exec "${req.params.execId}" output not found (may have expired or not been a background exec).` });
+    return;
+  }
+  res.json(entry);
+});
+
 containersRouter.post('/:id/exec', async (req: Request, res: Response) => {
-  const { command, workingDir, background } = req.body as Record<string, unknown>;
+  const { command, workingDir, background, timeoutSeconds } = req.body as Record<string, unknown>;
   if (
     !Array.isArray(command) ||
     command.length === 0 ||
@@ -244,6 +256,8 @@ containersRouter.post('/:id/exec', async (req: Request, res: Response) => {
     res.status(400).json({ error: 'workingDir must be an absolute container path without "..".' });
     return;
   }
+  const timeout = typeof timeoutSeconds === 'number' && timeoutSeconds >= 1 && timeoutSeconds <= 600
+    ? timeoutSeconds * 1000 : undefined;
 
   try {
     const container = docker.getContainer(req.params.id);
@@ -263,24 +277,60 @@ containersRouter.post('/:id/exec', async (req: Request, res: Response) => {
 
     const exec = await container.exec({
       Cmd: commandArgs,
-      AttachStdout: !background,
-      AttachStderr: !background,
+      AttachStdout: true,
+      AttachStderr: true,
       WorkingDir: workingDir,
     });
 
     if (background) {
-      await exec.start({ hijack: false, stdin: false });
+      // Start the exec with hijack so we can capture output, but drain it
+      // in the background so the caller doesn't block.
+      const stream = await exec.start({ hijack: true, stdin: false });
+      const execId = exec.id;
+      backgroundExecOutputs.set(execId, { output: '', exitCode: null, truncated: false });
+
+      void (async () => {
+        try {
+          const { output, truncated } = await readExecOutput(stream);
+          const result = await exec.inspect();
+          backgroundExecOutputs.set(execId, { output, exitCode: result.ExitCode ?? null, truncated });
+        } catch {
+          backgroundExecOutputs.delete(execId);
+        }
+        // Clean up after 5 minutes.
+        setTimeout(() => backgroundExecOutputs.delete(execId), 5 * 60_000);
+      })();
+
       res.json({
         command: commandArgs,
         workingDir: workingDir ?? null,
         background: true,
-        execId: exec.id,
+        execId,
       });
       return;
     }
 
     const stream = await exec.start({ hijack: true, stdin: false });
-    const { output, truncated } = await readExecOutput(stream);
+    const outputPromise = readExecOutput(stream);
+
+    let output: string; let truncated: boolean;
+    if (timeout) {
+      const result = await Promise.race([
+        outputPromise.then((r) => ({ ok: true as const, ...r })),
+        new Promise<{ ok: false; error: string }>((resolve) =>
+          setTimeout(() => resolve({ ok: false, error: `Command timed out after ${timeoutSeconds}s.` }), timeout)
+        ),
+      ]);
+      if (!result.ok) {
+        res.status(504).json({ error: result.error });
+        return;
+      }
+      output = result.output;
+      truncated = result.truncated;
+    } else {
+      ({ output, truncated } = await outputPromise);
+    }
+
     const result = await exec.inspect();
     res.json({
       command: commandArgs,
@@ -297,7 +347,7 @@ containersRouter.post('/:id/exec', async (req: Request, res: Response) => {
 // Streaming variant of exec — sends output lines in real-time via SSE.
 // Same validation and security model as /:id/exec.
 containersRouter.post('/:id/exec/stream', async (req: Request, res: Response) => {
-  const { command, workingDir } = req.body as Record<string, unknown>;
+  const { command, workingDir, timeoutSeconds } = req.body as Record<string, unknown>;
   if (
     !Array.isArray(command) ||
     command.length === 0 ||
@@ -353,6 +403,16 @@ containersRouter.post('/:id/exec/stream', async (req: Request, res: Response) =>
       res.write(`data: ${JSON.stringify(data)}\n\n`);
     };
 
+    const timeout = typeof timeoutSeconds === 'number' && timeoutSeconds >= 1 && timeoutSeconds <= 600
+      ? timeoutSeconds * 1000 : undefined;
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    if (timeout) {
+      timeoutHandle = setTimeout(() => {
+        send({ type: 'error', message: `Command timed out after ${timeoutSeconds}s.` });
+        res.end();
+      }, timeout);
+    }
+
     send({ type: 'start', command: commandArgs, workingDir: workingDir ?? null });
 
     const stream = await exec.start({ hijack: true, stdin: false });
@@ -370,6 +430,7 @@ containersRouter.post('/:id/exec/stream', async (req: Request, res: Response) =>
     });
 
     stream.on('end', async () => {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
       try {
         const result = await exec.inspect();
         send({ type: 'done', exitCode: result.ExitCode ?? null });
@@ -380,6 +441,7 @@ containersRouter.post('/:id/exec/stream', async (req: Request, res: Response) =>
     });
 
     stream.on('error', (err) => {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
       if (!res.writableFinished) {
         send({ type: 'error', message: (err as Error).message });
       }

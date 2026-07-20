@@ -3,7 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "description": "Personal container management, EC2-style.",
-  "workspaces": ["server", "web", "relay"],
+  "workspaces": [
+    "server",
+    "web",
+    "relay"
+  ],
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:server": "npm --workspace server run dev",
@@ -13,5 +17,14 @@
     "start": "npm --workspace server run start",
     "start:relay": "npm --workspace relay run start",
     "typecheck": "npm --workspace server run typecheck && npm --workspace web run typecheck && npm --workspace relay run typecheck"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "deps": "^1.0.0",
+    "jsonwebtoken": "^9.0.3"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.10"
   }
 }

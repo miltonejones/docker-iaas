@@ -718,6 +718,7 @@ export function AssistantBar({
           input.command as string[],
           str(input.workingDir),
           bool(input.background),
+          typeof input.timeoutSeconds === 'number' ? input.timeoutSeconds : undefined,
         );
 
       case 'copy_host_file_to_container':

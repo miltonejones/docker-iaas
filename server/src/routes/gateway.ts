@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { getAuthUser } from '../auth.js';
 import {
   listRoutes,
   getRoutesByName,
@@ -101,9 +102,10 @@ function trafficSummaryJson(r: import('../db.js').GatewayTrafficSummaryRow) {
   };
 }
 
-gatewayRouter.get('/', (_req: Request, res: Response) => {
+gatewayRouter.get('/', (req: Request, res: Response) => {
   try {
-    res.json(listRoutes().map(toJson));
+    const userId = getAuthUser(req)?.userId;
+    res.json(listRoutes(userId).map(toJson));
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -300,6 +302,7 @@ gatewayRouter.post('/', (req: Request, res: Response) => {
       return;
     }
 
+    const userId = getAuthUser(req)?.userId;
     const id = `rt-${Math.random().toString(36).slice(2, 8)}`;
     const row = createRoute(
       id,
@@ -309,6 +312,7 @@ gatewayRouter.post('/', (req: Request, res: Response) => {
       targetType === 'container' ? Number(targetPort) : null,
       methodNorm,
       pathNorm,
+      userId,
     );
     res.status(201).json(toJson(row));
   } catch (err) {

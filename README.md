@@ -108,7 +108,7 @@ rsync -az --delete \
   -e 'ssh -i ~/.ssh/dockyard-key.pem' \
   ./ ec2-user@54.162.111.41:/home/ec2-user/docker-iaas/
 ssh -i ~/.ssh/dockyard-key.pem ec2-user@54.162.111.41 \
-  'cd /home/ec2-user/docker-iaas && docker compose up --build -d --remove-orphans'
+  'cd /home/ec2-user/docker-iaas && docker compose up --build -d --remove-orphans && docker image prune -f'
 ```
 
 `data/` holds persistent Dockyard/MinIO state; `.env` selects the live

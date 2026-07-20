@@ -16,6 +16,8 @@ import { hostFilesRouter } from './routes/hostFiles.js';
 import { hostBuildsRouter } from './routes/hostBuilds.js';
 import { databasesRouter } from './routes/databases.js';
 import { githubRouter } from './routes/github.js';
+import { authRouter } from './routes/auth.js';
+import { requireAuth } from './auth.js';
 import { gatewayProxyRouter } from './gatewayProxy.js';
 import { initDb } from './db.js';
 import { connectToRelay } from './relay.js';
@@ -37,28 +39,29 @@ app.use(cors());
 // its body consumed by express.json() before the raw-body route handler
 // ever sees it.
 app.use('/gw', gatewayProxyRouter);
-app.use('/api/buckets', bucketsRouter);
+app.use('/api/buckets', requireAuth, bucketsRouter);
 
 app.use(express.json({ limit: '2mb' }));
 
-app.use('/api/containers', containersRouter);
-app.use('/api/images', imagesRouter);
+app.use('/api/containers', requireAuth, containersRouter);
+app.use('/api/images', requireAuth, imagesRouter);
 app.use('/api/system', systemRouter);
-app.use('/api/lambda', lambdaRouter);
-app.use('/api/gateway', gatewayRouter);
-app.use('/api/volumes', volumesRouter);
-app.use('/api/host-files', hostFilesRouter);
-app.use('/api/host-builds', hostBuildsRouter);
-app.use('/api/databases', databasesRouter);
+app.use('/api/lambda', requireAuth, lambdaRouter);
+app.use('/api/gateway', requireAuth, gatewayRouter);
+app.use('/api/volumes', requireAuth, volumesRouter);
+app.use('/api/host-files', requireAuth, hostFilesRouter);
+app.use('/api/host-builds', requireAuth, hostBuildsRouter);
+app.use('/api/databases', requireAuth, databasesRouter);
 app.use('/api/github', githubRouter);
-app.use('/api/assistant', assistantRouter);
+app.use('/api/assistant', requireAuth, assistantRouter);
+app.use('/api/auth', authRouter);
 
 // Serve the built frontend in production (web/dist), if present.
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const webDist = path.resolve(__dirname, '../../web/dist');
 if (fs.existsSync(webDist)) {
   app.use(express.static(webDist));
-  app.get('*', (_req, res) => res.sendFile(path.join(webDist, 'index.html')));
+  app.use((_req, res) => res.sendFile(path.join(webDist, 'index.html')));
 }
 
 const port = Number(process.env.PORT || 4300);

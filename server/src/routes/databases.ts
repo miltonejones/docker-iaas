@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { getAuthUser } from '../auth.js';
 import {
   createDatabaseConnection,
   createDatabaseJob,
@@ -89,9 +90,10 @@ databasesRouter.get('/overview', (_req: Request, res: Response) => {
   }
 });
 
-databasesRouter.get('/connections', (_req: Request, res: Response) => {
+databasesRouter.get('/connections', (req: Request, res: Response) => {
   try {
-    res.json(listConnectionDetails());
+    const userId = getAuthUser(req)?.userId;
+    res.json(listConnectionDetails(userId));
   } catch (err) {
     sendError(res, err);
   }
@@ -99,6 +101,7 @@ databasesRouter.get('/connections', (_req: Request, res: Response) => {
 
 databasesRouter.post('/connections', (req: Request, res: Response) => {
   try {
+    const userId = getAuthUser(req)?.userId;
     const normalized = normalizeConnectionInput(req.body);
     const stored = serializeConnectionForStorage(normalized.config);
     const row = createDatabaseConnection(
@@ -107,8 +110,9 @@ databasesRouter.post('/connections', (req: Request, res: Response) => {
       normalized.engine,
       stored.summaryJson,
       stored.encryptedConfig,
+      userId,
     );
-    res.status(201).json(getConnectionDetail(row.id));
+    res.status(201).json(getConnectionDetail(row.id, userId));
   } catch (err) {
     if (errorMessage(err) === DATABASE_MASTER_KEY_ERROR) {
       res.status(503).json({ error: DATABASE_MASTER_KEY_ERROR });
@@ -120,7 +124,8 @@ databasesRouter.post('/connections', (req: Request, res: Response) => {
 
 databasesRouter.get('/connections/:id', (req: Request, res: Response) => {
   try {
-    res.json(getConnectionDetail(req.params.id));
+    const userId = getAuthUser(req)?.userId;
+    res.json(getConnectionDetail(req.params.id, userId));
   } catch (err) {
     sendError(res, err);
   }
