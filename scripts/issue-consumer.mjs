@@ -20,7 +20,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const QUEUE_URL =
   process.env.ISSUE_QUEUE_URL || "https://dockyard-ai.com/gw/issues/consume";
-const DEEPSEEK_CMD = process.env.DEEPSEEK_CMD || "deepseek";
+const DEEPSEEK_CMD = process.env.DEEPSEEK_CMD || "copilot";
 const CODEBASE_PATH = path.resolve(
   process.env.CODEBASE_PATH || path.join(__dirname, ".."),
 );
@@ -31,6 +31,16 @@ const ACTIVE_MS = Number(process.env.POLL_INTERVAL_ACTIVE_MS) || 1_000;
 let running = true;
 
 fs.mkdirSync(LOG_DIR, { recursive: true });
+
+function notify(summary, body = "") {
+  const n = spawn("notify-send", [
+    "--app-name=Dockyard",
+    "--icon=dialog-information",
+    summary,
+    body,
+  ], { stdio: "ignore", detached: true });
+  n.unref();
+}
 
 function log(...args) {
   const ts = new Date().toISOString();
@@ -79,6 +89,82 @@ function logFilename(issueId) {
   return path.join(LOG_DIR, `${safe}-${date}.md`);
 }
 
+async function deploy(issue) {
+  // Check if copilot actually changed any files
+  const { execSync } = await import("node:child_process");
+  let diff;
+  try {
+    diff = execSync("git diff --stat", { cwd: CODEBASE_PATH, encoding: "utf8", timeout: 10_000 }).trim();
+  } catch {
+    log("git diff failed — skipping deploy");
+    return;
+  }
+  if (!diff) {
+    log("No file changes — skipping deploy");
+    return;
+  }
+  log(`Changes detected:\n${diff}`);
+  notify("🚀 Deploying...", "Local + EC2 deploy started");
+
+  // --- Local deploy ---
+  log("Starting local deploy...");
+  try {
+    const localOut = execSync(
+      "docker compose up --build -d --remove-orphans && docker image prune -f",
+      { cwd: CODEBASE_PATH, encoding: "utf8", timeout: 300_000 },
+    );
+    log(`Local deploy OK:\n${localOut.trim()}`);
+  } catch (err) {
+    log(`Local deploy FAILED: ${err.message}`);
+    notify("❌ Local deploy failed", err.message);
+    return; // don't proceed to EC2 if local fails
+  }
+
+  // --- EC2 deploy ---
+  log("Starting EC2 deploy...");
+  const keyFile = "/home/miltonejones/.ssh/dockyard-key.pem";
+  const remote = "ec2-user@54.162.111.41";
+  const remotePath = "/home/ec2-user/docker-iaas";
+  const sshOpts = `ssh -i ${keyFile} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15`;
+
+  try {
+    // rsync source (excluding sensitive/persistent paths)
+    execSync(
+      `rsync -az --delete ` +
+        `--exclude '.git/' --exclude 'node_modules/' --exclude 'data/' ` +
+        `--exclude '.env' --exclude '.claude/' ` +
+        `-e '${sshOpts}' ` +
+        `./ ${remote}:${remotePath}/`,
+      { cwd: CODEBASE_PATH, encoding: "utf8", timeout: 120_000 },
+    );
+    log("rsync OK");
+
+    // Remote docker compose
+    const remoteOut = execSync(
+      `${sshOpts} ${remote} ` +
+        `'cd ${remotePath} && docker compose up --build -d --remove-orphans && docker image prune -f'`,
+      { encoding: "utf8", timeout: 300_000 },
+    );
+    log(`EC2 deploy OK:\n${remoteOut.trim()}`);
+    notify("✅ Deployed to EC2", "Local + EC2 deploy complete");
+
+    // Auto-commit so the working tree is clean for the next issue.
+    try {
+      execSync(`git add -A && git commit -m "fix: ${issue.summary}"`, {
+        cwd: CODEBASE_PATH,
+        encoding: "utf8",
+        timeout: 10_000,
+      });
+      log("Changes committed.");
+    } catch (err) {
+      log(`git commit failed: ${err.message}`);
+    }
+  } catch (err) {
+    log(`EC2 deploy FAILED: ${err.message}`);
+    notify("❌ EC2 deploy failed", err.message);
+  }
+}
+
 async function consumeOne() {
   let res;
   try {
@@ -109,7 +195,21 @@ async function consumeOne() {
   }
 
   const issue = body.issue;
+
+  // Skip if there are already uncommitted changes — likely a duplicate
+  // while a previous fix is still in-flight.
+  const { execSync: _exec } = await import("node:child_process");
+  try {
+    const pending = _exec("git diff --stat", { cwd: CODEBASE_PATH, encoding: "utf8", timeout: 5_000 }).trim();
+    if (pending) {
+      log(`Skipping ${issue.id} — uncommitted changes already present (likely duplicate):\n${pending}`);
+      notify(`⏭️ Skipped duplicate: ${issue.summary}`, "Uncommitted changes already present");
+      return true; // consumed from queue but skipped
+    }
+  } catch { /* proceed if git diff fails */ }
+
   log(`Processing issue ${issue.id}: ${issue.summary}`);
+  notify(`🐛 ${issue.summary}`, `Category: ${issue.category || "general"}\nID: ${issue.id}`);
 
   const prompt = formatPrompt(issue);
   const file = logFilename(issue.id);
@@ -118,7 +218,11 @@ async function consumeOne() {
   let stderr = "";
 
   await new Promise((resolve) => {
-    const child = spawn(DEEPSEEK_CMD, ["chat", prompt], {
+    // copilot -p runs non-interactively; no TTY needed.
+    const child = spawn(DEEPSEEK_CMD, [
+      "-p", prompt,
+      "--yolo",
+    ], {
       cwd: CODEBASE_PATH,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -168,8 +272,11 @@ async function consumeOne() {
 
       if (code === 0) {
         log(`Issue ${issue.id} processed.`);
+        notify(`✅ Fixed: ${issue.summary}`);
+        deploy(issue); // fire-and-forget — don't block next poll
       } else {
-        log(`DeepSeek exited with code ${code} for issue ${issue.id}`);
+        log(`Copilot exited with code ${code} for issue ${issue.id}`);
+        notify(`❌ Failed: ${issue.summary}`, `Exit code: ${code}`);
         if (stderr && !stdout) log(`stderr: ${stderr.slice(0, 500)}`);
       }
       resolve();

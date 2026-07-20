@@ -92,6 +92,7 @@ Rules:
 - When the user refers to a resource vaguely ("the function", "it", "that one", "this bucket") without naming it, first check whether an earlier message or tool result in this same conversation already established which one. If exactly one resource was clearly the subject of the recent exchange, use its id directly without re-listing or re-asking. Only fall back to list_* or asking the user to clarify when no such resource is evident from the conversation so far.
 - When the user asks what a function does or wants to see its code, call read_function with its id — list_functions only returns id/name/runtime, not the source code. read_function runs automatically (no confirmation needed) and returns the full function details including code, runtime, packages, and entry point.
 - Before editing a file that might already exist in a bucket (e.g. "change the title", "add a button", "fix the CSS"), call list_bucket_objects and read_bucket_object first and base the edit on the real current content — never blindly regenerate a file from scratch when the request implies an existing one. write_bucket_object always replaces a file's entire content, so the new content you send must include everything you want kept, not just the changed part.
+- The "content"/"code" you send to write_bucket_object, write_bucket_objects, write_container_file, write_container_files, replace_in_bucket_object, replace_in_container_file, and create_lambda_function/update the function's code must be exactly the file's intended contents — nothing else. Never append a closing remark, joke, quip, watermark, or any other extra line/comment that wasn't asked for, especially not to the last line of a JSON, CSS, or other config/code file; a stray trailing phrase can break parsers.
 - For multi-step requests (e.g. "create a function and attach a gateway route to it"), call one tool at a time and wait for its real result before calling the next one — never invent an id.
 - Default runtime is "node" unless the user names another ("python" or "sh").
 - When writing a function's "code", write complete, runnable source for the chosen runtime. Functions invoked through a gateway route follow this contract: the incoming request arrives as JSON in the DOCKYARD_REQUEST environment variable, shaped like { httpMethod, path, headers, queryStringParameters, body, isBase64Encoded } (body may be null). The function must print exactly one JSON object to stdout shaped like { "statusCode": number, "headers"?: object, "body": string, "isBase64Encoded"?: boolean }. Do not print anything else to stdout.
@@ -1634,7 +1635,7 @@ assistantRouter.post("/issues", (req: Request, res: Response) => {
       res.status(400).json({ error: "A summary is required." });
       return;
     }
-    const row = createAssistantIssue(
+    const { row } = createAssistantIssue(
       { summary: summary.trim(), category, details },
       userId,
     );

@@ -124,7 +124,7 @@ function Breadcrumbs() {
       : containerId && containerId !== 'new'
         ? (containerName ?? 'Instance')
         : gatewayName
-          ? `/gw/${gatewayName}`
+          ? `gw/${gatewayName}`
           : bucketName
             ? bucketName
             : databaseId
@@ -138,7 +138,7 @@ function Breadcrumbs() {
       <Link to="/" className="breadcrumbs__link">Home</Link>
       {currentLabel && (
         <>
-          <span className="breadcrumbs__sep">/</span>
+          <span className="breadcrumbs__sep">&gt;</span>
           {detailLabel ? (
             <Link to={current!.path} className="breadcrumbs__link">{currentLabel}</Link>
           ) : (
@@ -148,7 +148,7 @@ function Breadcrumbs() {
       )}
       {detailLabel && (
         <>
-          <span className="breadcrumbs__sep">/</span>
+          <span className="breadcrumbs__sep">&gt;</span>
           <span className="breadcrumbs__current">{detailLabel}</span>
         </>
       )}
@@ -325,7 +325,7 @@ export function App() {
           </div>
           <div className="topbar__right">
             <button className="btn btn--ghost btn--sm" onClick={logout} title={`Sign out (${email})`}>
-              <AppIcon name="user" />
+              <AppIcon name="logout" />
             </button>
           </div>
         </header>

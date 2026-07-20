@@ -1155,16 +1155,48 @@ export function getAssistantIssue(id: string, userId?: string): AssistantIssueRo
   return row;
 }
 
+// Window within which an identical summary/category from the same user is
+// treated as a duplicate push (e.g. a retried webhook or a double-submit)
+// rather than a distinct new issue.
+const ISSUE_DEDUPE_WINDOW_MS = 5 * 60 * 1000;
+
+function findRecentDuplicateIssue(
+  summary: string,
+  category: string,
+  userId?: string,
+): AssistantIssueRow | undefined {
+  const normalizedSummary = summary.trim().toLowerCase();
+  const candidates = db
+    .prepare(
+      'SELECT * FROM assistant_issues WHERE user_id IS ? ORDER BY created_at DESC LIMIT 20',
+    )
+    .all(userId ?? null) as AssistantIssueRow[];
+  const cutoff = Date.now() - ISSUE_DEDUPE_WINDOW_MS;
+  return candidates.find(
+    (row) =>
+      row.summary.trim().toLowerCase() === normalizedSummary &&
+      row.category === category &&
+      new Date(row.created_at).getTime() >= cutoff,
+  );
+}
+
 export function createAssistantIssue(
   details: { summary: string; category?: string; details?: Record<string, unknown> },
   userId?: string,
-): AssistantIssueRow {
-  const id = `iss-${Math.random().toString(36).slice(2, 8)}`;
+): { row: AssistantIssueRow; created: boolean } {
+  const category = details.category || 'general';
+  // Guard against duplicate entries from a single logical report being
+  // pushed more than once (e.g. a retried webhook delivery or accidental
+  // double submission) within a short window.
+  const existing = findRecentDuplicateIssue(details.summary, category, userId);
+  if (existing) return { row: existing, created: false };
+
+  const id = `iss-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const now = new Date().toISOString();
   db.prepare(
     'INSERT INTO assistant_issues (id, summary, category, details_json, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-  ).run(id, details.summary, details.category || 'general', JSON.stringify(details.details ?? {}), userId ?? null, now);
-  return getAssistantIssue(id)!;
+  ).run(id, details.summary, category, JSON.stringify(details.details ?? {}), userId ?? null, now);
+  return { row: getAssistantIssue(id)!, created: true };
 }
 
 // ---------------------------------------------------------------------------

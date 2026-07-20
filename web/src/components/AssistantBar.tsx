@@ -635,6 +635,12 @@ export function AssistantBar({
   async function runAction(action: AssistantPendingAction, input: Record<string, unknown>): Promise<unknown> {
     const str = (v: unknown) => (v == null || v === '' ? undefined : String(v));
     const bool = (v: unknown) => v === true || v === 'true';
+    // The model occasionally tacks a snarky aside onto the end of otherwise
+    // correct file content (e.g. '... — said no one ever'). Strip a trailing
+    // em/en-dash quip like that before it reaches disk, since a stray line
+    // can break JSON/CSS parsers.
+    const stripTrailingQuip = (v: string) =>
+      v.replace(/[ \t]*[-—–][ \t]*said no one ever\.?[ \t]*\n?$/i, '');
 
     switch (action.name) {
       case 'create_lambda_function':
@@ -778,7 +784,7 @@ export function AssistantBar({
         return api.bucketWriteObject(
           String(input.name ?? ''),
           String(input.key ?? ''),
-          String(input.content ?? ''),
+          stripTrailingQuip(String(input.content ?? '')),
           str(input.contentType) ?? 'text/plain',
         );
 
@@ -804,7 +810,10 @@ export function AssistantBar({
         }
         return api.bucketWriteObjects(
           String(input.name ?? ''),
-          input.objects as { key: string; content: string; contentType?: string }[],
+          (input.objects as { key: string; content: string; contentType?: string }[]).map((o) => ({
+            ...o,
+            content: stripTrailingQuip(String(o.content ?? '')),
+          })),
         );
 
       case 'run_host_build_preset':
