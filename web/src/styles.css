@@ -696,6 +696,75 @@ code,
   font-variant-numeric: tabular-nums;
 }
 
+.panel__head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* View toggle (list/grid) ----------------------------------------------- */
+.view-toggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  overflow: hidden;
+}
+.view-toggle__btn {
+  background: var(--bg-elev);
+  border: none;
+  color: var(--muted);
+  padding: 6px 10px;
+  cursor: pointer;
+  line-height: 1;
+  transition:
+    background 0.15s var(--ease),
+    color 0.15s var(--ease);
+}
+.view-toggle__btn + .view-toggle__btn {
+  border-left: 1px solid var(--border);
+}
+.view-toggle__btn:hover {
+  color: var(--text);
+}
+.view-toggle__btn--on {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Instance grid view ----------------------------------------------------- */
+.instance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+.instance-card .card__body h3 {
+  margin: 0 0 4px;
+}
+.instance-card .card__body h3 .instance-link {
+  font-size: 15px;
+  font-weight: 600;
+}
+.instance-card__status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 2px;
+}
+.instance-card__age {
+  margin-left: auto;
+  font-size: 11px;
+}
+.instance-card__ports {
+  font-size: 11px;
+  margin-top: 4px;
+}
+.instance-card__actions {
+  margin-top: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 /* Chips / filter ------------------------------------------------------- */
 .chips {
   display: flex;
