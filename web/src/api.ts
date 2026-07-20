@@ -187,6 +187,22 @@ export const api = {
       body: JSON.stringify({ files }),
     }).then((r) => json<{ ok: true; filesWritten: number }>(r)),
 
+  /** List files recursively inside a container directory using find. */
+  containerListFiles: (id: string, path = '/', maxDepth = 4) =>
+    fetch(`/api/containers/${id}/files/list`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, maxDepth }),
+    }).then((r) => json<{ path: string; entries: { type: string; name: string; size: number; mtime: number }[] }>(r)),
+
+  /** Probe an HTTP endpoint inside a container from the Dockyard network. */
+  containerProbe: (id: string, port: number, path = '/', method = 'GET') =>
+    fetch(`/api/containers/${id}/probe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ port, path, method }),
+    }).then((r) => json<{ statusCode: number; headers: Record<string, string | string[] | undefined>; body: string; truncated: boolean }>(r)),
+
   hostFileToBucket: (sourcePath: string, bucket: string, key: string, contentType?: string) =>
     fetch('/api/host-files/to-bucket', {
       method: 'POST',

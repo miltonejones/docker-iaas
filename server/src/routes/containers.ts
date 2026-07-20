@@ -709,6 +709,123 @@ containersRouter.get('/:id/logs', async (req: Request, res: Response) => {
   }
 });
 
+/** Recursively list files in a container directory using `find`. */
+export async function listContainerFiles(
+  containerId: string,
+  dirPath = '/',
+  maxDepth = 4,
+): Promise<{ path: string; entries: { type: string; name: string; size: number; mtime: number }[] }> {
+  const absPath = typeof dirPath === 'string' && dirPath.startsWith('/')
+    ? dirPath.replace(/\/+/g, '/').replace(/\/$/, '') || '/'
+    : '/';
+  const depth = typeof maxDepth === 'number' && maxDepth >= 1 && maxDepth <= 8
+    ? maxDepth : 4;
+
+  const container = docker.getContainer(containerId);
+  const info = await container.inspect();
+  if (info.Config?.Labels?.['iaas.system']) {
+    throw new Error('System-managed containers cannot be listed by the assistant.');
+  }
+  if (info.Config?.Labels?.['iaas.assistant-managed'] !== 'true') {
+    throw new Error('File listings are limited to containers created by the assistant.');
+  }
+  if (!info.State?.Running) {
+    throw new Error('Container is not running.');
+  }
+
+  const exec = await container.exec({
+    Cmd: ['find', absPath, '-maxdepth', String(depth), '-printf', '%y\t%s\t%T@\t%P\n'],
+    AttachStdout: true,
+    AttachStderr: true,
+  });
+  const stream = await exec.start({ hijack: true, stdin: false });
+  const { output } = await readExecOutput(stream);
+
+  const entries: { type: string; name: string; size: number; mtime: number }[] = [];
+  for (const line of output.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const parts = trimmed.split('\t');
+    if (parts.length < 4) continue;
+    const name = parts[3];
+    if (name === '.' || name === '') continue;
+    entries.push({
+      type: parts[0] === 'd' ? 'directory' : 'file',
+      name: absPath === '/' ? `/${name}` : `${absPath}/${name}`,
+      size: Number(parts[1]) || 0,
+      mtime: Number(parts[2]) || 0,
+    });
+  }
+  entries.sort((a, b) => a.name.localeCompare(b.name));
+  return { path: absPath, entries };
+}
+
+// Recursively list files in a container directory.  Uses `find` under the
+// hood with a configurable max depth (default 4).  Same security model as
+// exec — only assistant-managed, non-system containers.
+containersRouter.post('/:id/files/list', async (req: Request, res: Response) => {
+  try {
+    res.json(await listContainerFiles(
+      req.params.id,
+      req.body.path as string | undefined,
+      req.body.maxDepth as number | undefined,
+    ));
+  } catch (err) {
+    res.status(502).json({ error: (err as Error).message });
+  }
+});
+
+/** Probe an HTTP endpoint inside a container from Dockyard's own process
+ *  (same Docker network).  Returns status, headers, and up to 4 KiB of body. */
+export async function probeContainerEndpoint(
+  containerId: string,
+  port: number,
+  path = '/',
+  method = 'GET',
+): Promise<{ statusCode: number; headers: Record<string, string | string[] | undefined>; body: string; truncated: boolean }> {
+  const container = docker.getContainer(containerId);
+  const info = await container.inspect();
+  if (!info.State?.Running) throw new Error('Container is not running.');
+  const containerName = (info.Name || '').replace(/^\//, '');
+  const target = `http://${containerName}:${port}${path}`;
+
+  const http = await import('node:http');
+  return new Promise((resolve, reject) => {
+    const hreq = http.request(target, { method, timeout: 10_000 }, (hres) => {
+      const chunks: Buffer[] = [];
+      let size = 0;
+      hres.on('data', (chunk: Buffer) => {
+        if (size < 4096) { chunks.push(chunk); size += chunk.length; }
+      });
+      hres.on('end', () => {
+        resolve({
+          statusCode: hres.statusCode ?? 0,
+          headers: hres.headers,
+          body: Buffer.concat(chunks).toString('utf8').slice(0, 4096),
+          truncated: size > 4096,
+        });
+      });
+    });
+    hreq.setTimeout(10_000, () => { hreq.destroy(); reject(new Error('Probe timed out after 10 seconds.')); });
+    hreq.on('error', reject);
+    hreq.end();
+  });
+}
+
+// Probe endpoint — thin wrapper around probeContainerEndpoint.
+containersRouter.post('/:id/probe', async (req: Request, res: Response) => {
+  try {
+    res.json(await probeContainerEndpoint(
+      req.params.id,
+      typeof req.body.port === 'number' ? req.body.port : Number(req.body.port) || 80,
+      typeof req.body.path === 'string' ? req.body.path : '/',
+      typeof req.body.method === 'string' ? req.body.method.toUpperCase() : 'GET',
+    ));
+  } catch (err) {
+    res.status(502).json({ error: (err as Error).message });
+  }
+});
+
 // Non-TTY container logs are multiplexed with an 8-byte header per frame.
 export function stripLogHeaders(buf: Buffer): string {
   const out: Buffer[] = [];
