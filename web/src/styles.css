@@ -211,16 +211,16 @@ code,
   gap: 8px;
   padding: 7px 14px;
   border-radius: 999px;
-  background: var(--bg-elev);
-  border: 1px solid var(--border-strong);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  background: #eceef3;
+  border: 1px solid #d0d4de;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.06);
   transition:
     border-color 0.15s var(--ease),
     box-shadow 0.15s var(--ease);
 }
 .assistant-search:hover {
-  border-color: var(--accent-dim);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.10);
+  border-color: #bcc1ce;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.06), 0 1px 4px rgba(0,0,0,0.06);
 }
 .assistant-search:focus-within {
   border-color: var(--accent);
