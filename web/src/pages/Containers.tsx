@@ -23,7 +23,7 @@ export function ContainersPage({ containers, presets, busy, onChanged }: Props) 
   const [launchPreset, setLaunchPreset] = useState<Preset | null>(null);
   const [relaunch, setRelaunch] = useState<{
     preset: Preset;
-    prefill: { name: string; ports: { container: string; host: number; label?: string }[]; env: { key: string; value: string }[] };
+    prefill: { name: string; description?: string; ports: { container: string; host: number; label?: string }[]; env: { key: string; value: string }[] };
     replaceId: string;
   } | null>(null);
 
@@ -60,6 +60,7 @@ export function ContainersPage({ containers, presets, busy, onChanged }: Props) 
                 preset,
                 prefill: {
                   name: detail.name,
+                  description: detail.description,
                   ports: detail.ports
                     .filter((p) => p.publicPort)
                     .map((p) => ({

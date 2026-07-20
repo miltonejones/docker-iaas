@@ -48,6 +48,7 @@ export interface Container {
   sizeRootFs: number;
   presetId?: string;
   system?: boolean;
+  description?: string;
 }
 
 export interface HostDisk {
@@ -94,6 +95,7 @@ export interface ContainerDetail {
   labels: Record<string, string>;
   sizeRw: number;
   sizeRootFs: number;
+  description?: string;
 }
 
 export interface LambdaFile {

@@ -869,6 +869,18 @@ code,
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+.instance-desc-row td {
+  padding: 0 12px 10px 12px;
+  border-bottom: 1px solid var(--border-soft);
+  white-space: normal;
+}
+.instance-desc-row:last-child td {
+  border-bottom: none;
+}
+.instance-desc {
+  font-size: 12px;
+  padding-left: 30px;
+}
 .actions-col {
   text-align: right;
   white-space: nowrap;

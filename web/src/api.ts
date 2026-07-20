@@ -95,6 +95,7 @@ export interface LaunchRequest {
   presetId?: string;
   image?: string;
   name?: string;
+  description?: string;
   command?: string[];
   ports?: { container: string; host: number }[];
   env?: { key: string; value: string }[];

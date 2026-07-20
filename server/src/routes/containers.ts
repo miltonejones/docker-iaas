@@ -20,6 +20,8 @@ interface ContainerView {
   presetId?: string;
   /** System-managed containers (e.g. the persistent MinIO instance) can't be removed from the UI. */
   system?: boolean;
+  /** Optional free-text note set at launch time, shown as a second row in the instances list. */
+  description?: string;
 }
 
 function toView(c: Docker.ContainerInfo): ContainerView {
@@ -39,6 +41,7 @@ function toView(c: Docker.ContainerInfo): ContainerView {
     sizeRootFs: (c as unknown as { SizeRootFs?: number }).SizeRootFs ?? 0,
     presetId: c.Labels?.['iaas.preset'],
     system: !!c.Labels?.['iaas.system'],
+    description: c.Labels?.['iaas.description'] || undefined,
   };
 }
 
@@ -72,6 +75,7 @@ interface LaunchBody {
   presetId?: string;
   image?: string;
   name?: string;
+  description?: string;
   command?: string[];
   ports?: { container: string; host: number }[];
   env?: { key: string; value: string }[];
@@ -139,6 +143,7 @@ containersRouter.post('/', async (req: Request, res: Response) => {
         ...(preset ? { 'iaas.preset': preset.id } : {}),
         ...(body.assistantManaged ? { 'iaas.assistant-managed': 'true' } : {}),
         ...(userId ? { 'iaas.owner': userId } : {}),
+        ...(body.description?.trim() ? { 'iaas.description': body.description.trim() } : {}),
       },
       Tty: needsTty,
       HostConfig: {
@@ -755,6 +760,7 @@ containersRouter.get('/:id/inspect', async (req: Request, res: Response) => {
       labels: data.Config?.Labels ?? {},
       sizeRw: (data as unknown as { SizeRw?: number }).SizeRw ?? 0,
       sizeRootFs: (data as unknown as { SizeRootFs?: number }).SizeRootFs ?? 0,
+      description: data.Config?.Labels?.['iaas.description'] || undefined,
     };
     res.json(detail);
   } catch (err) {

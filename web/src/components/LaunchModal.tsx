@@ -8,13 +8,14 @@ interface Props {
   onClose: () => void;
   onLaunched: () => void;
   /** Pre-fill overrides for relaunch (from detail view). */
-  prefill?: { name?: string; ports?: { container: string; host: number; label?: string }[]; env?: { key: string; value: string }[] };
+  prefill?: { name?: string; description?: string; ports?: { container: string; host: number; label?: string }[]; env?: { key: string; value: string }[] };
   /** If set, this container will be removed before launching the new one. */
   replaceId?: string;
 }
 
 export function LaunchModal({ preset, onClose, onLaunched, prefill, replaceId }: Props) {
   const [name, setName] = useState(prefill?.name || `${preset.id}-${Math.random().toString(36).slice(2, 6)}`);
+  const [description, setDescription] = useState(prefill?.description || '');
   const [ports, setPorts] = useState(
     (prefill?.ports ?? preset.ports).map((p) => ({ ...p })),
   );
@@ -49,6 +50,7 @@ export function LaunchModal({ preset, onClose, onLaunched, prefill, replaceId }:
     const body: LaunchRequest = {
       presetId: preset.id,
       name: name.trim() || undefined,
+      description: description.trim() || undefined,
       ports: ports
         .filter((p) => p.container.trim() && p.host > 0)
         .map((p) => ({ container: p.container.trim(), host: p.host })),
@@ -85,6 +87,15 @@ export function LaunchModal({ preset, onClose, onLaunched, prefill, replaceId }:
         <label className="field">
           <span>Instance name</span>
           <input value={name} onChange={(e) => setName(e.target.value)} spellCheck={false} />
+        </label>
+
+        <label className="field">
+          <span>Description (optional)</span>
+          <input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="A short note about this instance"
+          />
         </label>
 
         <fieldset className="field">

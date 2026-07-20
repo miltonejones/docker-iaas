@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import type { Container } from '../types';
 import { bytes, timeAgo } from '../format';
 import { api } from '../api';
@@ -75,7 +75,8 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                 const isPending = pending === c.id || busy;
                 const locked = !!c.system;
                 return (
-                  <tr key={c.id}>
+                  <Fragment key={c.id}>
+                  <tr>
                     <td>
                       <span className={`dot dot--${running ? 'up' : 'down'}`} />
                       <button
@@ -147,6 +148,14 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                       )}
                     </td>
                   </tr>
+                  {c.description && (
+                    <tr className="instance-desc-row">
+                      <td colSpan={7} className="muted instance-desc">
+                        {c.description}
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
             </tbody>
