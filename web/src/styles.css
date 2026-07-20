@@ -296,6 +296,13 @@ code,
   color: var(--accent);
   text-decoration: underline;
 }
+.app-footer__link--button {
+  background: none;
+  border: none;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+}
 .breadcrumbs__current {
   color: var(--text);
   font-weight: 600;

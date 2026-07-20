@@ -10,6 +10,7 @@ import { BucketsPage } from './pages/Buckets';
 import { GatewayPage } from './pages/Gateway';
 import { DatabasesPage } from './pages/Databases';
 import { AssistantBar } from './components/AssistantBar';
+import { CreateIssueModal } from './components/CreateIssueModal';
 import { LoginPage } from './components/LoginPage';
 import { useAuth } from './AuthContext';
 import { emitRefresh } from './refresh';
@@ -173,6 +174,7 @@ export function App() {
   const [assistantPinned, setAssistantPinned] = useState(() => localStorage.getItem(PINNED_KEY) === '1');
   const [assistantSessionId, setAssistantSessionId] = useState<string | undefined>(undefined);
   const [modalKey, setModalKey] = useState(0);
+  const [createIssueOpen, setCreateIssueOpen] = useState(false);
 
   // Persist pinned preference whenever it changes.
   useEffect(() => {
@@ -484,7 +486,15 @@ export function App() {
           >
             GitHub <AppIcon name="external" />
           </a>
+          <button
+            type="button"
+            className="app-footer__link app-footer__link--button"
+            onClick={() => setCreateIssueOpen(true)}
+          >
+            Create an issue
+          </button>
         </footer>
+        {createIssueOpen && <CreateIssueModal onClose={() => setCreateIssueOpen(false)} />}
       </div>
     </BrowserRouter>
   );
