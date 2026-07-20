@@ -1024,6 +1024,7 @@ export function AssistantBar({
         if (last?.role === 'assistant') copy.pop();
         return copy;
       });
+      setPending([]);
       setResolved([]);
     } finally {
       setActiveActionName(null);
