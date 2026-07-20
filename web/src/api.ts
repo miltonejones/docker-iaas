@@ -434,6 +434,13 @@ export const api = {
   gatewayDelete: (id: string) =>
     fetch(`/api/gateway/${id}`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r)),
 
+  gatewayUpdate: (id: string, displayName: string | null) =>
+    fetch(`/api/gateway/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName }),
+    }).then((r) => json<GatewayRoute>(r)),
+
   gatewayTrafficSummary: (gatewayName?: string) => {
     const query = gatewayName ? `?gatewayName=${encodeURIComponent(gatewayName)}` : '';
     return fetch(`/api/gateway/traffic/summary${query}`).then((r) => json<GatewayTrafficSummary>(r));

@@ -5,6 +5,7 @@ import {
   getRoutesByName,
   createRoute,
   deleteRoute,
+  updateRoute,
   listGatewayTrafficEvents,
   summarizeGatewayTraffic,
   summarizeGatewayTrafficByHour,
@@ -318,6 +319,17 @@ gatewayRouter.post('/', (req: Request, res: Response) => {
       displayName?.trim() || null,
     );
     res.status(201).json(toJson(row));
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+gatewayRouter.put('/:id', (req: Request, res: Response) => {
+  try {
+    const { displayName } = req.body as { displayName?: string | null };
+    const row = updateRoute(req.params.id, { displayName });
+    if (!row) { res.status(404).json({ error: 'Route not found.' }); return; }
+    res.json(toJson(row));
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

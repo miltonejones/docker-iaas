@@ -345,6 +345,14 @@ export function deleteRoute(id: string): boolean {
   return result.changes > 0;
 }
 
+export function updateRoute(id: string, fields: { displayName?: string | null }): RouteRow | undefined {
+  const existing = getRoute(id);
+  if (!existing) return undefined;
+  db.prepare('UPDATE routes SET display_name = ?, updated_at = ? WHERE id = ?')
+    .run(fields.displayName !== undefined ? fields.displayName : existing.display_name, new Date().toISOString(), id);
+  return getRoute(id)!;
+}
+
 // ---------------------------------------------------------------------------
 // Gateway traffic telemetry
 // ---------------------------------------------------------------------------

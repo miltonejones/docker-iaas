@@ -18,6 +18,8 @@ export function GatewayList() {
   const [containers, setContainers] = useState<Container[]>([]);
   const [functions, setFunctions] = useState<LambdaFunction[]>([]);
   const [traffic, setTraffic] = useState<GatewayTrafficSummary | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +55,17 @@ export function GatewayList() {
     }
     const fn = functions.find((x) => x.id === r.targetId);
     return fn?.name || r.targetId;
+  }
+
+  async function saveDisplayName(group: GatewayRoute[]) {
+    const val = editValue.trim();
+    const displayName = val || null;
+    // Update all endpoints sharing this route name.
+    for (const r of group) {
+      await api.gatewayUpdate(r.id, displayName);
+    }
+    loadRoutes();
+    setEditing(null);
   }
 
   const groups = Object.values(
@@ -130,8 +143,25 @@ export function GatewayList() {
             <tbody>
               {groups.map((group) => (
                 <tr key={group[0].name} onClick={() => navigate(`/gateway/${group[0].name}`)}>
-                  <td>
-                    <span>{group[0].displayName || group[0].name}</span>
+                  <td onClick={(e) => e.stopPropagation()}>
+                    {editing === group[0].name ? (
+                      <input
+                        className="gateway-name-edit"
+                        value={editValue}
+                        onChange={(e) => setEditValue(e.target.value)}
+                        onBlur={() => saveDisplayName(group)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') saveDisplayName(group); if (e.key === 'Escape') setEditing(null); }}
+                        autoFocus
+                      />
+                    ) : (
+                      <span
+                        className="gateway-name-cell"
+                        title="Click to rename"
+                        onClick={() => { setEditing(group[0].name); setEditValue(group[0].displayName || group[0].name); }}
+                      >
+                        {group[0].displayName || group[0].name}
+                      </span>
+                    )}
                   </td>
                   <td className="mono">
                     <a

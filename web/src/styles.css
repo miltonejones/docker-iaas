@@ -806,6 +806,25 @@ code,
 .table-wrap {
   overflow-x: auto;
 }
+.gateway-name-cell {
+  cursor: pointer;
+  border-bottom: 1px dashed transparent;
+  transition: border-color 0.15s;
+}
+.gateway-name-cell:hover {
+  border-bottom-color: var(--muted);
+}
+.gateway-name-edit {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg-elev);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  border-radius: var(--r-sm);
+  padding: 4px 6px;
+  font-size: inherit;
+  font-family: inherit;
+}
 .table {
   width: 100%;
   border-collapse: collapse;
