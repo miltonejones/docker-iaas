@@ -169,9 +169,15 @@ export function App() {
     prompt?: string;
     sessionId?: string;
   } | null>(null);
-  const [assistantPinned, setAssistantPinned] = useState(false);
+  const PINNED_KEY = 'dockyard:assistant-pinned';
+  const [assistantPinned, setAssistantPinned] = useState(() => localStorage.getItem(PINNED_KEY) === '1');
   const [assistantSessionId, setAssistantSessionId] = useState<string | undefined>(undefined);
   const [modalKey, setModalKey] = useState(0);
+
+  // Persist pinned preference whenever it changes.
+  useEffect(() => {
+    localStorage.setItem(PINNED_KEY, assistantPinned ? '1' : '0');
+  }, [assistantPinned]);
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const [sessionsList, setSessionsList] = useState<AssistantSessionSummary[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
