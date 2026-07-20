@@ -1104,18 +1104,18 @@ export function AssistantBar({
           </h3>
           {embedded && (
             <button className="btn btn--ghost btn--sm" onClick={resetToNewSession}>
-              <AppIcon name="plus" /> New
+              <AppIcon name="plus" /> <span className="btn-label">New</span>
             </button>
           )}
           {!embedded && (
             <span style={{ display: 'flex', gap: 4 }}>
               {onPin && (
                 <button className="btn btn--ghost" onClick={onPin} title="Pin to workspace" disabled={busy}>
-                  <AppIcon name="external" /> Pin
+                  <AppIcon name="external" /> <span className="btn-label">Pin</span>
                 </button>
               )}
               <button className="btn btn--ghost" onClick={onClose}>
-                <AppIcon name="close" /> Close
+                <AppIcon name="close" /> <span className="btn-label">Close</span>
               </button>
             </span>
           )}
@@ -1132,10 +1132,10 @@ export function AssistantBar({
             {sessionSaving && <span className="assistant-session-bar__status muted">Saving…</span>}
             <div className="assistant-session-bar__actions">
               <button className="btn btn--ghost btn--sm" onClick={resetToNewSession}>
-                <AppIcon name="plus" /> New
+                <AppIcon name="plus" /> <span className="btn-label">New</span>
               </button>
               <button className="btn btn--ghost btn--sm" onClick={toggleSessionsList}>
-                <AppIcon name="folder" /> Sessions
+                <AppIcon name="folder" /> <span className="btn-label">Sessions</span>
               </button>
             </div>
           </div>
@@ -1280,10 +1280,10 @@ export function AssistantBar({
                   disabled={busy}
                   onClick={() => decide(action, true)}
                 >
-                  Confirm
+                  <AppIcon name="check" /> <span className="btn-label">Confirm</span>
                 </button>
                 <button className="btn btn--ghost btn--sm" disabled={busy} onClick={() => decide(action, false)}>
-                  Cancel
+                  <AppIcon name="close" /> <span className="btn-label">Cancel</span>
                 </button>
               </div>
             </div>
@@ -1322,7 +1322,7 @@ export function AssistantBar({
                 disabled={!prompt.trim()}
               onClick={ask}
             >
-              {busy ? 'Thinking…' : <><AppIcon name="send" /> Ask</>}
+              {busy ? <span className="btn-label">Thinking…</span> : <><AppIcon name="send" /> <span className="btn-label">Ask</span></>}
             </button>
             )}
           </div>

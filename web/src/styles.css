@@ -329,6 +329,7 @@ code,
   color: var(--muted);
   font-size: 12px;
   cursor: pointer;
+  white-space: nowrap;
 }
 .assistant-auto-approve input {
   width: auto;
@@ -2577,6 +2578,10 @@ textarea:focus {
   .db-key-value,
   .db-split {
     grid-template-columns: 1fr;
+  }
+  .modal--assistant .btn-label,
+  .assistant-panel .btn-label {
+    display: none;
   }
 }
 
