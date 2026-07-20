@@ -734,7 +734,14 @@ export async function listContainerFiles(
   }
 
   const exec = await container.exec({
-    Cmd: ['find', absPath, '-maxdepth', String(depth), '-printf', '%y\t%s\t%T@\t%P\n'],
+    // BusyBox find (Alpine) lacks -printf, so we pair -exec stat with
+    // -print.  Every matched entry produces a stat line then a path line.
+    Cmd: [
+      'find', absPath, '-maxdepth', String(depth),
+      '(', '-type', 'f', '-o', '-type', 'd', ')',
+      '-exec', 'stat', '-c', '%F\t%s\t%Y', '{}', ';',
+      '-print',
+    ],
     AttachStdout: true,
     AttachStderr: true,
   });
@@ -742,18 +749,25 @@ export async function listContainerFiles(
   const { output } = await readExecOutput(stream);
 
   const entries: { type: string; name: string; size: number; mtime: number }[] = [];
-  for (const line of output.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    const parts = trimmed.split('\t');
-    if (parts.length < 4) continue;
-    const name = parts[3];
-    if (name === '.' || name === '') continue;
+  const lines = output.split('\n');
+  for (let i = 0; i < lines.length - 1; i += 2) {
+    const statLine = lines[i].trim();
+    const pathLine = lines[i + 1].trim();
+    if (!statLine || !pathLine) continue;
+    const parts = statLine.split('\t');
+    if (parts.length < 3) continue;
+    const typeLabel = parts[0];   // "regular file", "directory", etc.
+    const size = Number(parts[1]) || 0;
+    const mtime = Number(parts[2]) || 0;
+    // Strip the absPath prefix from the full path to get a relative name.
+    const escapedPrefix = absPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const name = pathLine.replace(new RegExp(`^${escapedPrefix}/?`), '') || pathLine;
+    if (!name || name === absPath || name.endsWith('/.')) continue;
     entries.push({
-      type: parts[0] === 'd' ? 'directory' : 'file',
-      name: absPath === '/' ? `/${name}` : `${absPath}/${name}`,
-      size: Number(parts[1]) || 0,
-      mtime: Number(parts[2]) || 0,
+      type: typeLabel === 'directory' ? 'directory' : 'file',
+      name: absPath === '/' ? `/${name}` : name.startsWith('/') ? name : `${absPath}/${name}`,
+      size,
+      mtime,
     });
   }
   entries.sort((a, b) => a.name.localeCompare(b.name));
