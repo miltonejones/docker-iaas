@@ -1286,10 +1286,10 @@ textarea:focus {
 }
 .assistant-sessions-panel__delete {
   color: var(--muted);
+  border: none;
 }
 .assistant-sessions-panel__delete:hover:not(:disabled) {
   color: var(--danger);
-  border-color: rgba(220, 38, 38, 0.35);
   background: var(--crit-soft);
 }
 .assistant-log {
