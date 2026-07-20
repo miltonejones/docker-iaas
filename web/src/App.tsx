@@ -477,7 +477,16 @@ export function App() {
         </div>
 
         <footer className="app-footer">
-          <span className="muted">Deploy anything. Ask for the rest.</span>
+          <div className="app-footer__group">
+            <span className="muted">Deploy anything. Ask for the rest.</span>
+            <button
+              type="button"
+              className="app-footer__link app-footer__link--button"
+              onClick={() => setCreateIssueOpen(true)}
+            >
+              Create an issue
+            </button>
+          </div>
           <a
             href="https://github.com/miltonejones/docker-iaas"
             target="_blank"
@@ -486,13 +495,6 @@ export function App() {
           >
             GitHub <AppIcon name="external" />
           </a>
-          <button
-            type="button"
-            className="app-footer__link app-footer__link--button"
-            onClick={() => setCreateIssueOpen(true)}
-          >
-            Create an issue
-          </button>
         </footer>
         {createIssueOpen && <CreateIssueModal onClose={() => setCreateIssueOpen(false)} />}
       </div>

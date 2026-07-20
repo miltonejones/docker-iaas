@@ -288,6 +288,11 @@ code,
   font-size: 12.5px;
   flex-shrink: 0;
 }
+.app-footer__group {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
 .app-footer__link {
   color: var(--muted);
   text-decoration: none;
