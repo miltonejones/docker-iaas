@@ -2517,6 +2517,12 @@ textarea:focus {
   .topbar {
     flex-wrap: wrap;
     gap: 10px;
+    margin: 0 -12px;
+    width: calc(100% + 24px);
+    padding: 12px;
+  }
+  .topbar__center .assistant-search {
+    width: 100%;
   }
   .topbar__left {
     flex-wrap: wrap;
