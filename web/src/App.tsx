@@ -209,6 +209,9 @@ export function App() {
   }
 
   async function deleteSavedSession(id: string) {
+    const session = sessionsList.find((s) => s.id === id);
+    const label = session?.name ? `"${session.name}"` : 'this session';
+    if (!confirm(`Delete ${label}? This cannot be undone.`)) return;
     try {
       await api.assistantDeleteSession(id);
       setSessionsList((list) => list.filter((s) => s.id !== id));
