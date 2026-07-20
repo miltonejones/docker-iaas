@@ -252,6 +252,7 @@ export function AssistantBar({
   const titleGeneratedRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const sessionIdRef = useRef<string | null>(null);
+  const saveInFlightRef = useRef(false);
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionName, setSessionName] = useState('');
@@ -260,41 +261,34 @@ export function AssistantBar({
   const [sessionsList, setSessionsList] = useState<AssistantSessionSummary[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
 
-  // Autosave: whenever the conversation actually changes, persist it —
-  // creating the session on first save (named from the first prompt unless
-  // the user already typed one) and updating it on every turn after that.
-  // Skipped while a turn is in flight (busy) and on the pristine empty
-  // render, so we don't create a session for a modal nobody used yet.
-  useEffect(() => {
-    if (busy) return;
-    if (log.length === 0 && rawMessages.length === 0) return;
+  /** Persist the current conversation state to the server. Called explicitly at
+   *  key milestones (user prompt, turn completion, action resolution) and also
+   *  via the effect below whenever state settles after busy→false.  Falls back
+   *  to localStorage so a transient save failure doesn't lose the session. */
+  function saveSession(snapshot?: AssistantSessionState) {
+    const state = snapshot ?? { messages: rawMessages, log, pending, resolved };
+    if (state.log.length === 0 && state.messages.length === 0) return;
+    if (saveInFlightRef.current) return; // serialise saves
 
-    let cancelled = false;
-    async function persist() {
-      setSessionSaving(true);
-      const state: AssistantSessionState = { messages: rawMessages, log, pending, resolved };
+    saveInFlightRef.current = true;
+    setSessionSaving(true);
+
+    void (async () => {
       try {
         if (!sessionIdRef.current) {
           const custom = sessionName.trim();
-          const name = custom || deriveSessionName(log);
+          const name = custom || deriveSessionName(state.log);
           const created = await api.assistantCreateSession(name, state);
-          if (cancelled) return;
           sessionIdRef.current = created.id;
           setSessionId(created.id);
           setSessionName(created.name);
           onSessionId?.(created.id);
           if (sessionStorageKey) localStorage.setItem(sessionStorageKey, created.id);
-          // If the user didn't name it themselves, ask Claude for a friendly
-          // title and rename the session once. Best-effort and non-blocking —
-          // saving already completed with the placeholder name, so a failure
-          // here just leaves the truncated-first-message heuristic in place.
-          // Uses a ref guard so the title update survives useEffect re-runs
-          // (which would otherwise cancel the in-flight request when busy
-          // changes).
+          localStorage.removeItem(fallbackKey());
           if (!custom && !titleGeneratedRef.current) {
             titleGeneratedRef.current = true;
-            const firstUser = log.find((e) => e.kind === 'user')?.text ?? '';
-            const lastAssistant = [...log].reverse().find((e) => e.kind === 'assistant')?.text ?? '';
+            const firstUser = state.log.find((e) => e.kind === 'user')?.text ?? '';
+            const lastAssistant = [...state.log].reverse().find((e) => e.kind === 'assistant')?.text ?? '';
             api
               .assistantGenerateTitle(firstUser, lastAssistant)
               .then(({ name: title }) => {
@@ -302,28 +296,47 @@ export function AssistantBar({
                 setSessionName(title);
                 return api.assistantUpdateSession(created.id, { name: title });
               })
-              .catch(() => {
-                /* best-effort: keep the placeholder name */
-              });
+              .catch(() => { /* best-effort */ });
           }
         } else {
-          await api.assistantUpdateSession(sessionId!, { state });
+          await api.assistantUpdateSession(sessionIdRef.current, { state });
+          localStorage.removeItem(fallbackKey());
         }
-      } catch (err) {
-        if (!cancelled) setError((err as Error).message);
+      } catch (_err) {
+        // Server save failed — stash state in localStorage as a fallback so
+        // the session can be recovered on next mount.
+        try {
+          localStorage.setItem(fallbackKey(), JSON.stringify({
+            id: sessionIdRef.current,
+            name: sessionName || deriveSessionName(log),
+            state,
+            at: Date.now(),
+          }));
+        } catch { /* storage full — nothing more we can do */ }
       } finally {
-        if (!cancelled) setSessionSaving(false);
+        saveInFlightRef.current = false;
+        setSessionSaving(false);
       }
-    }
-    void persist();
-    return () => {
-      cancelled = true;
-    };
+    })();
+  }
+
+  function fallbackKey(): string {
+    return `dockyard:session-fallback:${sessionStorageKey ?? initialSessionId ?? sessionIdRef.current ?? 'anon'}`;
+  }
+
+  // Autosave safety net: fires when state settles after busy→false, also
+  // catches edits/autoApproval toggles. Explicit saveSession() calls handle
+  // the critical milestones during active turns.
+  useEffect(() => {
+    if (busy) return;
+    if (log.length === 0 && rawMessages.length === 0) return;
+    saveSession();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rawMessages, log, pending, resolved, busy, sessionStorageKey]);
+  }, [busy, pending, resolved, sessionStorageKey]);
 
   function resetToNewSession() {
     if (sessionStorageKey) localStorage.removeItem(sessionStorageKey);
+    localStorage.removeItem(fallbackKey());
     titleGeneratedRef.current = false;
     sessionIdRef.current = null;
     setSessionId(null);
@@ -355,8 +368,40 @@ export function AssistantBar({
       setEdits(Object.fromEntries((session.state.pending ?? []).map((p) => [p.id, { ...p.input }])));
       setResolved(session.state.resolved ?? []);
       setSessionsOpen(false);
+      localStorage.removeItem(fallbackKey());
     } catch (err) {
-      setError((err as Error).message);
+      // Server may not have the session — try the localStorage fallback.
+      if (!restoreFallback(id)) setError((err as Error).message);
+    }
+  }
+
+  /** Try to restore session state from a localStorage fallback written when
+   *  a server save failed.  Returns true if a fallback was found and applied. */
+  function restoreFallback(forId?: string): boolean {
+    const key = forId ? `dockyard:session-fallback:${forId}` : fallbackKey();
+    const raw = localStorage.getItem(key);
+    if (!raw) return false;
+    try {
+      const fb = JSON.parse(raw) as {
+        id: string | null;
+        name: string;
+        state: AssistantSessionState;
+        at: number;
+      };
+      sessionIdRef.current = fb.id;
+      setSessionId(fb.id);
+      setSessionName(fb.name);
+      titleGeneratedRef.current = true;
+      setLog(fb.state.log ?? []);
+      setRawMessages(fb.state.messages ?? []);
+      setPending(fb.state.pending ?? []);
+      setEdits(Object.fromEntries((fb.state.pending ?? []).map((p) => [p.id, { ...p.input }])));
+      setResolved(fb.state.resolved ?? []);
+      if (fb.id && sessionStorageKey) localStorage.setItem(sessionStorageKey, fb.id);
+      return true;
+    } catch {
+      localStorage.removeItem(key);
+      return false;
     }
   }
 
@@ -432,6 +477,14 @@ export function AssistantBar({
           return copy;
         });
         applyTurnState(turn);
+        // Persist immediately even though busy is still true — a tab
+        // close right here would otherwise lose the entire turn.
+        saveSession({
+          messages: turn.messages,
+          log: [...log, { kind: 'assistant', text: streamedText || turn.text }],
+          pending: turn.pending,
+          resolved: turn.autoResolved ?? [],
+        });
         if (turn.autoResolved?.length) {
           const labels = Array.from(
             new Set(
@@ -452,12 +505,21 @@ export function AssistantBar({
   }
 
 
+  /** Abort the current turn without destroying conversation context.
+   *  Strips the last assistant message if it has orphan tool_use blocks
+   *  (which would be invalid without tool_results in a follow-up prompt). */
   function cancelTurn() {
     abortRef.current?.abort();
     abortRef.current = null;
     setLog((l) => [...l, { kind: 'action', text: 'Cancelled' }]);
     setPending([]);
-    setRawMessages([]);
+    setResolved([]);
+    setRawMessages((msgs) => {
+      const copy = [...msgs];
+      const last = copy[copy.length - 1] as { role?: string; content?: unknown } | undefined;
+      if (last?.role === 'assistant') copy.pop();
+      return copy;
+    });
     setBusy(false);
   }
 
@@ -466,6 +528,15 @@ export function AssistantBar({
     setError(null);
     setLog((l) => [...l, { kind: 'user', text }]);
     setPrompt('');
+    // Save after the user prompt is in the log so a tab-close mid-turn
+    // at least preserves everything up to this point.  Must pass an
+    // explicit snapshot because setLog hasn't flushed yet.
+    saveSession({
+      messages: rawMessages,
+      log: [...log, { kind: 'user', text }],
+      pending,
+      resolved,
+    });
     try {
       const aborter = new AbortController();
       abortRef.current = aborter;
@@ -485,7 +556,21 @@ export function AssistantBar({
   async function ask() {
     const text = prompt.trim();
     if (!text) return;
-    if (busy) cancelTurn();
+    if (busy) {
+      // Abort the current turn but keep prior conversation context so the
+      // model doesn't lose its memory of the session.
+      abortRef.current?.abort();
+      abortRef.current = null;
+      setLog((l) => [...l, { kind: 'action', text: 'Cancelled' }]);
+      setPending([]);
+      setResolved([]);
+      setRawMessages((msgs) => {
+        const copy = [...msgs];
+        const last = copy[copy.length - 1] as { role?: string; content?: unknown } | undefined;
+        if (last?.role === 'assistant') copy.pop();
+        return copy;
+      });
+    }
     await askWithText(text);
   }
 
@@ -520,7 +605,10 @@ export function AssistantBar({
         if (sessionStorageKey && localStorage.getItem(sessionStorageKey) === savedSessionId) {
           localStorage.removeItem(sessionStorageKey);
         }
-        if (!cancelled) setError((err as Error).message);
+        // Try the localStorage fallback before giving up.
+        if (!cancelled && !restoreFallback(sessionToLoad)) {
+          setError((err as Error).message);
+        }
       } finally {
         if (!cancelled) setBusy(false);
       }
@@ -914,6 +1002,8 @@ export function AssistantBar({
       setResolved(nextResolved);
       setPending(remaining);
       setActiveActionName(null);
+      // Persist partial progress so a reload doesn't lose confirmed actions.
+      saveSession({ messages: rawMessages, log, pending: remaining, resolved: nextResolved });
       setBusy(false);
       return;
     }
