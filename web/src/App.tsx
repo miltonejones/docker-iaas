@@ -491,7 +491,7 @@ export function App() {
             href="https://github.com/miltonejones/docker-iaas"
             target="_blank"
             rel="noreferrer"
-            className="app-footer__link"
+            className="app-footer__link app-footer__link--github"
           >
             GitHub <AppIcon name="external" />
           </a>

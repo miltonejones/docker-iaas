@@ -2521,12 +2521,23 @@ textarea:focus {
     width: calc(100% + 24px);
     padding: 12px;
   }
+  .topbar__left {
+    order: 1;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .topbar__right {
+    order: 2;
+  }
+  .topbar__center {
+    order: 3;
+    flex: 0 0 100%;
+  }
   .topbar__center .assistant-search {
     width: 100%;
   }
-  .topbar__left {
-    flex-wrap: wrap;
-    gap: 10px;
+  .app-footer__link--github {
+    display: none;
   }
   .content {
     padding: 16px 0;
