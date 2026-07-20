@@ -1015,6 +1015,16 @@ export function AssistantBar({
     } catch (err) {
       if ((err as Error).name === 'AbortError') return;
       setError((err as Error).message);
+      // The /confirm call failed — the model never received the tool
+      // results.  Strip the orphan tool_use blocks from rawMessages so
+      // the session doesn't get poisoned and the user can continue.
+      setRawMessages((msgs) => {
+        const copy = [...msgs];
+        const last = copy[copy.length - 1] as { role?: string; content?: unknown } | undefined;
+        if (last?.role === 'assistant') copy.pop();
+        return copy;
+      });
+      setResolved([]);
     } finally {
       setActiveActionName(null);
       setBusy(false);
