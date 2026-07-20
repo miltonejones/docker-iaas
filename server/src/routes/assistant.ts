@@ -1638,7 +1638,21 @@ assistantRouter.post("/issues", (req: Request, res: Response) => {
       { summary: summary.trim(), category, details },
       userId,
     );
-    res.status(201).json(toIssueSummary(row));
+    const payload = toIssueSummary(row);
+
+    // Fire-and-forget webhook so external consumers (Redis queues, Slack, etc.)
+    // can react in real time without the assistant needing to call both
+    // report_issue and the push endpoint manually.
+    const webhookUrl = process.env.ISSUE_WEBHOOK_URL;
+    if (webhookUrl) {
+      fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ summary: payload.summary, category: payload.category, details: payload.details }),
+      }).catch(() => { /* best-effort */ });
+    }
+
+    res.status(201).json(payload);
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
