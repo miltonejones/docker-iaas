@@ -14,7 +14,7 @@ interface Props {
   onChanged: () => void;
 }
 
-export function ContainersPage({ containers, presets, busy, onChanged }: Props) {
+export function InstancesPage({ containers, presets, busy, onChanged }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
   const { id } = useParams<{ id: string }>();

@@ -4,7 +4,7 @@ import type { AssistantSessionSummary, Container, Preset, UsageSnapshot } from '
 import { api, subscribeUsage } from './api';
 import { bytes, timeAgo } from './format';
 import { HomePage } from './pages/Home';
-import { ContainersPage } from './pages/Containers';
+import { InstancesPage } from './pages/Instances';
 import { FunctionsPage } from './pages/Functions';
 import { BucketsPage } from './pages/Buckets';
 import { GatewayPage } from './pages/Gateway';
@@ -20,7 +20,7 @@ import { useToast } from './ToastContext';
 
 const SERVICES = [
   { path: '/', label: 'Home', icon: 'home' },
-  { path: '/containers', label: 'Containers', icon: 'container' },
+  { path: '/containers', label: 'Instances', icon: 'container' },
   { path: '/functions', label: 'Functions', icon: 'function' },
   { path: '/buckets', label: 'Buckets', icon: 'bucket' },
   { path: '/databases', label: 'Databases', icon: 'database' },
@@ -442,7 +442,7 @@ export function App() {
               <Route
                 path="/containers/new"
                 element={
-                  <ContainersPage
+                  <InstancesPage
                     containers={containers}
                     presets={presets}
                     busy={busy}
@@ -453,7 +453,7 @@ export function App() {
               <Route
                 path="/containers/:id"
                 element={
-                  <ContainersPage
+                  <InstancesPage
                     containers={containers}
                     presets={presets}
                     busy={busy}
@@ -464,7 +464,7 @@ export function App() {
               <Route
                 path="/containers"
                 element={
-                  <ContainersPage
+                  <InstancesPage
                     containers={containers}
                     presets={presets}
                     busy={busy}

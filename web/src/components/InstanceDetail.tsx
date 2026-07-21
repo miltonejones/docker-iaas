@@ -384,7 +384,7 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
             {title}
           </h2>
           <button className="btn btn--ghost btn--sm" onClick={onClose}>
-            ← Containers
+            ← Instances
           </button>
         </div>
 
