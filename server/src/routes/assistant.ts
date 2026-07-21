@@ -1548,7 +1548,8 @@ function toSessionFull(r: import("../db.js").AssistantSessionRow) {
 assistantRouter.get("/sessions", (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
-    res.json(listAssistantSessions(userId).map(toSessionSummary));
+    const q = typeof req.query.q === "string" ? req.query.q : undefined;
+    res.json(listAssistantSessions(userId, q).map(toSessionSummary));
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

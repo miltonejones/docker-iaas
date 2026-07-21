@@ -183,6 +183,7 @@ export function App() {
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const [sessionsList, setSessionsList] = useState<AssistantSessionSummary[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionsQuery, setSessionsQuery] = useState('');
   const lastBeat = useRef<number>(0);
 
   // First-ever visit to the console's root path sends the browser to the
@@ -222,21 +223,33 @@ export function App() {
     }
   }
 
-  async function toggleSessionsOffcanvas() {
+  function toggleSessionsOffcanvas() {
     if (sessionsOpen) {
       setSessionsOpen(false);
       return;
     }
+    setSessionsQuery('');
     setSessionsOpen(true);
-    setSessionsLoading(true);
-    try {
-      setSessionsList(await api.assistantListSessions());
-    } catch (err) {
-      console.error('sessions', err);
-    } finally {
-      setSessionsLoading(false);
-    }
   }
+
+  // Fetches the saved sessions list whenever the panel opens or the search
+  // box changes, debounced so typing doesn't fire a request per keystroke.
+  // The server matches the query against both session names and their full
+  // conversation content, so this doubles as a content search.
+  useEffect(() => {
+    if (!sessionsOpen) return;
+    setSessionsLoading(true);
+    const handle = setTimeout(async () => {
+      try {
+        setSessionsList(await api.assistantListSessions(sessionsQuery));
+      } catch (err) {
+        console.error('sessions', err);
+      } finally {
+        setSessionsLoading(false);
+      }
+    }, sessionsQuery ? 250 : 0);
+    return () => clearTimeout(handle);
+  }, [sessionsQuery, sessionsOpen]);
 
   const refreshContainers = useCallback(async () => {
     try {
@@ -351,9 +364,23 @@ export function App() {
                   Close
                 </button>
               </div>
+              <div className="offcanvas__search">
+                <input
+                  type="search"
+                  className="input"
+                  placeholder="Search sessions…"
+                  value={sessionsQuery}
+                  onChange={(e) => setSessionsQuery(e.target.value)}
+                  aria-label="Search saved sessions"
+                  autoFocus
+                />
+              </div>
               <div className="offcanvas__body">
                 {sessionsLoading && <p className="muted empty-sm">Loading…</p>}
-                {!sessionsLoading && sessionsList.length === 0 && (
+                {!sessionsLoading && sessionsList.length === 0 && sessionsQuery.trim() && (
+                  <p className="muted empty-sm">No sessions match "{sessionsQuery.trim()}".</p>
+                )}
+                {!sessionsLoading && sessionsList.length === 0 && !sessionsQuery.trim() && (
                   <p className="muted empty-sm">No saved sessions yet.</p>
                 )}
                 {sessionsList.map((s) => (

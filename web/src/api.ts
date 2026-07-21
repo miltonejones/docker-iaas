@@ -612,8 +612,10 @@ export const api = {
       return parseSSE(r);
     }),
 
-  assistantListSessions: () =>
-    fetch('/api/assistant/sessions').then((r) => json<AssistantSessionSummary[]>(r)),
+  assistantListSessions: (query?: string) =>
+    fetch(`/api/assistant/sessions${query?.trim() ? `?q=${encodeURIComponent(query.trim())}` : ''}`).then((r) =>
+      json<AssistantSessionSummary[]>(r),
+    ),
 
   /** Ask Claude for a short friendly title summarizing a conversation. Best
    *  effort — callers fall back to a local heuristic if this fails. */

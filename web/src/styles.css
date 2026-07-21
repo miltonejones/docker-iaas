@@ -2714,6 +2714,13 @@ textarea:focus {
   overflow-y: auto;
   padding: 8px 0;
 }
+.offcanvas__search {
+  padding: 12px 20px 0;
+}
+.offcanvas__search .input {
+  width: 100%;
+  box-sizing: border-box;
+}
 .offcanvas-session-row-wrap {
   display: flex;
   align-items: center;

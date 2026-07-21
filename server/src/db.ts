@@ -786,11 +786,32 @@ export interface AssistantSessionSummaryRow {
   updated_at: string;
 }
 
-export function listAssistantSessions(userId?: string): AssistantSessionSummaryRow[] {
+/** Lists saved sessions, optionally filtered by a search term matched against
+ *  both the session name and its full conversation content (`state`), so the
+ *  sidebar search box can find sessions by what was discussed, not just how
+ *  they were titled. */
+export function listAssistantSessions(userId?: string, query?: string): AssistantSessionSummaryRow[] {
+  const term = query?.trim();
+  const like = term ? `%${term}%` : undefined;
+
   if (userId) {
+    if (like) {
+      return db
+        .prepare(
+          'SELECT id, name, created_at, updated_at FROM assistant_sessions WHERE (user_id = ? OR user_id IS NULL) AND (name LIKE ? OR state LIKE ?) ORDER BY updated_at DESC',
+        )
+        .all(userId, like, like) as AssistantSessionSummaryRow[];
+    }
     return db
       .prepare('SELECT id, name, created_at, updated_at FROM assistant_sessions WHERE user_id = ? OR user_id IS NULL ORDER BY updated_at DESC')
       .all(userId) as AssistantSessionSummaryRow[];
+  }
+  if (like) {
+    return db
+      .prepare(
+        'SELECT id, name, created_at, updated_at FROM assistant_sessions WHERE name LIKE ? OR state LIKE ? ORDER BY updated_at DESC',
+      )
+      .all(like, like) as AssistantSessionSummaryRow[];
   }
   return db
     .prepare('SELECT id, name, created_at, updated_at FROM assistant_sessions ORDER BY updated_at DESC')
