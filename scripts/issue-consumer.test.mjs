@@ -119,3 +119,57 @@ test("consumeOne calls update_issue (PATCH) once the CLI process completes", asy
   const body = JSON.parse(mock.calls[1].opts.body);
   assert.equal(body.status, "resolved");
 });
+
+test("updateIssueOnServer logs a failure (not a throw) on non-404 error status", async () => {
+  const mock = mockFetchSequence([fakeResponse(500, {})]);
+  const originalLog = console.log;
+  const logs = [];
+  console.log = (...args) => logs.push(args.join(" "));
+  try {
+    await assert.doesNotReject(() =>
+      updateIssueOnServer(
+        { id: "issue-500", summary: "Server hiccup" },
+        "resolved",
+        "Attempted fix.",
+      ),
+    );
+  } finally {
+    console.log = originalLog;
+    mock.restore();
+  }
+
+  assert.equal(mock.calls.length, 1);
+  assert.ok(
+    logs.some((l) => l.includes("Failed to update issue issue-500: HTTP 500")),
+    "expected a logged failure referencing the issue id",
+  );
+});
+
+test("updateIssueOnServer catches network errors and still logs the issue id", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error("network down");
+  };
+  const originalLog = console.log;
+  const logs = [];
+  console.log = (...args) => logs.push(args.join(" "));
+  try {
+    await assert.doesNotReject(() =>
+      updateIssueOnServer(
+        { id: "issue-net-fail", summary: "Network blip" },
+        "resolved",
+        "Attempted fix.",
+      ),
+    );
+  } finally {
+    console.log = originalLog;
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.ok(
+    logs.some((l) =>
+      l.includes("Failed to update issue issue-net-fail: network down"),
+    ),
+    "expected the catch block to reference issueId even though it's declared outside the try",
+  );
+});
