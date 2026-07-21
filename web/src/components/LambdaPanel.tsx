@@ -21,7 +21,7 @@ import type {
 } from "../types";
 import { api } from "../api";
 import { AssistantBar } from "./AssistantBar";
-import { RuntimeIcon } from "../icons";
+import { AppIcon, RuntimeIcon } from "../icons";
 import { emitRefresh } from "../refresh";
 
 const PLACEHOLDERS: Record<string, string> = {
@@ -88,6 +88,24 @@ export function LambdaPanel({
   const mainRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const [assistantHeight, setAssistantHeight] = useState<number>();
+  const [assistantCollapsed, setAssistantCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("dockyard:function-assistant-collapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        "dockyard:function-assistant-collapsed",
+        assistantCollapsed ? "1" : "0",
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [assistantCollapsed]);
 
   const isSaved = activeId !== null;
   const code = contents[activePath] ?? "";
@@ -444,7 +462,15 @@ ${JSON.stringify(
         </div>
       )}
 
-      <div className={`panel-layout${embedded ? activeId && functionAssistantContext ? " panel-layout--with-assistant" : " panel-layout--full" : ""}`}>
+      <div
+        className={`panel-layout${
+          embedded
+            ? activeId && functionAssistantContext
+              ? ` panel-layout--with-assistant${assistantCollapsed ? " panel-layout--assistant-collapsed" : ""}`
+              : " panel-layout--full"
+            : ""
+        }`}
+      >
         {/* Sidebar — function list (hidden in embedded/detail mode) */}
         {!embedded && (
           <aside className="panel-sidebar">
@@ -737,14 +763,28 @@ ${JSON.stringify(
           )}
         </div>
         {embedded && activeId && functionAssistantContext && (
-          <aside className="function-assistant" style={assistantHeight ? { height: assistantHeight } : undefined}>
-            <AssistantBar
-              key={activeId}
-              embedded
-              contextPrompt={functionAssistantContext}
-              onChanged={refreshFunctionAfterAssistantChange}
-              sessionStorageKey={`dockyard:function-assistant:${activeId}`}
-            />
+          <aside
+            className={`function-assistant${assistantCollapsed ? " function-assistant--collapsed" : ""}`}
+            style={assistantHeight ? { height: assistantHeight } : undefined}
+          >
+            <button
+              type="button"
+              className="function-assistant__toggle"
+              onClick={() => setAssistantCollapsed((c) => !c)}
+              title={assistantCollapsed ? "Expand assistant" : "Collapse assistant"}
+            >
+              <AppIcon name={assistantCollapsed ? "chevron-left" : "chevron-right"} />
+              {assistantCollapsed && <span>Assistant</span>}
+            </button>
+            {!assistantCollapsed && (
+              <AssistantBar
+                key={activeId}
+                embedded
+                contextPrompt={functionAssistantContext}
+                onChanged={refreshFunctionAfterAssistantChange}
+                sessionStorageKey={`dockyard:function-assistant:${activeId}`}
+              />
+            )}
           </aside>
         )}
       </div>
