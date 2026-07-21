@@ -27,6 +27,8 @@ import {
   listAssistantIssues,
   getAssistantIssue,
   createAssistantIssue,
+  deleteAssistantIssue,
+  clearAssistantIssues,
 } from "../db.js";
 import { getS3Client } from "../minio.js";
 import { PRESETS } from "../presets.js";
@@ -920,6 +922,32 @@ const tools: Anthropic.Tool[] = [
       required: ["issueId"],
     },
   },
+  {
+    name: "delete_issue",
+    description:
+      "Permanently delete one reported issue by id. Use this to clear a single issue once it has been resolved or is no longer relevant.",
+    input_schema: {
+      type: "object",
+      properties: { issueId: { type: "string", description: "Issue id, e.g. iss-abc123" } },
+      required: ["issueId"],
+    },
+  },
+  {
+    name: "clear_issues",
+    description:
+      "Bulk-delete reported issues from the issue store, e.g. to clear out everything once it has been triaged/resolved. Optionally restrict to a single category; omit to clear all issues visible to the current user.",
+    input_schema: {
+      type: "object",
+      properties: {
+        category: {
+          type: "string",
+          enum: ["bug", "error", "missing_feature", "performance", "security", "general"],
+          description: "If set, only issues in this category are deleted. Omit to clear all issues.",
+        },
+      },
+      required: [],
+    },
+  },
   ...DATABASE_ASSISTANT_TOOLS,
   ...GITHUB_ASSISTANT_TOOLS,
 ];
@@ -1675,6 +1703,31 @@ assistantRouter.post("/issues", (req: Request, res: Response) => {
     }
 
     res.status(201).json(payload);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+assistantRouter.delete("/issues/:id", (req: Request, res: Response) => {
+  try {
+    const userId = getAuthUser(req)?.userId;
+    const deleted = deleteAssistantIssue(req.params.id, userId);
+    if (!deleted) {
+      res.status(404).json({ error: "Issue not found." });
+      return;
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+assistantRouter.delete("/issues", (req: Request, res: Response) => {
+  try {
+    const userId = getAuthUser(req)?.userId;
+    const category = typeof req.query.category === "string" ? req.query.category : undefined;
+    const count = clearAssistantIssues(userId, category);
+    res.json({ ok: true, deleted: count });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

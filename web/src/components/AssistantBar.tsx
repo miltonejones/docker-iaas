@@ -57,6 +57,8 @@ const ACTION_LABEL: Record<string, string> = {
   replace_in_bucket_object: 'Replace text in bucket file',
   write_container_files: 'Write container files',
   write_bucket_objects: 'Write bucket files',
+  delete_issue: 'Delete issue',
+  clear_issues: 'Clear issues',
 };
 
 const LOOKUP_LABEL: Record<string, string> = {
@@ -136,6 +138,8 @@ const DESTRUCTIVE = new Set([
   'delete_bucket_object',
   'prune_images',
   'prune_build_cache',
+  'delete_issue',
+  'clear_issues',
 ]);
 
 /** autoResolved entries only carry a toolUseId — look the tool's name back
@@ -937,6 +941,12 @@ export function AssistantBar({
           str(input.category),
           input.details as Record<string, unknown> | undefined,
         );
+
+      case 'delete_issue':
+        return api.assistantDeleteIssue(String(input.issueId ?? ''));
+
+      case 'clear_issues':
+        return api.assistantClearIssues(str(input.category));
 
       default:
         throw new Error(`Unknown action "${action.name}".`);

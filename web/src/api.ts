@@ -667,6 +667,16 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ summary, category, details }),
     }).then((r) => json<{ id: string; summary: string; category: string; details: unknown; createdAt: string }>(r)),
+
+  assistantDeleteIssue: (issueId: string) =>
+    fetch(`/api/assistant/issues/${encodeURIComponent(issueId)}`, { method: 'DELETE' }).then((r) =>
+      json<{ ok: true }>(r),
+    ),
+
+  assistantClearIssues: (category?: string) =>
+    fetch(`/api/assistant/issues${category ? `?category=${encodeURIComponent(category)}` : ''}`, {
+      method: 'DELETE',
+    }).then((r) => json<{ ok: true; deleted: number }>(r)),
 };
 
 /** Subscribe to the live usage stream. Returns an unsubscribe function. */

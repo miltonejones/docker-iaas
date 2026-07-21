@@ -1220,6 +1220,36 @@ export function createAssistantIssue(
   return { row: getAssistantIssue(id)!, created: true };
 }
 
+/** Deletes a single issue by id. Scoped to the requesting user unless the
+ *  issue is unowned (user_id IS NULL), mirroring the read scoping used by
+ *  getAssistantIssue. Returns true if a row was removed. */
+export function deleteAssistantIssue(id: string, userId?: string): boolean {
+  const row = getAssistantIssue(id, userId);
+  if (!row) return false;
+  const result = db.prepare('DELETE FROM assistant_issues WHERE id = ?').run(id);
+  return result.changes > 0;
+}
+
+/** Bulk-deletes issues, optionally scoped to a category, so the queue can be
+ *  cleared out once issues have been triaged/resolved. Scoped to the
+ *  requesting user's own issues plus unowned ones, same as listAssistantIssues.
+ *  Returns the number of rows removed. */
+export function clearAssistantIssues(userId?: string, category?: string): number {
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+  if (userId) {
+    clauses.push('(user_id = ? OR user_id IS NULL)');
+    params.push(userId);
+  }
+  if (category) {
+    clauses.push('category = ?');
+    params.push(category);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  const result = db.prepare(`DELETE FROM assistant_issues ${where}`).run(...params);
+  return result.changes;
+}
+
 // ---------------------------------------------------------------------------
 // Users (multi-tenant auth)
 // ---------------------------------------------------------------------------
