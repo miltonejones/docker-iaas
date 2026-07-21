@@ -35,6 +35,7 @@ import {
   faWandMagicSparkles,
   faXmark,
 } from '@fortawesome/free-solid-svg-icons';
+import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 
 const UI_ICONS: Record<string, IconDefinition> = {
@@ -63,6 +64,7 @@ const UI_ICONS: Record<string, IconDefinition> = {
   copy: faCopy,
   close: faXmark,
   lookup: faMagnifyingGlass,
+  github: faGithub,
 };
 
 const PRESET_ICONS: Record<string, IconDefinition> = {

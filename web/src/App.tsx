@@ -524,7 +524,7 @@ export function App() {
             rel="noreferrer"
             className="app-footer__link app-footer__link--github"
           >
-            GitHub <AppIcon name="external" />
+            <AppIcon name="github" /> GitHub
           </a>
         </footer>
         {createIssueOpen && <CreateIssueModal onClose={() => setCreateIssueOpen(false)} />}
