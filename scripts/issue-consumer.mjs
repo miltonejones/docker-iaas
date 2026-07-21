@@ -153,8 +153,17 @@ async function updateIssueOnServer(issue, status, resolution) {
         log(`Failed to create issue ${issueId} locally: HTTP ${createRes.status}`);
         return;
       }
-      // Now retry the patch on the newly-created local issue
-      res = await fetch(patchUrl, {
+      // The server always mints its own id on create — it does not preserve
+      // the id assigned by the external queue — so the retry must target
+      // the newly-created local id, not the original patchUrl.
+      const created = await createRes.json();
+      const localId = created?.id;
+      if (!localId) {
+        log(`Created issue for ${issueId} but response had no id — cannot patch.`);
+        return;
+      }
+      const localPatchUrl = `${DOCKYARD_API}/api/assistant/issues/${encodeURIComponent(localId)}`;
+      res = await fetch(localPatchUrl, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
