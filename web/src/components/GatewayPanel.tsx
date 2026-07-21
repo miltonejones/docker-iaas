@@ -266,12 +266,36 @@ export function GatewayDetail({ name }: { name: string }) {
   // ── Preview ────────────────────────────────────────────────────────
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const [previewKey, setPreviewKey] = useState(0);
-  const previewSrc = routes.length > 0 ? `${api.gatewayPreviewUrl(name)}&_=${previewKey}` : '';
+
+  useEffect(() => {
+    if (routes.length === 0) { setPreviewSrc(null); return; }
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    (async () => {
+      setPreviewLoading(true);
+      setPreviewError(null);
+      try {
+        const res = await fetch(api.gatewayPreviewUrl(name));
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setPreviewSrc((prev) => { if (prev) URL.revokeObjectURL(prev); return objectUrl; });
+      } catch (err) {
+        if (!cancelled) setPreviewError((err as Error).message);
+      } finally {
+        if (!cancelled) setPreviewLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [name, routes.length, previewKey]);
 
   function refreshPreview() {
-    setPreviewLoading(true);
-    setPreviewError(null);
     setPreviewKey((k) => k + 1);
   }
 
