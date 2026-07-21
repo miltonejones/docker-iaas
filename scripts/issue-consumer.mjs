@@ -115,12 +115,14 @@ function extractResolution(stdout) {
   return "Fixed by automated assistant.";
 }
 
-/** Call PATCH /api/assistant/issues/:id to record status and resolution. */
-async function updateIssueOnServer(issueId, status, resolution) {
+/** Call PATCH /api/assistant/issues/:id to record status and resolution.
+ *  If the issue doesn't exist locally (404), creates it first. */
+async function updateIssueOnServer(issue, status, resolution) {
   try {
     if (!authHeader) return; // no user — skip
-    const url = `${DOCKYARD_API}/api/assistant/issues/${encodeURIComponent(issueId)}`;
-    const res = await fetch(url, {
+    const issueId = issue.id;
+    const patchUrl = `${DOCKYARD_API}/api/assistant/issues/${encodeURIComponent(issueId)}`;
+    let res = await fetch(patchUrl, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
@@ -129,6 +131,40 @@ async function updateIssueOnServer(issueId, status, resolution) {
       body: JSON.stringify({ status, resolution, resolvedBy: "assistant" }),
       signal: AbortSignal.timeout(10_000),
     });
+
+    // If the issue was reported directly to the external queue, it won't
+    // exist in the local DB yet — create it first, then patch.
+    if (res.status === 404) {
+      log(`Issue ${issueId} not found locally — creating it first.`);
+      const createRes = await fetch(`${DOCKYARD_API}/api/assistant/issues`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: authHeader,
+        },
+        body: JSON.stringify({
+          summary: issue.summary,
+          category: issue.category,
+          details: issue.details,
+        }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (!createRes.ok) {
+        log(`Failed to create issue ${issueId} locally: HTTP ${createRes.status}`);
+        return;
+      }
+      // Now retry the patch on the newly-created local issue
+      res = await fetch(patchUrl, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: authHeader,
+        },
+        body: JSON.stringify({ status, resolution, resolvedBy: "assistant" }),
+        signal: AbortSignal.timeout(10_000),
+      });
+    }
+
     if (res.ok) {
       log(`Issue ${issueId} updated: ${status}`);
     } else {
@@ -366,7 +402,7 @@ async function consumeOne() {
         log(`Issue ${issue.id} processed.`);
         notify(`✅ Fixed: ${issue.summary}`);
         await updateIssueOnServer(
-          issue.id,
+          issue,
           "resolved",
           extractResolution(stdout),
         );
