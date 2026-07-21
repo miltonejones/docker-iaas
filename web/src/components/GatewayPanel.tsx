@@ -253,6 +253,7 @@ export function GatewayList() {
                   /gw/{group[0].name}/…
                 </a>
               </div>
+              <GatewayCardPreview name={group[0].name} />
               <div className="gateway-card__footer">
                 <span className="gateway-card__targets">
                   {group.map((r) => (
@@ -270,6 +271,40 @@ export function GatewayList() {
         </div>
       )}
     </section>
+  );
+}
+
+/** Fetches and displays a small preview thumbnail for one gateway route. */
+function GatewayCardPreview({ name }: { name: string }) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    (async () => {
+      try {
+        const res = await fetch(api.gatewayPreviewUrl(name, 400, 225));
+        if (!res.ok) { if (!cancelled) setError(true); return; }
+        const blob = await res.blob();
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setSrc(objectUrl);
+      } catch {
+        if (!cancelled) setError(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [name]);
+
+  if (error || !src) return null;
+  return (
+    <div className="gateway-card__preview">
+      <img src={src} alt={`Preview of /gw/${name}`} />
+    </div>
   );
 }
 
