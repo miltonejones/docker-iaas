@@ -24,6 +24,7 @@ export function GatewayList() {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
   const toast = useToast();
 
   useEffect(() => {
@@ -92,9 +93,25 @@ export function GatewayList() {
         <h2>
           Gateway <span className="count">{groups.length}</span>
         </h2>
-        <button className="btn btn--primary btn--sm" onClick={() => setCreating(true)}>
-          + New route
-        </button>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <button
+            className={`btn btn--sm ${viewMode === 'table' ? 'btn--primary' : ''}`}
+            onClick={() => setViewMode('table')}
+            title="Table view"
+          >
+            ☰
+          </button>
+          <button
+            className={`btn btn--sm ${viewMode === 'grid' ? 'btn--primary' : ''}`}
+            onClick={() => setViewMode('grid')}
+            title="Grid view"
+          >
+            ▦
+          </button>
+          <button className="btn btn--primary btn--sm" onClick={() => setCreating(true)}>
+            + New route
+          </button>
+        </div>
       </div>
 
       {error && <p className="muted empty-sm">{error}</p>}
@@ -135,7 +152,7 @@ export function GatewayList() {
 
       {groups.length === 0 ? (
         <p className="empty">No routes yet. Map a bucket, container, or function to a clean URL.</p>
-      ) : (
+      ) : viewMode === 'table' ? (
         <div className="table-wrap">
           <table className="table">
             <thead>
@@ -195,6 +212,61 @@ export function GatewayList() {
               ))}
             </tbody>
           </table>
+        </div>
+      ) : (
+        <div className="gateway-grid">
+          {groups.map((group) => (
+            <div
+              key={group[0].name}
+              className="gateway-card"
+              onClick={() => navigate(`/gateway/${group[0].name}`)}
+            >
+              <div className="gateway-card__head">
+                <span
+                  className="gateway-card__name"
+                  title="Click to rename"
+                  onClick={(e) => { e.stopPropagation(); setEditing(group[0].name); setEditValue(group[0].displayName || group[0].name); }}
+                >
+                  {editing === group[0].name ? (
+                    <input
+                      className="gateway-name-edit"
+                      value={editValue}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      onBlur={() => saveDisplayName(group)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') saveDisplayName(group); if (e.key === 'Escape') setEditing(null); }}
+                      autoFocus
+                    />
+                  ) : (
+                    group[0].displayName || group[0].name
+                  )}
+                </span>
+                <span className="gateway-card__ep">{group.length} EP</span>
+              </div>
+              <div className="gateway-card__route mono">
+                <a
+                  href={`/gw/${group[0].name}/`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="instance-link"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  /gw/{group[0].name}/…
+                </a>
+              </div>
+              <div className="gateway-card__footer">
+                <span className="gateway-card__targets">
+                  {group.map((r) => (
+                    <span key={r.id} title={targetLabel(r)} style={{ marginRight: 4 }}>
+                      {TARGET_ICON[r.targetType]}
+                    </span>
+                  ))}
+                </span>
+                <span className="gateway-card__req mono">
+                  {requestsByGateway.get(group[0].name) ?? 0} req
+                </span>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </section>

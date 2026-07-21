@@ -2867,3 +2867,77 @@ textarea:focus {
   opacity: 0.8;
 }
 .toast__close:hover { opacity: 1; }
+
+/* Gateway card grid */
+.gateway-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.gateway-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.gateway-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.gateway-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.gateway-card__name {
+  font-weight: 600;
+  font-size: 1.05em;
+  cursor: pointer;
+  border-bottom: 1px dashed transparent;
+  transition: border-color 0.15s;
+}
+
+.gateway-card__name:hover {
+  border-bottom-color: var(--muted);
+}
+
+.gateway-card__ep {
+  font-size: 0.8em;
+  color: var(--muted);
+  background: var(--bg);
+  border-radius: var(--r-sm);
+  padding: 2px 8px;
+}
+
+.gateway-card__route {
+  font-size: 0.85em;
+  color: var(--muted);
+}
+
+.gateway-card__footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.gateway-card__targets {
+  display: flex;
+  gap: 2px;
+}
+
+.gateway-card__req {
+  font-size: 0.8em;
+  color: var(--muted);
+}
