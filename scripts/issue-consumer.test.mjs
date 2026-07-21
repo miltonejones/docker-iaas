@@ -147,7 +147,7 @@ test("updateIssueOnServer logs a failure (not a throw) on non-404 error status",
 
   assert.equal(mock.calls.length, 1);
   assert.ok(
-    logs.some((l) => l.includes("Failed to update issue issue-500: HTTP 500")),
+    logs.some((l) => l.includes("Failed to update issue issue-500 on http://api.invalid: HTTP 500")),
     "expected a logged failure referencing the issue id",
   );
 });
@@ -213,8 +213,8 @@ test("updateIssueOnServer catches network errors and still logs the issue id", a
 
   assert.ok(
     logs.some((l) =>
-      l.includes("Failed to update issue issue-net-fail: network down"),
+      l.includes("Error updating issue-net-fail on http://api.invalid: network down"),
     ),
-    "expected the catch block to reference issueId even though it's declared outside the try",
+    "expected the catch block to log the issue id and API base on network failure",
   );
 });
