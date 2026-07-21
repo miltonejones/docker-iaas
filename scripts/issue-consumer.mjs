@@ -118,9 +118,11 @@ function extractResolution(stdout) {
 /** Call PATCH /api/assistant/issues/:id to record status and resolution.
  *  If the issue doesn't exist locally (404), creates it first. */
 async function updateIssueOnServer(issue, status, resolution) {
+  // Declared outside the try block so it remains accessible in the catch
+  // handler below — `const` inside `try {}` is scoped to that block only.
+  const issueId = issue?.id;
   try {
     if (!authHeader) return; // no user — skip
-    const issueId = issue.id;
     const patchUrl = `${DOCKYARD_API}/api/assistant/issues/${encodeURIComponent(issueId)}`;
     let res = await fetch(patchUrl, {
       method: "PATCH",
