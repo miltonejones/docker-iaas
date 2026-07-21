@@ -479,7 +479,26 @@ function sleep(ms) {
 function shutdown() {
   running = false;
 }
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
 
-loop();
+// Only wire up signal handlers and start the poll loop when this file is
+// executed directly (`node scripts/issue-consumer.mjs`). When imported by
+// a test suite we want the exported functions without any side effects.
+const isMain = process.argv[1] === fileURLToPath(import.meta.url);
+if (isMain) {
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+  loop();
+}
+
+/** Test-only helper to inject an auth header without touching the DB/JWT flow. */
+function setAuthHeaderForTest(value) {
+  authHeader = value;
+}
+
+export {
+  updateIssueOnServer,
+  consumeOne,
+  extractResolution,
+  formatPrompt,
+  setAuthHeaderForTest,
+};
