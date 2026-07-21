@@ -1740,7 +1740,7 @@ assistantRouter.post("/issues", (req: Request, res: Response) => {
       fetch(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ summary: payload.summary, category: payload.category, details: payload.details }),
+        body: JSON.stringify({ id: payload.id, summary: payload.summary, category: payload.category, details: payload.details }),
       }).catch(() => { /* best-effort */ });
     }
 

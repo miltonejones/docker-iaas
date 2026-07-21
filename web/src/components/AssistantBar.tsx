@@ -1126,7 +1126,7 @@ export function AssistantBar({
         <div className={embedded ? 'assistant-panel__head' : 'modal__head'}>
           <h3>
             <span className="assistant-panel__badge"><AppIcon name="assistant" /></span>
-            {embedded ? 'Function assistant' : 'Ask Dockyard.ai'}
+Ask Dockyard.ai
           </h3>
           {embedded && (
             <button className="btn btn--ghost btn--sm" onClick={resetToNewSession}>

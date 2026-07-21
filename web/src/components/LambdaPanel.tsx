@@ -1,9 +1,7 @@
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import CodeMirror from "@uiw/react-codemirror";
@@ -20,9 +18,7 @@ import type {
   LambdaRuntime,
 } from "../types";
 import { api } from "../api";
-import { AssistantBar } from "./AssistantBar";
-import { AppIcon, RuntimeIcon } from "../icons";
-import { emitRefresh } from "../refresh";
+import { RuntimeIcon } from "../icons";
 import { useToast } from "../ToastContext";
 
 const PLACEHOLDERS: Record<string, string> = {
@@ -87,27 +83,6 @@ export function LambdaPanel({
   const [activePath, setActivePath] = useState("index.js");
   const [newFileName, setNewFileName] = useState("");
   const [newPackageName, setNewPackageName] = useState("");
-  const mainRef = useRef<HTMLDivElement>(null);
-  const editorRef = useRef<HTMLDivElement>(null);
-  const [assistantHeight, setAssistantHeight] = useState<number>();
-  const [assistantCollapsed, setAssistantCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem("dockyard:function-assistant-collapsed") === "1";
-    } catch {
-      return false;
-    }
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        "dockyard:function-assistant-collapsed",
-        assistantCollapsed ? "1" : "0",
-      );
-    } catch {
-      /* ignore */
-    }
-  }, [assistantCollapsed]);
 
   const isSaved = activeId !== null;
   const code = contents[activePath] ?? "";
@@ -175,25 +150,6 @@ export function LambdaPanel({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [runtime]);
-
-  useLayoutEffect(() => {
-    if (!embedded || !activeId || !mainRef.current || !editorRef.current) {
-      setAssistantHeight(undefined);
-      return;
-    }
-
-    const main = mainRef.current;
-    const editor = editorRef.current;
-    const updateHeight = () => {
-      const height = Math.ceil(editor.getBoundingClientRect().bottom - main.getBoundingClientRect().top);
-      setAssistantHeight((current) => (current === height ? current : height));
-    };
-    const observer = new ResizeObserver(updateHeight);
-    observer.observe(main);
-    observer.observe(editor);
-    updateHeight();
-    return () => observer.disconnect();
-  }, [activeId, embedded]);
 
   function setCode(value: string) {
     setContents((prev) => ({ ...prev, [activePath]: value }));
@@ -428,35 +384,6 @@ export function LambdaPanel({
   }
 
   const currentRuntime = runtimes.find((r) => r.id === runtime);
-  const functionAssistantContext = activeId
-    ? `You are the dedicated assistant for the function currently open in Dockyard's editor. Help only with this function unless the user explicitly asks otherwise. Its id is "${activeId}". Do not create, delete, run, or modify any other resource unless the user explicitly asks.
-
-For any source-file change, including adding or removing a file, call replace_lambda_function_files exactly once. Its files argument must contain the COMPLETE desired file set, including the entry point and every existing file to keep, with complete content for each. The current editor state below is authoritative. Do not describe a future retry or apologize: formulate the complete updated files array and call the tool.
-
-Current editor state:
-${JSON.stringify(
-  {
-    id: activeId,
-    name,
-    runtime,
-    packages,
-    entryPoint,
-    files: filePaths.map((path) => ({ path, content: contents[path] ?? "" })),
-  },
-  null,
-  2,
-)}`
-    : undefined;
-
-  async function refreshFunctionAfterAssistantChange() {
-    emitRefresh();
-    if (!activeId) return;
-    try {
-      selectFunction(await api.lambdaGetFunction(activeId));
-    } catch {
-      await loadFunctions();
-    }
-  }
 
   return (
     <section className="panel">
@@ -472,13 +399,7 @@ ${JSON.stringify(
       )}
 
       <div
-        className={`panel-layout${
-          embedded
-            ? activeId && functionAssistantContext
-              ? ` panel-layout--with-assistant${assistantCollapsed ? " panel-layout--assistant-collapsed" : ""}`
-              : " panel-layout--full"
-            : ""
-        }`}
+        className={`panel-layout${embedded ? " panel-layout--full" : ""}`}
       >
         {/* Sidebar — function list (hidden in embedded/detail mode) */}
         {!embedded && (
@@ -557,7 +478,7 @@ ${JSON.stringify(
         )}
 
         {/* Main — editor + output */}
-        <div className="panel-main" ref={mainRef}>
+        <div className="panel-main">
           {/* Name + runtime + dependencies — single row */}
           <div className="lambda-meta">
             {isSaved ? (
@@ -661,12 +582,8 @@ ${JSON.stringify(
           </div>
 
           {/* Editor */}
-          <div
-            className={
-              embedded && activeId ? "lambda-editor-with-assistant" : undefined
-            }
-          >
-            <div className="lambda-editor-wrap" ref={editorRef}>
+          <div>
+            <div className="lambda-editor-wrap">
               <CodeMirror
                 className="lambda-editor"
                 value={code}
@@ -771,31 +688,6 @@ ${JSON.stringify(
             </div>
           )}
         </div>
-        {embedded && activeId && functionAssistantContext && (
-          <aside
-            className={`function-assistant${assistantCollapsed ? " function-assistant--collapsed" : ""}`}
-            style={assistantHeight ? { height: assistantHeight } : undefined}
-          >
-            <button
-              type="button"
-              className="function-assistant__toggle"
-              onClick={() => setAssistantCollapsed((c) => !c)}
-              title={assistantCollapsed ? "Expand assistant" : "Collapse assistant"}
-            >
-              <AppIcon name={assistantCollapsed ? "chevron-left" : "chevron-right"} />
-              {assistantCollapsed && <span>Assistant</span>}
-            </button>
-            {!assistantCollapsed && (
-              <AssistantBar
-                key={activeId}
-                embedded
-                contextPrompt={functionAssistantContext}
-                onChanged={refreshFunctionAfterAssistantChange}
-                sessionStorageKey={`dockyard:function-assistant:${activeId}`}
-              />
-            )}
-          </aside>
-        )}
       </div>
 
       {/* Environment variables modal — stored separately from code, masked by default. */}
