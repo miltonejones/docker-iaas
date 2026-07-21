@@ -36,6 +36,17 @@ let authHeader = process.env.DOCKYARD_API_TOKEN
   ? `Bearer ${process.env.DOCKYARD_API_TOKEN}`
   : "";
 
+// Issue updates are pushed to every API in this list so both the local
+// server and the EC2 instance stay in sync.  EC2 uses the same port on
+// the same host targeted by the deploy rsync step.
+const ISSUE_API_BASES = [
+  DOCKYARD_API,
+];
+if (process.env.EC2_API || process.env.EC2_HOST) {
+  const ec2Host = process.env.EC2_API || `http://${process.env.EC2_HOST || "54.162.111.41"}:4300`;
+  ISSUE_API_BASES.push(ec2Host);
+}
+
 /** Try to resolve a userId from the project DB and sign a JWT. Falls back
  *  to the DOCKYARD_API_TOKEN env var if the DB is unreachable. */
 function initAuthHeader() {
@@ -115,57 +126,50 @@ function extractResolution(stdout) {
   return "Fixed by automated assistant.";
 }
 
-/** Call PATCH /api/assistant/issues/:id to record status and resolution.
- *  If the issue doesn't exist locally (404), creates it first. */
-async function updateIssueOnServer(issue, status, resolution) {
-  // Declared outside the try block so it remains accessible in the catch
-  // handler below — `const` inside `try {}` is scoped to that block only.
+/** PATCH /api/assistant/issues/:id against a single API base.  If the issue
+ *  isn't found (404), creates it on that server first, then patches the
+ *  newly-assigned local id. */
+async function updateIssueOneBase(baseUrl, issue, status, resolution) {
   const issueId = issue?.id;
-  try {
-    if (!authHeader) return; // no user — skip
-    const patchUrl = `${DOCKYARD_API}/api/assistant/issues/${encodeURIComponent(issueId)}`;
-    let res = await fetch(patchUrl, {
-      method: "PATCH",
+  const patchUrl = `${baseUrl}/api/assistant/issues/${encodeURIComponent(issueId)}`;
+  let res = await fetch(patchUrl, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: authHeader,
+    },
+    body: JSON.stringify({ status, resolution, resolvedBy: "assistant" }),
+    signal: AbortSignal.timeout(10_000),
+  });
+
+  if (res.status === 404) {
+    log(`Issue ${issueId} not found on ${baseUrl} — creating it first.`);
+    const createRes = await fetch(`${baseUrl}/api/assistant/issues`, {
+      method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: authHeader,
       },
-      body: JSON.stringify({ status, resolution, resolvedBy: "assistant" }),
+      body: JSON.stringify({
+        summary: issue.summary,
+        category: issue.category,
+        details: issue.details,
+      }),
       signal: AbortSignal.timeout(10_000),
     });
-
-    // If the issue was reported directly to the external queue, it won't
-    // exist in the local DB yet — create it first, then patch.
-    if (res.status === 404) {
-      log(`Issue ${issueId} not found locally — creating it first.`);
-      const createRes = await fetch(`${DOCKYARD_API}/api/assistant/issues`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: authHeader,
-        },
-        body: JSON.stringify({
-          summary: issue.summary,
-          category: issue.category,
-          details: issue.details,
-        }),
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (!createRes.ok) {
-        log(`Failed to create issue ${issueId} locally: HTTP ${createRes.status}`);
-        return;
-      }
-      // The server always mints its own id on create — it does not preserve
-      // the id assigned by the external queue — so the retry must target
-      // the newly-created local id, not the original patchUrl.
-      const created = await createRes.json();
-      const localId = created?.id;
-      if (!localId) {
-        log(`Created issue for ${issueId} but response had no id — cannot patch.`);
-        return;
-      }
-      const localPatchUrl = `${DOCKYARD_API}/api/assistant/issues/${encodeURIComponent(localId)}`;
-      res = await fetch(localPatchUrl, {
+    if (!createRes.ok) {
+      log(`Failed to create issue ${issueId} on ${baseUrl}: HTTP ${createRes.status}`);
+      return false;
+    }
+    const created = await createRes.json();
+    const localId = created?.id;
+    if (!localId) {
+      log(`Created issue for ${issueId} on ${baseUrl} but response had no id.`);
+      return false;
+    }
+    res = await fetch(
+      `${baseUrl}/api/assistant/issues/${encodeURIComponent(localId)}`,
+      {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -173,16 +177,24 @@ async function updateIssueOnServer(issue, status, resolution) {
         },
         body: JSON.stringify({ status, resolution, resolvedBy: "assistant" }),
         signal: AbortSignal.timeout(10_000),
-      });
-    }
+      },
+    );
+  }
 
-    if (res.ok) {
-      log(`Issue ${issueId} updated: ${status}`);
-    } else {
-      log(`Failed to update issue ${issueId}: HTTP ${res.status}`);
-    }
-  } catch (err) {
-    log(`Failed to update issue ${issueId}: ${err.message}`);
+  if (res.ok) {
+    log(`Issue ${issueId} updated on ${baseUrl}: ${status}`);
+    return true;
+  }
+  log(`Failed to update issue ${issueId} on ${baseUrl}: HTTP ${res.status}`);
+  return false;
+}
+
+/** Push the issue status update to every configured API base (local + EC2). */
+async function updateIssueOnServer(issue, status, resolution) {
+  if (!authHeader) return;
+  for (const base of ISSUE_API_BASES) {
+    try { await updateIssueOneBase(base, issue, status, resolution); }
+    catch (err) { log(`Error updating ${issue.id} on ${base}: ${err.message}`); }
   }
 }
 
