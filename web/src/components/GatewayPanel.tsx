@@ -263,6 +263,18 @@ export function GatewayDetail({ name }: { name: string }) {
     { requests: 0, ingress: 0, egress: 0, errors: 0 },
   );
 
+  // ── Preview ────────────────────────────────────────────────────────
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewKey, setPreviewKey] = useState(0);
+  const previewSrc = routes.length > 0 ? `${api.gatewayPreviewUrl(name)}&_=${previewKey}` : '';
+
+  function refreshPreview() {
+    setPreviewLoading(true);
+    setPreviewError(null);
+    setPreviewKey((k) => k + 1);
+  }
+
   function resetForm() {
     setTargetType('bucket');
     setBucketId('');
@@ -497,6 +509,34 @@ export function GatewayDetail({ name }: { name: string }) {
             </tbody>
           </table>
         </div>
+      )}
+
+      {routes.length > 0 && (
+        <section className="gateway-preview">
+          <div className="detail-section__head">
+            <h3 className="detail-section__title">Preview</h3>
+            <button
+              className="btn btn--sm"
+              onClick={refreshPreview}
+              disabled={previewLoading}
+            >
+              {previewLoading ? 'Loading…' : 'Refresh'}
+            </button>
+          </div>
+          {previewError ? (
+            <p className="muted empty-sm">{previewError}</p>
+          ) : previewSrc ? (
+            <div className="gateway-preview__frame">
+              <img
+                src={previewSrc}
+                alt={`Preview of /gw/${name}`}
+                onLoad={() => setPreviewLoading(false)}
+                onError={() => { setPreviewLoading(false); setPreviewError('Preview failed — the gateway route may not return HTML.'); }}
+                style={{ width: '100%', border: '1px solid var(--border)', borderRadius: '6px' }}
+              />
+            </div>
+          ) : null}
+        </section>
       )}
 
       <section className="gateway-traffic">

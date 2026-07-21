@@ -472,6 +472,9 @@ export const api = {
   gatewayTrafficTimeseries: () =>
     fetch('/api/gateway/traffic/timeseries').then((r) => json<GatewayTrafficTimeseries>(r)),
 
+  gatewayPreviewUrl: (name: string, width = 1280, height = 720) =>
+    `/api/gateway/preview/${encodeURIComponent(name)}?width=${width}&height=${height}`,
+
   databaseOverview: () =>
     fetch('/api/databases/overview').then((r) => json<DatabaseOverview>(r)),
 

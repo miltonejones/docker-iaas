@@ -347,3 +347,60 @@ gatewayRouter.delete('/:id', (req: Request, res: Response) => {
     res.status(500).json({ error: (err as Error).message });
   }
 });
+
+// ── Preview (Playwright screenshot) ────────────────────────────────────
+
+interface PreviewEntry { body: Buffer; contentType: string; at: number }
+const previewCache = new Map<string, PreviewEntry>();
+const PREVIEW_TTL_MS = 30_000; // cache screenshots for 30 seconds
+
+gatewayRouter.get('/preview/:name', async (req: Request, res: Response) => {
+  const name = req.params.name;
+  if (!name || !NAME_RE.test(name)) {
+    res.status(400).json({ error: 'Invalid route name.' });
+    return;
+  }
+
+  const width = Math.min(1920, Math.max(320, Number(req.query.width) || 1280));
+  const height = Math.min(2160, Math.max(240, Number(req.query.height) || 720));
+  const cacheKey = `${name}-${width}-${height}`;
+
+  const cached = previewCache.get(cacheKey);
+  if (cached && Date.now() - cached.at < PREVIEW_TTL_MS) {
+    res.set('Content-Type', cached.contentType);
+    res.set('Cache-Control', 'public, max-age=30');
+    res.send(cached.body);
+    return;
+  }
+
+  try {
+    const { chromium } = await import('playwright');
+    const browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ viewport: { width, height } });
+
+    // Navigate to the gateway route through the internal Express listener.
+    const port = process.env.PORT || 4300;
+    const url = `http://127.0.0.1:${port}/gw/${encodeURIComponent(name)}/`;
+    await page.goto(url, { waitUntil: 'networkidle', timeout: 15_000 });
+
+    const body = await page.screenshot({ type: 'png', fullPage: false });
+    await browser.close();
+
+    // Evict stale entries so the cache doesn't grow unboundedly.
+    for (const [k, v] of previewCache) {
+      if (Date.now() - v.at > PREVIEW_TTL_MS) previewCache.delete(k);
+    }
+    previewCache.set(cacheKey, { body, contentType: 'image/png', at: Date.now() });
+
+    res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', 'public, max-age=30');
+    res.send(body);
+  } catch (err) {
+    const msg = (err as Error).message;
+    if (msg.includes('Timeout') || msg.includes('timeout')) {
+      res.status(504).json({ error: 'Preview timed out — the target may be slow or unreachable.' });
+    } else {
+      res.status(500).json({ error: msg });
+    }
+  }
+});

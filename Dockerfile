@@ -13,7 +13,12 @@ RUN npm run build
 FROM node:20-slim
 # git is used by the Ask Dockyard assistant's GitHub tools (clone/commit/push
 # into a scratch checkout under /app/data).
-RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
+# Chromium deps are for the Playwright-powered gateway preview feature.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git ca-certificates \
+    libnss3 libnspr4 libatk-bridge2.0-0 libdrm2 libxkbcommon0 \
+    libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 \
+ && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /app/package.json ./
@@ -22,5 +27,7 @@ COPY --from=build /app/web/package.json web/
 COPY --from=build /app/node_modules node_modules
 COPY --from=build /app/server/dist server/dist
 COPY --from=build /app/web/dist web/dist
+# Install the Chromium binary that Playwright will use at runtime.
+RUN npx playwright install chromium --with-deps 2>&1 | tail -3
 EXPOSE 4300
 CMD ["node", "server/dist/index.js"]
