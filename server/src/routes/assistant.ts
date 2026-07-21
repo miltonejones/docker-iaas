@@ -79,9 +79,14 @@ const PROVIDER = assistantProvider();
 const MAIN_MODEL = PROVIDER === 'deepseek'
   ? process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro'
   : process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
+// Use the rolling alias (no dated snapshot suffix) so this keeps working once
+// Anthropic retires the specific snapshot it currently points at — pinning to
+// a dated snapshot (e.g. claude-haiku-4-5-20251001) causes title generation
+// (and any other caller of this constant) to break outright once that
+// snapshot reaches its deprecation/retirement date.
 const TITLE_MODEL = PROVIDER === 'deepseek'
   ? process.env.DEEPSEEK_TITLE_MODEL || 'deepseek-v4-flash'
-  : process.env.ANTHROPIC_TITLE_MODEL || 'claude-haiku-4-5-20251001';
+  : process.env.ANTHROPIC_TITLE_MODEL || 'claude-haiku-4-5';
 
 const client = new Anthropic({
   apiKey: resolveApiKey(PROVIDER),

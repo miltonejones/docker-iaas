@@ -27,6 +27,7 @@ const CODEBASE_PATH = path.resolve(
 const LOG_DIR = path.join(__dirname, "issue-logs");
 const POLL_MS = Number(process.env.POLL_INTERVAL_MS) || 5_000;
 const ACTIVE_MS = Number(process.env.POLL_INTERVAL_ACTIVE_MS) || 1_000;
+const DOCKYARD_API = process.env.DOCKYARD_API || "http://127.0.0.1:4300";
 
 let running = true;
 
@@ -57,6 +58,39 @@ function notify(summary, body = "") {
     body,
   ], { stdio: "ignore", detached: true });
   n.unref();
+}
+
+/** Extract a concise resolution summary from assistant stdout. */
+function extractResolution(stdout) {
+  // Try the "## Diagnosis" section first — it explains what was wrong.
+  const diag = stdout.match(/## Diagnosis\s*\n+(.+?)(?:\n##|\n\*\*|\n{3,}|$)/s);
+  if (diag) return diag[1].trim().slice(0, 500);
+
+  // Fall back to the last non-empty paragraph.
+  const paras = stdout.split(/\n\n+/).filter((p) => p.trim());
+  if (paras.length) return paras[paras.length - 1].trim().slice(0, 500);
+
+  return "Fixed by automated assistant.";
+}
+
+/** Call PATCH /api/assistant/issues/:id to record status and resolution. */
+async function updateIssueOnServer(issueId, status, resolution) {
+  try {
+    const url = `${DOCKYARD_API}/api/assistant/issues/${encodeURIComponent(issueId)}`;
+    const res = await fetch(url, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status, resolution, resolvedBy: "assistant" }),
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (res.ok) {
+      log(`Issue ${issueId} updated: ${status}`);
+    } else {
+      log(`Failed to update issue ${issueId}: HTTP ${res.status}`);
+    }
+  } catch (err) {
+    log(`Failed to update issue ${issueId}: ${err.message}`);
+  }
 }
 
 function log(...args) {
@@ -250,7 +284,7 @@ async function consumeOne() {
       process.stderr.write(text);
     });
 
-    child.once("close", (code) => {
+    child.once("close", async (code) => {
       // Write session log
       const report = [
         `# Issue ${issue.id}`,
@@ -285,6 +319,11 @@ async function consumeOne() {
       if (code === 0) {
         log(`Issue ${issue.id} processed.`);
         notify(`✅ Fixed: ${issue.summary}`);
+        await updateIssueOnServer(
+          issue.id,
+          "resolved",
+          extractResolution(stdout),
+        );
         deploy(issue); // fire-and-forget — don't block next poll
       } else {
         log(`Copilot exited with code ${code} for issue ${issue.id}`);
