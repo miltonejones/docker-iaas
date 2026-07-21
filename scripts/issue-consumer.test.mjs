@@ -12,6 +12,13 @@ process.env.ISSUE_QUEUE_URL = "http://queue.invalid/consume";
 process.env.DOCKYARD_API = "http://api.invalid";
 process.env.DEEPSEEK_CMD = "true";
 
+// The consumer also reads EC2_API/EC2_HOST at import time to decide whether
+// to push updates to a second (EC2) API base. Explicitly clear these so the
+// single-base tests below are deterministic regardless of the ambient shell
+// environment (e.g. a dev machine with EC2_API exported globally).
+delete process.env.EC2_API;
+delete process.env.EC2_HOST;
+
 const {
   updateIssueOnServer,
   consumeOne,
@@ -142,6 +149,44 @@ test("updateIssueOnServer logs a failure (not a throw) on non-404 error status",
   assert.ok(
     logs.some((l) => l.includes("Failed to update issue issue-500: HTTP 500")),
     "expected a logged failure referencing the issue id",
+  );
+});
+
+test("updateIssueOnServer pushes the update to both the local and EC2 API bases when EC2_API is set", async () => {
+  // Force a fresh module instance with EC2_API set, since ISSUE_API_BASES is
+  // computed once at import time. A cache-busting query param gives us an
+  // isolated copy without affecting the module already used by other tests.
+  process.env.EC2_API = "http://ec2.invalid";
+  let dualUpdateModule;
+  try {
+    dualUpdateModule = await import(`./issue-consumer.mjs?dual-update=${Date.now()}`);
+  } finally {
+    delete process.env.EC2_API;
+  }
+  dualUpdateModule.setAuthHeaderForTest("******");
+
+  const mock = mockFetchSequence([
+    fakeResponse(200, { ok: true }), // PATCH on local base
+    fakeResponse(200, { ok: true }), // PATCH on EC2 base
+  ]);
+  try {
+    await dualUpdateModule.updateIssueOnServer(
+      { id: "issue-dual", summary: "Dual update" },
+      "resolved",
+      "Fixed on both hosts.",
+    );
+  } finally {
+    mock.restore();
+  }
+
+  assert.equal(mock.calls.length, 2, "expected one PATCH per API base");
+  assert.equal(
+    mock.calls[0].url,
+    "http://api.invalid/api/assistant/issues/issue-dual",
+  );
+  assert.equal(
+    mock.calls[1].url,
+    "http://ec2.invalid/api/assistant/issues/issue-dual",
   );
 });
 
