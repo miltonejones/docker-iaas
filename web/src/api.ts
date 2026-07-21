@@ -96,6 +96,7 @@ export interface LaunchRequest {
   image?: string;
   name?: string;
   description?: string;
+  protected?: boolean;
   command?: string[];
   ports?: { container: string; host: number }[];
   env?: { key: string; value: string }[];
@@ -171,13 +172,27 @@ export const api = {
       json<{ output: string; exitCode: number | null; truncated: boolean }>(r),
     ),
 
-  containerUpdateEnv: (id: string, env?: { key: string; value: string }[], persist?: boolean, description?: string) =>
+  containerUpdateEnv: (
+    id: string,
+    env?: { key: string; value: string }[],
+    persist?: boolean,
+    description?: string,
+    protectedFlag?: boolean,
+  ) =>
     fetch(`/api/containers/${id}/env`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ env, persist, description }),
+      body: JSON.stringify({ env, persist, description, protected: protectedFlag }),
     }).then((r) =>
-      json<{ id: string; envUpdated: string[]; descriptionUpdated: boolean; description?: string; persisted: boolean }>(r),
+      json<{
+        id: string;
+        envUpdated: string[];
+        descriptionUpdated: boolean;
+        description?: string;
+        protectedUpdated: boolean;
+        protected: boolean;
+        persisted: boolean;
+      }>(r),
     ),
 
   containerReplaceFile: (id: string, path: string, search: string, replace: string) =>

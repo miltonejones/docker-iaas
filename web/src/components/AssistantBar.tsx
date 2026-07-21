@@ -701,6 +701,7 @@ export function AssistantBar({
           image: str(input.image),
           name: str(input.name),
           description: str(input.description),
+          protected: bool(input.protected),
           command: Array.isArray(input.command) && input.command.every((p) => typeof p === 'string')
             ? (input.command as string[])
             : undefined,
@@ -743,8 +744,8 @@ export function AssistantBar({
         if (input.env != null && (!Array.isArray(input.env) || input.env.some((e) => typeof (e as { key: string }).key !== 'string'))) {
           throw new Error('update_container_env env, if provided, must be an array of { key, value }.');
         }
-        if (!Array.isArray(input.env) && typeof input.description !== 'string') {
-          throw new Error('update_container_env requires an env array and/or a description string.');
+        if (!Array.isArray(input.env) && typeof input.description !== 'string' && typeof input.protected !== 'boolean') {
+          throw new Error('update_container_env requires an env array, a description string, and/or a protected boolean.');
         }
         return api.containerUpdateEnv(
           String(input.id ?? ''),
@@ -752,6 +753,7 @@ export function AssistantBar({
           bool(input.persist),
           // Preserve an empty string here (unlike str()) so it can clear the label.
           typeof input.description === 'string' ? input.description : undefined,
+          typeof input.protected === 'boolean' ? input.protected : undefined,
         );
 
       case 'replace_in_container_file':

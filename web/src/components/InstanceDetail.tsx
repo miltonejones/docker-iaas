@@ -29,6 +29,8 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
   const [pending, setPending] = useState<string | null>(null);
   const [logText, setLogText] = useState<string>('');
   const [logsLoading, setLogsLoading] = useState(false);
+  const [descriptionDraft, setDescriptionDraft] = useState('');
+  const [savingMeta, setSavingMeta] = useState(false);
 
   // Fetch full inspect data on mount.
   useEffect(() => {
@@ -36,7 +38,10 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
     api
       .inspect(container.id)
       .then((d) => {
-        if (!cancelled) setDetail(d);
+        if (!cancelled) {
+          setDetail(d);
+          setDescriptionDraft(d.description ?? '');
+        }
       })
       .catch((err) => {
         if (!cancelled) setLoadError((err as Error).message);
@@ -73,8 +78,39 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
     }
   }
 
+  async function saveDescription() {
+    setSavingMeta(true);
+    try {
+      await api.containerUpdateEnv(container.id, undefined, undefined, descriptionDraft.trim());
+      onChanged();
+      const d = await api.inspect(container.id);
+      setDetail(d);
+      setDescriptionDraft(d.description ?? '');
+    } catch (err) {
+      alert((err as Error).message);
+    } finally {
+      setSavingMeta(false);
+    }
+  }
+
+  async function toggleProtected(next: boolean) {
+    setSavingMeta(true);
+    try {
+      await api.containerUpdateEnv(container.id, undefined, undefined, undefined, next);
+      onChanged();
+      const d = await api.inspect(container.id);
+      setDetail(d);
+    } catch (err) {
+      alert((err as Error).message);
+    } finally {
+      setSavingMeta(false);
+    }
+  }
+
   const running = RUNNING.has(detail?.state ?? container.state);
   const locked = !!container.system;
+  const isProtected = !!(detail?.protected ?? container.protected);
+  const actionsLocked = locked || isProtected;
   const shell = guessShell(detail?.image ?? container.image);
   const execCmd = `docker exec -it ${detail?.name || container.name || container.id.slice(0, 12)} ${shell}`;
 
@@ -121,6 +157,39 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
             <dd className="mono">{detail?.restartPolicy ?? '—'}</dd>
           </div>
         </dl>
+
+        {!locked && (
+          <>
+            <h5 className="detail-subtitle">Description</h5>
+            <div className="cmd-block">
+              <input
+                type="text"
+                placeholder="What is this container for?"
+                value={descriptionDraft}
+                disabled={savingMeta}
+                onChange={(e) => setDescriptionDraft(e.target.value)}
+              />
+              <button
+                className="btn btn--sm"
+                disabled={savingMeta || descriptionDraft.trim() === (detail?.description ?? '')}
+                onClick={saveDescription}
+              >
+                {savingMeta ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+
+            <h5 className="detail-subtitle">Protection</h5>
+            <label className="db-checkbox">
+              <input
+                type="checkbox"
+                checked={isProtected}
+                disabled={savingMeta}
+                onChange={(e) => toggleProtected(e.target.checked)}
+              />
+              Protected — block start/stop/restart/remove for this container
+            </label>
+          </>
+        )}
       </section>
 
       {/* Configuration */}
@@ -232,12 +301,15 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
         {locked && (
           <p className="muted empty-sm">System-managed — actions are disabled here.</p>
         )}
+        {!locked && isProtected && (
+          <p className="muted empty-sm">Protected — uncheck "Protected" above to allow these actions.</p>
+        )}
         <div className="detail-actions">
           {running ? (
             <button
               className="btn"
-              disabled={pending === container.id || locked}
-              title={locked ? "System-managed — can't be stopped here" : undefined}
+              disabled={pending === container.id || actionsLocked}
+              title={locked ? "System-managed — can't be stopped here" : isProtected ? "Protected — can't be stopped here" : undefined}
               onClick={() => run(container.id, () => api.action(container.id, 'stop'))}
             >
               Stop
@@ -245,8 +317,8 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
           ) : (
             <button
               className="btn"
-              disabled={pending === container.id || locked}
-              title={locked ? "System-managed — can't be started here" : undefined}
+              disabled={pending === container.id || actionsLocked}
+              title={locked ? "System-managed — can't be started here" : isProtected ? "Protected — can't be started here" : undefined}
               onClick={() => run(container.id, () => api.action(container.id, 'start'))}
             >
               Start
@@ -254,16 +326,16 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
           )}
           <button
             className="btn"
-            disabled={pending === container.id || locked}
-            title={locked ? "System-managed — can't be restarted here" : undefined}
+            disabled={pending === container.id || actionsLocked}
+            title={locked ? "System-managed — can't be restarted here" : isProtected ? "Protected — can't be restarted here" : undefined}
             onClick={() => run(container.id, () => api.action(container.id, 'restart'))}
           >
             Restart
           </button>
           <button
             className="btn btn--primary"
-            disabled={pending === container.id || !detail || locked}
-            title={locked ? "System-managed — can't be relaunched here" : 'Remove and re-create with new settings (e.g. different ports)'}
+            disabled={pending === container.id || !detail || actionsLocked}
+            title={locked ? "System-managed — can't be relaunched here" : isProtected ? "Protected — can't be relaunched here" : 'Remove and re-create with new settings (e.g. different ports)'}
             onClick={() => {
               if (detail) onRelaunch(detail);
             }}
@@ -272,8 +344,8 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
           </button>
           <button
             className="btn btn--danger"
-            disabled={pending === container.id || locked}
-            title={locked ? "System-managed — can't be removed here" : undefined}
+            disabled={pending === container.id || actionsLocked}
+            title={locked ? "System-managed — can't be removed here" : isProtected ? "Protected — can't be removed here" : undefined}
             onClick={() => {
               const name = detail?.name || container.name || container.id.slice(0, 12);
               if (confirm(`Remove ${name}?`))

@@ -279,6 +279,10 @@ const tools: Anthropic.Tool[] = [
           type: "string",
           description: "Optional free-text note describing the container's purpose, shown in list_containers and inspect_container output.",
         },
+        protected: {
+          type: "boolean",
+          description: "If true, guard this container against accidental start/stop/restart/removal from the UI and assistant (e.g. important long-lived infrastructure like a queue or database). Can be changed later with update_container_env.",
+        },
         command: {
           type: "array",
           description: 'Override the default CMD, e.g. ["sleep","infinity"] or ["tail","-f","/dev/null"]. Pass as separate string arguments, not a shell string.',
@@ -735,14 +739,14 @@ const tools: Anthropic.Tool[] = [
   {
     name: "update_container_env",
     description:
-      "Update (add, change, or merge) environment variables and/or the description on a container. Stops the container, merges the new env vars with existing ones, recreates the container with the same image/config, and starts it again if it was running. By default, recreating from the image wipes the container's writable filesystem layer. Pass persist: true to snapshot the writable layer first via docker commit — this preserves all runtime files (deployed sites, installed packages, config edits) across the update. Pass description to add or update the iaas.description label on an existing container (pass an empty string to clear it) — use this to retroactively add a description to a container that was launched before one was set. Provide env, description, or both. Requires user confirmation.",
+      "Update (add, change, or merge) environment variables, the description, and/or the protected flag on a container. Stops the container, merges the new env vars with existing ones, recreates the container with the same image/config, and starts it again if it was running. By default, recreating from the image wipes the container's writable filesystem layer. Pass persist: true to snapshot the writable layer first via docker commit — this preserves all runtime files (deployed sites, installed packages, config edits) across the update. Pass description to add or update the iaas.description label on an existing container (pass an empty string to clear it) — use this to retroactively add a description to a container that was launched before one was set. Pass protected: true to guard a container against accidental start/stop/restart/removal from the UI and assistant (pass protected: false to unprotect it again). Provide any combination of env, description, and protected. Requires user confirmation.",
     input_schema: {
       type: "object",
       properties: {
         id: { type: "string", description: "Container id" },
         env: {
           type: "array",
-          description: "Environment variables to set/update. Optional if only updating description.",
+          description: "Environment variables to set/update. Optional if only updating description/protected.",
           items: {
             type: "object",
             properties: { key: { type: "string" }, value: { type: "string" } },
@@ -752,6 +756,10 @@ const tools: Anthropic.Tool[] = [
         description: {
           type: "string",
           description: "New free-text description to set as the container's iaas.description label. Pass an empty string to clear an existing description.",
+        },
+        protected: {
+          type: "boolean",
+          description: "Set to true to protect the container from start/stop/restart/removal (in the UI and via container_action/delete_container); set to false to remove that protection.",
         },
         persist: {
           type: "boolean",
@@ -970,6 +978,7 @@ async function executeReadOnlyTool(
         image: c.Image,
         state: c.State,
         description: c.Labels?.["iaas.description"] || undefined,
+        protected: !!c.Labels?.["iaas.protected"],
       }));
     }
     case "list_functions":
@@ -1096,6 +1105,7 @@ async function executeReadOnlyTool(
         restartPolicy: info.HostConfig?.RestartPolicy?.Name ?? "no",
         labels: info.Config?.Labels ?? {},
         description: info.Config?.Labels?.["iaas.description"] || undefined,
+        protected: !!info.Config?.Labels?.["iaas.protected"],
       };
     }
     case "list_presets":

@@ -20,6 +20,10 @@ interface ContainerView {
   presetId?: string;
   /** System-managed containers (e.g. the persistent MinIO instance) can't be removed from the UI. */
   system?: boolean;
+  /** User-flagged as protected — start/stop/restart/remove are blocked, but unlike
+   * system containers, description/env/file edits still work so owners can keep
+   * the container up to date. Toggled via POST /:id/env. */
+  protected?: boolean;
   /** Optional free-text note set at launch time, shown as a second row in the instances list. */
   description?: string;
 }
@@ -41,6 +45,7 @@ function toView(c: Docker.ContainerInfo): ContainerView {
     sizeRootFs: (c as unknown as { SizeRootFs?: number }).SizeRootFs ?? 0,
     presetId: c.Labels?.['iaas.preset'],
     system: !!c.Labels?.['iaas.system'],
+    protected: !!c.Labels?.['iaas.protected'],
     description: c.Labels?.['iaas.description'] || undefined,
   };
 }
@@ -76,6 +81,7 @@ interface LaunchBody {
   image?: string;
   name?: string;
   description?: string;
+  protected?: boolean;
   command?: string[];
   ports?: { container: string; host: number }[];
   env?: { key: string; value: string }[];
@@ -144,6 +150,7 @@ containersRouter.post('/', async (req: Request, res: Response) => {
         ...(body.assistantManaged ? { 'iaas.assistant-managed': 'true' } : {}),
         ...(userId ? { 'iaas.owner': userId } : {}),
         ...(body.description?.trim() ? { 'iaas.description': body.description.trim() } : {}),
+        ...(body.protected ? { 'iaas.protected': 'true' } : {}),
       },
       Tty: needsTty,
       HostConfig: {
@@ -464,20 +471,22 @@ containersRouter.post('/:id/exec/stream', async (req: Request, res: Response) =>
   }
 });
 
-// Update environment variables and/or the description label on a container.
-// Docker doesn't support mutating env or labels on a running container, so
-// this stops → snapshots config → removes (keeping volumes) → recreates with
-// merged env/labels → starts.
+// Update environment variables, the description label, and/or the protected
+// flag on a container. Docker doesn't support mutating env or labels on a
+// running container, so this stops → snapshots config → removes (keeping
+// volumes) → recreates with merged env/labels → starts.
 containersRouter.post('/:id/env', async (req: Request, res: Response) => {
-  const { env: newEnv, persist, description } = req.body as {
+  const { env: newEnv, persist, description, protected: nextProtected } = req.body as {
     env?: { key: string; value: string }[];
     persist?: boolean;
     description?: string;
+    protected?: boolean;
   };
   const hasEnvUpdate = Array.isArray(newEnv) && newEnv.length > 0;
   const hasDescriptionUpdate = typeof description === 'string';
-  if (!hasEnvUpdate && !hasDescriptionUpdate) {
-    res.status(400).json({ error: 'Provide a non-empty env array of { key, value } and/or a description string.' });
+  const hasProtectedUpdate = typeof nextProtected === 'boolean';
+  if (!hasEnvUpdate && !hasDescriptionUpdate && !hasProtectedUpdate) {
+    res.status(400).json({ error: 'Provide a non-empty env array of { key, value }, a description string, and/or a protected boolean.' });
     return;
   }
   if (hasEnvUpdate) {
@@ -524,13 +533,18 @@ containersRouter.post('/:id/env', async (req: Request, res: Response) => {
     if (hasEnvUpdate) for (const e of newEnv!) oldEnv[e.key] = e.value;
     const mergedEnv = Object.entries(oldEnv).map(([k, v]) => `${k}=${v}`);
 
-    // Merge labels, updating/clearing iaas.description when requested. An
-    // empty string clears the label (removes the description).
+    // Merge labels, updating/clearing iaas.description and iaas.protected when
+    // requested. An empty description string clears the label (removes the
+    // description); protected: false clears the protected label.
     const mergedLabels: Record<string, string> = { ...(info.Config?.Labels ?? {}) };
     if (hasDescriptionUpdate) {
       const trimmed = description!.trim();
       if (trimmed) mergedLabels['iaas.description'] = trimmed;
       else delete mergedLabels['iaas.description'];
+    }
+    if (hasProtectedUpdate) {
+      if (nextProtected) mergedLabels['iaas.protected'] = 'true';
+      else delete mergedLabels['iaas.protected'];
     }
 
     // Snapshot the existing config we need to preserve, including the
@@ -580,6 +594,8 @@ containersRouter.post('/:id/env', async (req: Request, res: Response) => {
       envUpdated: hasEnvUpdate ? newEnv!.map((e) => e.key) : [],
       descriptionUpdated: hasDescriptionUpdate,
       description: mergedLabels['iaas.description'],
+      protectedUpdated: hasProtectedUpdate,
+      protected: !!mergedLabels['iaas.protected'],
       persisted: !!snapshotImage,
     });
   } catch (err) {
@@ -728,6 +744,10 @@ for (const action of ['start', 'stop', 'restart'] as const) {
         res.status(403).json({ error: 'This container is system-managed and cannot be controlled here.' });
         return;
       }
+      if (info.Config?.Labels?.['iaas.protected']) {
+        res.status(403).json({ error: 'This container is protected — unprotect it before starting, stopping, or restarting.' });
+        return;
+      }
       await lifecycle(req.params.id, action);
       res.json({ ok: true });
     } catch (err) {
@@ -743,6 +763,10 @@ containersRouter.delete('/:id', async (req: Request, res: Response) => {
     const info = await container.inspect();
     if (info.Config?.Labels?.['iaas.system']) {
       res.status(403).json({ error: 'This container is system-managed and cannot be removed here.' });
+      return;
+    }
+    if (info.Config?.Labels?.['iaas.protected']) {
+      res.status(403).json({ error: 'This container is protected — unprotect it before removing.' });
       return;
     }
     await container.remove({ force, v: true });
@@ -785,6 +809,7 @@ containersRouter.get('/:id/inspect', async (req: Request, res: Response) => {
       sizeRw: (data as unknown as { SizeRw?: number }).SizeRw ?? 0,
       sizeRootFs: (data as unknown as { SizeRootFs?: number }).SizeRootFs ?? 0,
       description: data.Config?.Labels?.['iaas.description'] || undefined,
+      protected: !!data.Config?.Labels?.['iaas.protected'],
     };
     res.json(detail);
   } catch (err) {

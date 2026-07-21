@@ -102,7 +102,8 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
           {containers.map((c) => {
             const running = RUNNING.has(c.state);
             const isPending = pending === c.id || busy;
-            const locked = !!c.system;
+            const systemLocked = !!c.system;
+            const locked = systemLocked || !!c.protected;
             return (
               <article className="card glow instance-card" key={c.id}>
                 <div className="card__icon" aria-hidden>
@@ -142,7 +143,7 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                     <button
                       className="btn btn--sm"
                       disabled={isPending || locked}
-                      title={locked ? "System-managed — can't be stopped here" : undefined}
+                      title={systemLocked ? "System-managed — can't be stopped here" : locked ? "Protected — can't be stopped here" : undefined}
                       onClick={() => run(c.id, () => api.action(c.id, 'stop'))}
                     >
                       Stop
@@ -151,7 +152,7 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                     <button
                       className="btn btn--sm"
                       disabled={isPending || locked}
-                      title={locked ? "System-managed — can't be started here" : undefined}
+                      title={systemLocked ? "System-managed — can't be started here" : locked ? "Protected — can't be started here" : undefined}
                       onClick={() => run(c.id, () => api.action(c.id, 'start'))}
                     >
                       Start
@@ -160,7 +161,7 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                   <button
                     className="btn btn--sm"
                     disabled={isPending || locked}
-                    title={locked ? "System-managed — can't be restarted here" : undefined}
+                    title={systemLocked ? "System-managed — can't be restarted here" : locked ? "Protected — can't be restarted here" : undefined}
                     onClick={() => run(c.id, () => api.action(c.id, 'restart'))}
                   >
                     Restart
@@ -169,7 +170,7 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                     Logs
                   </button>
                   {locked ? (
-                    <span className="chip" title="System-managed — can't be removed here">
+                    <span className="chip" title={systemLocked ? "System-managed — can't be removed here" : "Protected — can't be removed here"}>
                       Protected
                     </span>
                   ) : (
@@ -207,7 +208,8 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
               {containers.map((c) => {
                 const running = RUNNING.has(c.state);
                 const isPending = pending === c.id || busy;
-                const locked = !!c.system;
+                const systemLocked = !!c.system;
+                const locked = systemLocked || !!c.protected;
                 return (
                   <Fragment key={c.id}>
                   <tr>
@@ -238,7 +240,7 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                         <button
                           className="btn btn--sm"
                           disabled={isPending || locked}
-                          title={locked ? "System-managed — can't be stopped here" : undefined}
+                          title={systemLocked ? "System-managed — can't be stopped here" : locked ? "Protected — can't be stopped here" : undefined}
                           onClick={() => run(c.id, () => api.action(c.id, 'stop'))}
                         >
                           Stop
@@ -247,7 +249,7 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                         <button
                           className="btn btn--sm"
                           disabled={isPending || locked}
-                          title={locked ? "System-managed — can't be started here" : undefined}
+                          title={systemLocked ? "System-managed — can't be started here" : locked ? "Protected — can't be started here" : undefined}
                           onClick={() => run(c.id, () => api.action(c.id, 'start'))}
                         >
                           Start
@@ -256,7 +258,7 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                       <button
                         className="btn btn--sm"
                         disabled={isPending || locked}
-                        title={locked ? "System-managed — can't be restarted here" : undefined}
+                        title={systemLocked ? "System-managed — can't be restarted here" : locked ? "Protected — can't be restarted here" : undefined}
                         onClick={() => run(c.id, () => api.action(c.id, 'restart'))}
                       >
                         Restart
@@ -265,7 +267,7 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                         Logs
                       </button>
                       {locked ? (
-                        <span className="chip" title="System-managed — can't be removed here">
+                        <span className="chip" title={systemLocked ? "System-managed — can't be removed here" : "Protected — can't be removed here"}>
                           Protected
                         </span>
                       ) : (

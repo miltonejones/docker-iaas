@@ -48,6 +48,7 @@ export interface Container {
   sizeRootFs: number;
   presetId?: string;
   system?: boolean;
+  protected?: boolean;
   description?: string;
 }
 
@@ -96,6 +97,7 @@ export interface ContainerDetail {
   sizeRw: number;
   sizeRootFs: number;
   description?: string;
+  protected?: boolean;
 }
 
 export interface LambdaFile {
