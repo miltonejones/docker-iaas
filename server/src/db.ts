@@ -234,9 +234,18 @@ export function initDb(): void {
       details_json TEXT NOT NULL DEFAULT '{}',
       user_id TEXT,
       created_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open',
+      resolution TEXT,
+      resolved_by TEXT,
       FOREIGN KEY (user_id) REFERENCES users(id)
     )
   `);
+
+  // Migration: add status/resolution tracking columns to pre-existing
+  // assistant_issues tables created before update_issue support was added.
+  try { db.exec("ALTER TABLE assistant_issues ADD COLUMN status TEXT NOT NULL DEFAULT 'open'"); } catch { /* ok */ }
+  try { db.exec('ALTER TABLE assistant_issues ADD COLUMN resolution TEXT'); } catch { /* ok */ }
+  try { db.exec('ALTER TABLE assistant_issues ADD COLUMN resolved_by TEXT'); } catch { /* ok */ }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS database_jobs (
@@ -1157,17 +1166,29 @@ export interface AssistantIssueRow {
   details_json: string;
   user_id: string | null;
   created_at: string;
+  status: string;
+  resolution: string | null;
+  resolved_by: string | null;
 }
 
-export function listAssistantIssues(limit = 50, userId?: string): AssistantIssueRow[] {
+export const ASSISTANT_ISSUE_STATUSES = ['open', 'in_progress', 'resolved', 'closed', 'wont_fix'] as const;
+
+export function listAssistantIssues(limit = 50, userId?: string, status?: string): AssistantIssueRow[] {
+  const clauses: string[] = [];
+  const params: unknown[] = [];
   if (userId) {
-    return db
-      .prepare('SELECT * FROM assistant_issues WHERE user_id = ? OR user_id IS NULL ORDER BY created_at DESC LIMIT ?')
-      .all(userId, limit) as AssistantIssueRow[];
+    clauses.push('(user_id = ? OR user_id IS NULL)');
+    params.push(userId);
   }
+  if (status) {
+    clauses.push('status = ?');
+    params.push(status);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  params.push(limit);
   return db
-    .prepare('SELECT * FROM assistant_issues ORDER BY created_at DESC LIMIT ?')
-    .all(limit) as AssistantIssueRow[];
+    .prepare(`SELECT * FROM assistant_issues ${where} ORDER BY created_at DESC LIMIT ?`)
+    .all(...params) as AssistantIssueRow[];
 }
 
 export function getAssistantIssue(id: string, userId?: string): AssistantIssueRow | undefined {
@@ -1228,6 +1249,38 @@ export function deleteAssistantIssue(id: string, userId?: string): boolean {
   if (!row) return false;
   const result = db.prepare('DELETE FROM assistant_issues WHERE id = ?').run(id);
   return result.changes > 0;
+}
+
+/** Updates an issue's status and/or resolution details. Scoped to the
+ *  requesting user unless the issue is unowned (user_id IS NULL), mirroring
+ *  getAssistantIssue. Returns undefined if the issue isn't found/visible. */
+export function updateAssistantIssue(
+  id: string,
+  fields: { status?: string; resolution?: string; resolvedBy?: string },
+  userId?: string,
+): AssistantIssueRow | undefined {
+  const row = getAssistantIssue(id, userId);
+  if (!row) return undefined;
+
+  const sets: string[] = [];
+  const params: unknown[] = [];
+  if (fields.status !== undefined) {
+    sets.push('status = ?');
+    params.push(fields.status);
+  }
+  if (fields.resolution !== undefined) {
+    sets.push('resolution = ?');
+    params.push(fields.resolution);
+  }
+  if (fields.resolvedBy !== undefined) {
+    sets.push('resolved_by = ?');
+    params.push(fields.resolvedBy);
+  }
+  if (!sets.length) return row;
+
+  params.push(id);
+  db.prepare(`UPDATE assistant_issues SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+  return getAssistantIssue(id, userId);
 }
 
 /** Bulk-deletes issues, optionally scoped to a category, so the queue can be

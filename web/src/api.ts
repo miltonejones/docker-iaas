@@ -673,6 +673,27 @@ export const api = {
       json<{ ok: true }>(r),
     ),
 
+  assistantUpdateIssue: (
+    issueId: string,
+    fields: { status?: string; resolution?: string; resolvedBy?: string },
+  ) =>
+    fetch(`/api/assistant/issues/${encodeURIComponent(issueId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields),
+    }).then((r) =>
+      json<{
+        id: string;
+        summary: string;
+        category: string;
+        details: unknown;
+        createdAt: string;
+        status: string;
+        resolution: string | null;
+        resolvedBy: string | null;
+      }>(r),
+    ),
+
   assistantClearIssues: (category?: string) =>
     fetch(`/api/assistant/issues${category ? `?category=${encodeURIComponent(category)}` : ''}`, {
       method: 'DELETE',

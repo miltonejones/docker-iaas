@@ -59,6 +59,7 @@ const ACTION_LABEL: Record<string, string> = {
   write_bucket_objects: 'Write bucket files',
   delete_issue: 'Delete issue',
   clear_issues: 'Clear issues',
+  update_issue: 'Update issue',
 };
 
 const LOOKUP_LABEL: Record<string, string> = {
@@ -944,6 +945,13 @@ export function AssistantBar({
 
       case 'delete_issue':
         return api.assistantDeleteIssue(String(input.issueId ?? ''));
+
+      case 'update_issue':
+        return api.assistantUpdateIssue(String(input.issueId ?? ''), {
+          status: str(input.status),
+          resolution: str(input.resolution),
+          resolvedBy: str(input.resolvedBy),
+        });
 
       case 'clear_issues':
         return api.assistantClearIssues(str(input.category));

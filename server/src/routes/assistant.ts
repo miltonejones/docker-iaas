@@ -27,8 +27,10 @@ import {
   listAssistantIssues,
   getAssistantIssue,
   createAssistantIssue,
+  updateAssistantIssue,
   deleteAssistantIssue,
   clearAssistantIssues,
+  ASSISTANT_ISSUE_STATUSES,
 } from "../db.js";
 import { getS3Client } from "../minio.js";
 import { PRESETS } from "../presets.js";
@@ -908,6 +910,11 @@ const tools: Anthropic.Tool[] = [
       type: "object",
       properties: {
         limit: { type: "number", description: "Maximum results (default 20, max 50)" },
+        status: {
+          type: "string",
+          enum: ["open", "in_progress", "resolved", "closed", "wont_fix"],
+          description: "If set, only issues with this status are returned. Omit to include all statuses (including resolved/closed).",
+        },
       },
       required: [],
     },
@@ -919,6 +926,31 @@ const tools: Anthropic.Tool[] = [
     input_schema: {
       type: "object",
       properties: { issueId: { type: "string", description: "Issue id, e.g. iss-abc123" } },
+      required: ["issueId"],
+    },
+  },
+  {
+    name: "update_issue",
+    description:
+      "Update a reported issue's status and/or record its resolution. Use this to mark an issue as in progress, resolved, closed, or won't-fix, and to leave an audit trail describing what was done and by whom.",
+    input_schema: {
+      type: "object",
+      properties: {
+        issueId: { type: "string", description: "Issue id, e.g. iss-abc123" },
+        status: {
+          type: "string",
+          enum: ["open", "in_progress", "resolved", "closed", "wont_fix"],
+          description: "New status for the issue.",
+        },
+        resolution: {
+          type: "string",
+          description: "Free-text description of what was done to address the issue. Meaningful for resolved/closed issues.",
+        },
+        resolvedBy: {
+          type: "string",
+          description: "Optional — who or what resolved the issue (e.g. a user name, or 'assistant').",
+        },
+      },
       required: ["issueId"],
     },
   },
@@ -1176,7 +1208,8 @@ async function executeReadOnlyTool(
     case "list_issues": {
       const limitRaw = Number(input.limit);
       const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(50, Math.trunc(limitRaw))) : 20;
-      return listAssistantIssues(limit, userId).map(toIssueSummary);
+      const status = typeof input.status === "string" ? input.status : undefined;
+      return listAssistantIssues(limit, userId, status).map(toIssueSummary);
     }
     case "get_issue": {
       const row = getAssistantIssue(String(input.issueId ?? ""), userId);
@@ -1556,6 +1589,9 @@ function toIssueSummary(r: import("../db.js").AssistantIssueRow) {
     category: r.category,
     details,
     createdAt: r.created_at,
+    status: r.status,
+    resolution: r.resolution,
+    resolvedBy: r.resolved_by,
   };
 }
 
@@ -1666,7 +1702,8 @@ assistantRouter.get("/issues", (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
     const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 20));
-    res.json(listAssistantIssues(limit, userId).map(toIssueSummary));
+    const status = typeof req.query.status === "string" ? req.query.status : undefined;
+    res.json(listAssistantIssues(limit, userId, status).map(toIssueSummary));
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -1717,6 +1754,29 @@ assistantRouter.delete("/issues/:id", (req: Request, res: Response) => {
       return;
     }
     res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+assistantRouter.patch("/issues/:id", (req: Request, res: Response) => {
+  try {
+    const userId = getAuthUser(req)?.userId;
+    const { status, resolution, resolvedBy } = req.body as {
+      status?: string;
+      resolution?: string;
+      resolvedBy?: string;
+    };
+    if (status !== undefined && !ASSISTANT_ISSUE_STATUSES.includes(status as (typeof ASSISTANT_ISSUE_STATUSES)[number])) {
+      res.status(400).json({ error: `Invalid status. Must be one of: ${ASSISTANT_ISSUE_STATUSES.join(", ")}.` });
+      return;
+    }
+    const row = updateAssistantIssue(req.params.id, { status, resolution, resolvedBy }, userId);
+    if (!row) {
+      res.status(404).json({ error: "Issue not found." });
+      return;
+    }
+    res.json(toIssueSummary(row));
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
