@@ -23,6 +23,7 @@ import { api } from "../api";
 import { AssistantBar } from "./AssistantBar";
 import { AppIcon, RuntimeIcon } from "../icons";
 import { emitRefresh } from "../refresh";
+import { useToast } from "../ToastContext";
 
 const PLACEHOLDERS: Record<string, string> = {
   node: 'console.log("hello from Node.js");',
@@ -53,6 +54,7 @@ export function LambdaPanel({
 }) {
   const [runtimes, setRuntimes] = useState<LambdaRuntime[]>([]);
   const [functions, setFunctions] = useState<LambdaFunction[]>([]);
+  const toast = useToast();
   const [activeId, setActiveId] = useState<string | null>(
     initialFunctionId || null,
   );
@@ -315,8 +317,10 @@ export function LambdaPanel({
           .map((row) => [row.key.trim(), row.value]),
       );
       await api.lambdaSetEnv(activeId, record);
+      toast.success('Environment variables saved.');
     } catch (err) {
       setEnvError((err as Error).message);
+      toast.error((err as Error).message);
     } finally {
       setSavingEnv(false);
     }
@@ -346,6 +350,7 @@ export function LambdaPanel({
         setFunctions((prev) =>
           prev.map((f) => (f.id === updated.id ? updated : f)),
         );
+        toast.success(`Saved "${updated.name}".`);
       } else {
         const created = await api.lambdaCreateFunction(
           name.trim(),
@@ -358,9 +363,11 @@ export function LambdaPanel({
         setActiveId(created.id);
         setFunctions((prev) => [created, ...prev]);
         onSaved?.(created.id);
+        toast.success(`Created "${created.name}".`);
       }
     } catch (err) {
       setError((err as Error).message);
+      toast.error((err as Error).message);
     } finally {
       setSaving(false);
     }
@@ -374,8 +381,10 @@ export function LambdaPanel({
       await api.lambdaDeleteFunction(activeId!);
       setFunctions((prev) => prev.filter((f) => f.id !== activeId));
       newFunction();
+      toast.success(`Deleted "${fn?.name || activeId}".`);
     } catch (err) {
       setError((err as Error).message);
+      toast.error((err as Error).message);
     }
   }
 

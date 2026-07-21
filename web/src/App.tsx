@@ -15,6 +15,8 @@ import { LoginPage } from './components/LoginPage';
 import { useAuth } from './AuthContext';
 import { emitRefresh } from './refresh';
 import { AppIcon } from './icons';
+import { ToastViewport } from './components/ToastViewport';
+import { useToast } from './ToastContext';
 
 const SERVICES = [
   { path: '/', label: 'Home', icon: 'home' },
@@ -159,6 +161,7 @@ function Breadcrumbs() {
 
 export function App() {
   const { token, email, logout } = useAuth();
+  const toast = useToast();
   const [presets, setPresets] = useState<Preset[]>([]);
   const [containers, setContainers] = useState<Container[]>([]);
   const [usage, setUsage] = useState<UsageSnapshot | null>(null);
@@ -296,10 +299,10 @@ export function App() {
     setPruning(true);
     try {
       const { reclaimedBytes } = await api.prune();
-      alert(`Reclaimed ${bytes(reclaimedBytes)}.`);
+      toast.success(`Reclaimed ${bytes(reclaimedBytes)}.`);
       refreshContainers();
     } catch (err) {
-      alert((err as Error).message);
+      toast.error((err as Error).message);
     } finally {
       setPruning(false);
     }
@@ -312,6 +315,7 @@ export function App() {
   return (
     <BrowserRouter>
       <div className="app">
+        <ToastViewport />
         <header className="topbar">
           <div className="topbar__left">
             <button

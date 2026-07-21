@@ -5,6 +5,7 @@ import { api } from '../api';
 import { bytes } from '../format';
 import { onRefresh } from '../refresh';
 import { AppIcon } from '../icons';
+import { useToast } from '../ToastContext';
 
 export function BucketList() {
   const navigate = useNavigate();
@@ -12,6 +13,7 @@ export function BucketList() {
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
+  const toast = useToast();
 
   const loadBuckets = useCallback(async () => {
     try {
@@ -36,8 +38,10 @@ export function BucketList() {
       setNewName('');
       setCreating(false);
       navigate(`/buckets/${name}`);
+      toast.success(`Created bucket "${name}".`);
     } catch (err) {
       setError((err as Error).message);
+      toast.error((err as Error).message);
     }
   }
 
@@ -109,6 +113,7 @@ export function BucketDetail({ name }: { name: string }) {
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const toast = useToast();
 
   const loadObjects = useCallback(async (atPrefix: string) => {
     setLoading(true);
@@ -141,8 +146,9 @@ export function BucketDetail({ name }: { name: string }) {
     try {
       await api.bucketDelete(name);
       navigate('/buckets');
+      toast.success(`Deleted bucket "${name}".`);
     } catch (err) {
-      alert((err as Error).message);
+      toast.error((err as Error).message);
     }
   }
 
@@ -151,12 +157,15 @@ export function BucketDetail({ name }: { name: string }) {
     setUploading(true);
     setError(null);
     try {
-      for (const file of Array.from(files)) {
+      const list = Array.from(files);
+      for (const file of list) {
         await api.bucketUpload(name, `${prefix}${file.name}`, file);
       }
       await loadObjects(prefix);
+      toast.success(`Uploaded ${list.length} file${list.length === 1 ? '' : 's'}.`);
     } catch (err) {
       setError((err as Error).message);
+      toast.error((err as Error).message);
     } finally {
       setUploading(false);
       if (fileInput.current) fileInput.current.value = '';
@@ -168,8 +177,9 @@ export function BucketDetail({ name }: { name: string }) {
     try {
       await api.bucketDeleteObject(name, key);
       await loadObjects(prefix);
+      toast.success(`Deleted "${key}".`);
     } catch (err) {
-      alert((err as Error).message);
+      toast.error((err as Error).message);
     }
   }
 

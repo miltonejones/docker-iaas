@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { bytes } from '../format';
 import { AppIcon, PresetIcon } from '../icons';
+import { useToast } from '../ToastContext';
 import type {
   DatabaseConfirmationPreview,
   DatabaseConnectionDetail,
@@ -568,6 +569,7 @@ function SchemaView({ value }: { value: Record<string, unknown> | null }) {
 
 export function DatabasesPanel({ activeId }: DatabasesPanelProps) {
   const navigate = useNavigate();
+  const toast = useToast();
   const isCreating = activeId === 'new';
   const [overview, setOverview] = useState<DatabaseOverview | null>(null);
   const [connections, setConnections] = useState<DatabaseConnectionDetail[]>([]);
@@ -777,9 +779,11 @@ export function DatabasesPanel({ activeId }: DatabasesPanelProps) {
         : await api.databaseUpdateConnection(selectedConnection!.id, payload);
       await refreshAfterMutation();
       setConnectionSuccess(isCreating ? 'Connection saved.' : 'Connection updated.');
+      toast.success(isCreating ? `Created connection "${saved.name}".` : `Updated connection "${saved.name}".`);
       navigate(`/databases/${saved.id}`, { replace: true });
     } catch (error) {
       setConnectionError(formatDatabaseError(error));
+      toast.error(formatDatabaseError(error));
     } finally {
       setSavingConnection(false);
     }
@@ -793,9 +797,11 @@ export function DatabasesPanel({ activeId }: DatabasesPanelProps) {
     try {
       await api.databaseDeleteConnection(selectedConnection.id);
       await refreshAfterMutation();
+      toast.success(`Deleted connection "${selectedConnection.name}".`);
       navigate('/databases');
     } catch (error) {
       setConnectionError(formatDatabaseError(error));
+      toast.error(formatDatabaseError(error));
     } finally {
       setDeletingConnection(false);
     }
@@ -1021,12 +1027,20 @@ export function DatabasesPanel({ activeId }: DatabasesPanelProps) {
       }
       await refreshAfterMutation();
       setPendingConfirmation(null);
+      const labels: Record<PendingConfirmation['kind'], string> = {
+        mutate: 'Mutation applied.',
+        migrate: 'Migration applied.',
+        backup: 'Backup started.',
+        restore: 'Restore started.',
+      };
+      toast.success(labels[pendingConfirmation.kind]);
     } catch (error) {
       const message = formatDatabaseError(error);
       if (pendingConfirmation.kind === 'mutate') setMutationError(message);
       if (pendingConfirmation.kind === 'migrate') setMigrationError(message);
       if (pendingConfirmation.kind === 'backup') setBackupError(message);
       if (pendingConfirmation.kind === 'restore') setRestoreError(message);
+      toast.error(message);
     } finally {
       setConfirming(false);
     }

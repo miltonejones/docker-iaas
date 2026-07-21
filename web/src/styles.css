@@ -2929,3 +2929,46 @@ textarea:focus {
   white-space: nowrap;
 }
 .topbar__signout { margin-left: 8px; flex-shrink: 0; }
+
+/* Toast notifications */
+.toast-viewport {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 360px;
+}
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  color: #fff;
+  animation: toast-in 0.15s ease-out;
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.toast--success { background: #1e7e34; }
+.toast--error { background: #b02a37; }
+.toast--info { background: #2c3e50; }
+.toast__message { flex: 1; word-break: break-word; }
+.toast__close {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+  opacity: 0.8;
+}
+.toast__close:hover { opacity: 1; }

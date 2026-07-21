@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { Preset } from '../types';
 import { api, type LaunchRequest } from '../api';
 import { AppIcon, PresetIcon } from '../icons';
+import { useToast } from '../ToastContext';
 
 interface Props {
   preset: Preset;
@@ -25,6 +26,7 @@ export function LaunchModal({ preset, onClose, onLaunched, prefill, replaceId }:
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [usedPorts, setUsedPorts] = useState<Set<number>>(new Set());
+  const toast = useToast();
 
   // Fetch used ports for conflict detection.
   useEffect(() => {
@@ -66,8 +68,10 @@ export function LaunchModal({ preset, onClose, onLaunched, prefill, replaceId }:
       await api.launch(body);
       onLaunched();
       onClose();
+      toast.success(`Launched ${name.trim() || preset.name}.`);
     } catch (err) {
       setError((err as Error).message);
+      toast.error((err as Error).message);
       setSubmitting(false);
     }
   }

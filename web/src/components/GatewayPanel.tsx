@@ -5,6 +5,7 @@ import { api } from '../api';
 import { onRefresh } from '../refresh';
 import { AppIcon } from '../icons';
 import { bytes } from '../format';
+import { useToast } from '../ToastContext';
 
 const TARGET_ICON = {
   bucket: <AppIcon name="bucket" />,
@@ -23,6 +24,7 @@ export function GatewayList() {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     loadRoutes();
@@ -61,11 +63,16 @@ export function GatewayList() {
     const val = editValue.trim();
     const displayName = val || null;
     // Update all endpoints sharing this route name.
-    for (const r of group) {
-      await api.gatewayUpdate(r.id, displayName);
+    try {
+      for (const r of group) {
+        await api.gatewayUpdate(r.id, displayName);
+      }
+      loadRoutes();
+      setEditing(null);
+      toast.success('Route name updated.');
+    } catch (err) {
+      toast.error((err as Error).message);
     }
-    loadRoutes();
-    setEditing(null);
   }
 
   const groups = Object.values(
@@ -206,6 +213,7 @@ export function GatewayDetail({ name }: { name: string }) {
   const [recentRequests, setRecentRequests] = useState<GatewayTrafficRequest[]>([]);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const [targetType, setTargetType] = useState<'bucket' | 'container' | 'lambda'>('bucket');
   const [bucketId, setBucketId] = useState('');
@@ -291,8 +299,10 @@ export function GatewayDetail({ name }: { name: string }) {
       resetForm();
       setAdding(false);
       await loadRoutes();
+      toast.success('Endpoint added.');
     } catch (err) {
       setError((err as Error).message);
+      toast.error((err as Error).message);
     }
   }
 
@@ -302,9 +312,10 @@ export function GatewayDetail({ name }: { name: string }) {
       await api.gatewayDelete(id);
       const remaining = routes.filter((r) => r.id !== id);
       setRoutes(remaining);
+      toast.success('Endpoint removed.');
       if (remaining.length === 0) navigate('/gateway');
     } catch (err) {
-      alert((err as Error).message);
+      toast.error((err as Error).message);
     }
   }
 

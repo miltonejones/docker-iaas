@@ -3,6 +3,7 @@ import type { Container } from '../types';
 import { bytes, timeAgo } from '../format';
 import { api } from '../api';
 import { AppIcon, PresetIcon } from '../icons';
+import { useToast } from '../ToastContext';
 
 interface Props {
   containers: Container[];
@@ -30,6 +31,7 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
   const [logsFor, setLogsFor] = useState<Container | null>(null);
   const [logText, setLogText] = useState<string>('');
   const [view, setView] = useState<ViewMode>(loadView);
+  const toast = useToast();
 
   function changeView(next: ViewMode) {
     setView(next);
@@ -40,13 +42,14 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
     }
   }
 
-  async function run(id: string, fn: () => Promise<unknown>) {
+  async function run(id: string, fn: () => Promise<unknown>, successMsg?: string) {
     setPending(id);
     try {
       await fn();
       onChanged();
+      if (successMsg) toast.success(successMsg);
     } catch (err) {
-      alert((err as Error).message);
+      toast.error((err as Error).message);
     } finally {
       setPending(null);
     }
@@ -144,7 +147,7 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                       className="btn btn--sm"
                       disabled={isPending || locked}
                       title={systemLocked ? "System-managed — can't be stopped here" : locked ? "Protected — can't be stopped here" : undefined}
-                      onClick={() => run(c.id, () => api.action(c.id, 'stop'))}
+                      onClick={() => run(c.id, () => api.action(c.id, 'stop'), `Stopped ${c.name || c.id.slice(0, 12)}.`)}
                     >
                       Stop
                     </button>
@@ -153,7 +156,7 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                       className="btn btn--sm"
                       disabled={isPending || locked}
                       title={systemLocked ? "System-managed — can't be started here" : locked ? "Protected — can't be started here" : undefined}
-                      onClick={() => run(c.id, () => api.action(c.id, 'start'))}
+                      onClick={() => run(c.id, () => api.action(c.id, 'start'), `Started ${c.name || c.id.slice(0, 12)}.`)}
                     >
                       Start
                     </button>
@@ -162,7 +165,7 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                     className="btn btn--sm"
                     disabled={isPending || locked}
                     title={systemLocked ? "System-managed — can't be restarted here" : locked ? "Protected — can't be restarted here" : undefined}
-                    onClick={() => run(c.id, () => api.action(c.id, 'restart'))}
+                    onClick={() => run(c.id, () => api.action(c.id, 'restart'), `Restarted ${c.name || c.id.slice(0, 12)}.`)}
                   >
                     Restart
                   </button>
@@ -179,7 +182,7 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                       disabled={isPending}
                       onClick={() => {
                         if (confirm(`Remove ${c.name || c.id.slice(0, 12)}?`))
-                          run(c.id, () => api.remove(c.id, true));
+                          run(c.id, () => api.remove(c.id, true), `Removed ${c.name || c.id.slice(0, 12)}.`);
                       }}
                     >
                       Remove
@@ -241,7 +244,7 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                           className="btn btn--sm"
                           disabled={isPending || locked}
                           title={systemLocked ? "System-managed — can't be stopped here" : locked ? "Protected — can't be stopped here" : undefined}
-                          onClick={() => run(c.id, () => api.action(c.id, 'stop'))}
+                          onClick={() => run(c.id, () => api.action(c.id, 'stop'), `Stopped ${c.name || c.id.slice(0, 12)}.`)}
                         >
                           Stop
                         </button>
@@ -250,7 +253,7 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                           className="btn btn--sm"
                           disabled={isPending || locked}
                           title={systemLocked ? "System-managed — can't be started here" : locked ? "Protected — can't be started here" : undefined}
-                          onClick={() => run(c.id, () => api.action(c.id, 'start'))}
+                          onClick={() => run(c.id, () => api.action(c.id, 'start'), `Started ${c.name || c.id.slice(0, 12)}.`)}
                         >
                           Start
                         </button>
@@ -259,7 +262,7 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                         className="btn btn--sm"
                         disabled={isPending || locked}
                         title={systemLocked ? "System-managed — can't be restarted here" : locked ? "Protected — can't be restarted here" : undefined}
-                        onClick={() => run(c.id, () => api.action(c.id, 'restart'))}
+                        onClick={() => run(c.id, () => api.action(c.id, 'restart'), `Restarted ${c.name || c.id.slice(0, 12)}.`)}
                       >
                         Restart
                       </button>
@@ -276,7 +279,7 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                           disabled={isPending}
                           onClick={() => {
                             if (confirm(`Remove ${c.name || c.id.slice(0, 12)}?`))
-                              run(c.id, () => api.remove(c.id, true));
+                              run(c.id, () => api.remove(c.id, true), `Removed ${c.name || c.id.slice(0, 12)}.`);
                           }}
                         >
                           Remove

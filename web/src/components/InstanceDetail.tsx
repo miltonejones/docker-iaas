@@ -3,6 +3,7 @@ import type { Container, ContainerDetail } from '../types';
 import { bytes, timeAgo } from '../format';
 import { api } from '../api';
 import { AppIcon } from '../icons';
+import { useToast } from '../ToastContext';
 
 interface Props {
   container: Container;
@@ -31,6 +32,7 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
   const [logsLoading, setLogsLoading] = useState(false);
   const [descriptionDraft, setDescriptionDraft] = useState('');
   const [savingMeta, setSavingMeta] = useState(false);
+  const toast = useToast();
 
   // Fetch full inspect data on mount.
   useEffect(() => {
@@ -63,7 +65,7 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
     }
   }, [container.id]);
 
-  async function run(id: string, fn: () => Promise<unknown>) {
+  async function run(id: string, fn: () => Promise<unknown>, successMsg?: string) {
     setPending(id);
     try {
       await fn();
@@ -71,8 +73,9 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
       // Re-fetch inspect data so state/config stays current.
       const d = await api.inspect(id);
       setDetail(d);
+      if (successMsg) toast.success(successMsg);
     } catch (err) {
-      alert((err as Error).message);
+      toast.error((err as Error).message);
     } finally {
       setPending(null);
     }
@@ -86,8 +89,9 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
       const d = await api.inspect(container.id);
       setDetail(d);
       setDescriptionDraft(d.description ?? '');
+      toast.success('Description saved.');
     } catch (err) {
-      alert((err as Error).message);
+      toast.error((err as Error).message);
     } finally {
       setSavingMeta(false);
     }
@@ -100,8 +104,9 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
       onChanged();
       const d = await api.inspect(container.id);
       setDetail(d);
+      toast.success(next ? 'Protection enabled.' : 'Protection disabled.');
     } catch (err) {
-      alert((err as Error).message);
+      toast.error((err as Error).message);
     } finally {
       setSavingMeta(false);
     }
@@ -310,7 +315,7 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
               className="btn"
               disabled={pending === container.id || actionsLocked}
               title={locked ? "System-managed — can't be stopped here" : isProtected ? "Protected — can't be stopped here" : undefined}
-              onClick={() => run(container.id, () => api.action(container.id, 'stop'))}
+              onClick={() => run(container.id, () => api.action(container.id, 'stop'), `Stopped ${title}.`)}
             >
               Stop
             </button>
@@ -319,7 +324,7 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
               className="btn"
               disabled={pending === container.id || actionsLocked}
               title={locked ? "System-managed — can't be started here" : isProtected ? "Protected — can't be started here" : undefined}
-              onClick={() => run(container.id, () => api.action(container.id, 'start'))}
+              onClick={() => run(container.id, () => api.action(container.id, 'start'), `Started ${title}.`)}
             >
               Start
             </button>
@@ -328,7 +333,7 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
             className="btn"
             disabled={pending === container.id || actionsLocked}
             title={locked ? "System-managed — can't be restarted here" : isProtected ? "Protected — can't be restarted here" : undefined}
-            onClick={() => run(container.id, () => api.action(container.id, 'restart'))}
+            onClick={() => run(container.id, () => api.action(container.id, 'restart'), `Restarted ${title}.`)}
           >
             Restart
           </button>
@@ -349,7 +354,7 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
             onClick={() => {
               const name = detail?.name || container.name || container.id.slice(0, 12);
               if (confirm(`Remove ${name}?`))
-                run(container.id, () => api.remove(container.id, true)).then(() => onClose());
+                run(container.id, () => api.remove(container.id, true), `Removed ${name}.`).then(() => onClose());
             }}
           >
             Remove
