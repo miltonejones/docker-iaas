@@ -106,7 +106,10 @@ fs.mkdirSync(LOG_DIR, { recursive: true });
 
 const NOTIFY_LOG = path.join(LOG_DIR, "notifications.jsonl");
 
-/** Append a structured notification event so a local watcher can relay it. */
+/** Append a structured notification event so a local watcher can relay it.
+ *  Also POSTs to the Dockyard API so notifications reach the shared log even
+ *  when the consumer runs in a container without a host volume mount — the
+ *  Dockyard server's own volume mount writes them to the host filesystem. */
 function notifyLog(summary, body = "", level = "info") {
   const entry = JSON.stringify({
     ts: new Date().toISOString(),
@@ -115,6 +118,16 @@ function notifyLog(summary, body = "", level = "info") {
     body: body || "",
   }) + "\n";
   try { fs.appendFileSync(NOTIFY_LOG, entry, "utf8"); } catch {}
+
+  // Fire-and-forget POST to the Dockyard API so that containerized consumers
+  // without a host volume mount still deliver notifications to the shared log.
+  const payload = JSON.parse(entry);
+  fetch(`${DOCKYARD_API}/api/notifications`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(5_000),
+  }).catch(() => {}); // best-effort — ignore unreachable API
 }
 
 function notify(summary, body = "") {
