@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Deploy via SSH
+        id: deploy
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -17,7 +18,23 @@ jobs:
           script: |
             set -e
             cd /home/ec2-user/docker-iaas
+            COMMIT_MSG=$(git log -1 --format=%s)
             git pull origin main
             docker compose up --build -d --remove-orphans
             docker image prune -f
-            echo "Deploy complete."
+            # Append success notification for the local notify-watcher
+            mkdir -p scripts/issue-logs
+            echo "{\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"level\":\"info\",\"summary\":\"✅ Deployed\",\"body\":\"$COMMIT_MSG\"}" >> scripts/issue-logs/notifications.jsonl
+
+      - name: Notify failure
+        if: failure()
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /home/ec2-user/docker-iaas
+            COMMIT_MSG=$(git log -1 --format=%s)
+            mkdir -p scripts/issue-logs
+            echo "{\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"level\":\"error\",\"summary\":\"❌ Deploy failed\",\"body\":\"$COMMIT_MSG\"}" >> scripts/issue-logs/notifications.jsonl
