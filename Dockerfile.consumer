@@ -1,0 +1,13 @@
+FROM node:22-alpine
+
+# Git for commit/push. ca-certificates for HTTPS to GitHub.
+RUN apk add --no-cache git ca-certificates
+
+# Claude Code CLI (talks to DeepSeek via Anthropic-compatible API)
+RUN npm install -g @anthropic-ai/claude-code
+
+WORKDIR /app
+
+# Only copy what the consumer needs
+COPY package.json ./
+COPY scripts/ ./scripts/

@@ -54,6 +54,33 @@ services:
       # the persistent MinIO instance), so it can reach them by name.
       - dockyard-net
 
+  consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile.consumer
+    container_name: dockyard-consumer-ctr
+    command: ["node", "scripts/issue-consumer.mjs"]
+    environment:
+      DOCKYARD_API: http://console:4300
+      DEEPSEEK_CMD: /usr/local/bin/claude
+      JWT_SECRET: "${JWT_SECRET:-dockyard-dev-secret-change-in-production}"
+      ANTHROPIC_AUTH_TOKEN: "${ANTHROPIC_AUTH_TOKEN:-}"
+      ANTHROPIC_BASE_URL: "${ANTHROPIC_BASE_URL:-}"
+      ANTHROPIC_MODEL: "${ANTHROPIC_MODEL:-}"
+      GITHUB_TOKEN: "${GITHUB_TOKEN:-}"
+      GIT_AUTHOR_NAME: "Dockyard AI"
+      GIT_AUTHOR_EMAIL: "dockyard@miltonejones.dev"
+      GIT_COMMITTER_NAME: "Dockyard AI"
+      GIT_COMMITTER_EMAIL: "dockyard@miltonejones.dev"
+    volumes:
+      - ./data:/app/data:ro
+      - ./scripts/issue-logs:/app/scripts/issue-logs
+    depends_on:
+      - console
+    restart: unless-stopped
+    networks:
+      - dockyard-net
+
   caddy:
     image: caddy:2-alpine
     container_name: dockyard-caddy

@@ -351,6 +351,13 @@ async function pushToGitHub(issue) {
   }
 
   try {
+    // Use HTTPS + GITHUB_TOKEN if available (container), otherwise SSH.
+    if (process.env.GITHUB_TOKEN) {
+      execSync(
+        `git remote set-url origin https://${process.env.GITHUB_TOKEN}@github.com/miltonejones/docker-iaas.git`,
+        { cwd: CODEBASE_PATH, timeout: 5_000 },
+      );
+    }
     execSync("git push origin main", { cwd: CODEBASE_PATH, timeout: 30_000 });
     log("Pushed to GitHub — CI will deploy.");
     notify("📤 Pushed fix to GitHub", issue.summary);
