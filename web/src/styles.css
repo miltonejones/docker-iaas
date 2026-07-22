@@ -3349,6 +3349,13 @@ textarea:focus {
     align-items: flex-start;
     gap: 8px;
   }
+
+  /* --- Notifications dropdown: constrain to viewport --- */
+  .notif-panel {
+    width: calc(100vw - 24px);
+    max-width: 340px;
+    max-height: calc(100vh - 80px);
+  }
 }
 
 /* ==========================================================================
