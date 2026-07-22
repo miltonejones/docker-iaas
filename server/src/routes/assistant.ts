@@ -120,7 +120,8 @@ Rules:
 - Destructive or disruptive actions (delete_*, prune_*, container_action) still go through the normal tool-call flow — the user reviews and confirms every tool call before it executes, so call the tool directly rather than asking "are you sure?" in text first. write_container_file, write_container_files, write_bucket_objects, replace_in_container_file, replace_in_bucket_object, update_container_env, host-file copies, and launch_container are no exception: call them directly; the user confirms before they run.
 - Database writes, migrations, grants, backups, restores, and saved-connection create/update/delete/test actions are also confirmed by the user before client execution, so call the appropriate tool directly instead of asking for a second textual confirmation.
 - For GitHub: use list_github_repo_files and read_github_file to browse or read one repo's content (public repos need no token; private repos need a configured GitHub token and fail with a clear error otherwise). When the user wants to pull an ENTIRE repo (not just one file) onto Dockyard, use pull_github_repo_to_bucket (bucket must already exist) or pull_github_repo_to_container (container must be running) — these download the whole repo tree and write every file, preserving folder structure; do not try to read and re-write each file individually for a whole-repo pull. Pass clean: true to delete the destination first, ensuring stale files from a previous pull don't linger. To commit and push changes back to GitHub, use commit_and_push_github_files with the complete new content of every changed file — it clones (or refreshes an existing local clone), commits, and pushes to the given branch (or the repo's default branch); this always requires a configured GitHub token. All four mutating GitHub tools (the two pull tools and commit_and_push_github_files) require user confirmation — call them directly rather than asking a second time in text.
-- When done, give a short (1-2 sentence) confirmation of what was done — no more.`;
+- When you need to pause between polling operations (e.g. waiting for a container to start, a build to finish, a database backup to complete, or a resource to become available), call wait with the number of seconds to pause (1-60) and an optional short reason describing what you're waiting for. The server will sleep for that duration and show a countdown progress bar to the user. This runs automatically with no confirmation needed. Always call wait between repeated polling checks rather than hammering the API with rapid list calls.
+	- When done, give a short (1-2 sentence) confirmation of what was done — no more.`;
 
 const tools: Anthropic.Tool[] = [
   {
@@ -986,6 +987,27 @@ const tools: Anthropic.Tool[] = [
       required: [],
     },
   },
+  {
+    name: "wait",
+    description:
+      "Pause between polling operations to avoid hammering the API. Call this when you need to wait before checking again — for example, waiting for a container to start, a build to finish, a database backup to complete, or any resource to become available. The server will sleep for the requested number of seconds and show a countdown progress bar to the user. Runs automatically with no confirmation needed.",
+    input_schema: {
+      type: "object",
+      properties: {
+        seconds: {
+          type: "number",
+          description:
+            "Number of seconds to wait (1-60). The server clamps values outside this range.",
+        },
+        reason: {
+          type: "string",
+          description:
+            "Optional short reason shown to the user during the countdown, e.g. 'container starting' or 'build in progress'.",
+        },
+      },
+      required: ["seconds"],
+    },
+  },
   ...DATABASE_ASSISTANT_TOOLS,
   ...GITHUB_ASSISTANT_TOOLS,
 ];
@@ -1713,12 +1735,46 @@ async function streamTurn(
       const toolUses = finalMessage.content.filter(
         (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
       );
-      const readOnlyCalls = toolUses.filter((b) => READ_ONLY_TOOLS.has(b.name));
-      const mutatingCalls = toolUses.filter(
+
+      // Handle `wait` tool calls before any other tool processing: emit an
+      // SSE wait event so the client shows a countdown, sleep for the
+      // requested duration, then add a synthetic tool_result so the model
+      // sees the wait as completed.  Wait calls run sequentially (not in
+      // parallel) so multiple waits stack their sleep time.
+      const waitCalls = toolUses.filter((b) => b.name === "wait");
+      if (waitCalls.length > 0) {
+        for (const w of waitCalls) {
+          const input = w.input as Record<string, unknown>;
+          const seconds = Math.max(1, Math.min(60, Number(input.seconds) || 10));
+          const reason = typeof input.reason === "string" ? input.reason : undefined;
+          onEvent({ type: "wait", seconds, reason, toolUseId: w.id });
+          await new Promise((r) => setTimeout(r, seconds * 1000));
+          messages.push({
+            role: "user",
+            content: [
+              {
+                type: "tool_result" as const,
+                tool_use_id: w.id,
+                content: JSON.stringify({ waited: seconds, reason: reason ?? null }),
+              },
+            ],
+          });
+        }
+      }
+
+      // Filter out wait calls — they have already been handled above.
+      const activeTools = toolUses.filter((b) => b.name !== "wait");
+      if (waitCalls.length > 0 && activeTools.length === 0) {
+        // Wait was the only tool call — loop back to the model.
+        continue;
+      }
+
+      const readOnlyCalls = activeTools.filter((b) => READ_ONLY_TOOLS.has(b.name));
+      const mutatingCalls = activeTools.filter(
         (b) => !READ_ONLY_TOOLS.has(b.name),
       );
 
-      if (toolUses.length === 0) {
+      if (activeTools.length === 0) {
         onEvent({
           type: "turn",
           messages,
