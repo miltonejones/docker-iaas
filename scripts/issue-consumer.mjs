@@ -104,6 +104,7 @@ async function initAuthHeader() {
       cwd: CODEBASE_PATH,
       encoding: "utf8",
       timeout: 5_000,
+    }).trim();
     if (!out) {
       log("No user in iaas.db — set DOCKYARD_API_TOKEN or CONSUMER_API_KEY to enable issue updates.");
       return;
