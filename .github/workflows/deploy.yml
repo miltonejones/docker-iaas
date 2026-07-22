@@ -4,9 +4,16 @@ on:
   push:
     branches: [main]
 
+# Prevent concurrent deploys from racing on the EC2 instance.
+# A new push cancels any in-progress deploy so the latest commit wins.
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Deploy via SSH
         id: deploy
@@ -20,7 +27,11 @@ jobs:
             cd /home/ec2-user/docker-iaas
             COMMIT_MSG=$(git log -1 --format=%s)
             git pull origin main
-            docker compose up --build -d --remove-orphans || true
+            # Don't mask failures with || true — a broken build or
+            # container-start failure must be surfaced so the Notify
+            # failure step below fires.
+            docker compose up --build -d --remove-orphans
+            # Cleanup is best-effort only — stale images shouldn't block a deploy.
             docker image prune -f || true
             # Append success notification for the local notify-watcher
             mkdir -p scripts/issue-logs
