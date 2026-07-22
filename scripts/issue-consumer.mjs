@@ -104,7 +104,6 @@ async function initAuthHeader() {
       cwd: CODEBASE_PATH,
       encoding: "utf8",
       timeout: 5_000,
-    }).trim();
     if (!out) {
       log("No user in iaas.db — set DOCKYARD_API_TOKEN or CONSUMER_API_KEY to enable issue updates.");
       return;
@@ -269,6 +268,22 @@ function formatPrompt(issue) {
 
   return [
     `The codebase is at ${CODEBASE_PATH}.`,
+    ``,
+    `Codebase map:`,
+    `- web/src/App.tsx — main app shell, navigation, layout`,
+    `- web/src/components/ — React components (AssistantBar, NotificationBell, ContainerDetail, etc.)`,
+    `- web/src/pages/ — page-level components (instances, functions, gateway, buckets, images, databases)`,
+    `- web/src/styles.css — all CSS`,
+    `- web/src/api.ts — API client functions`,
+    `- web/src/types.ts — TypeScript types`,
+    `- web/public/ — static assets`,
+    `- server/src/routes/ — Express route handlers (assistant.ts, containers.ts, notifications.ts, etc.)`,
+    `- server/src/db.ts — SQLite database queries`,
+    `- server/src/docker.ts — Docker API wrapper`,
+    `- scripts/ — consumer, notify-watcher, build scripts`,
+    `- Dockerfile.consumer — consumer container build`,
+    `- docker-compose.yml — production deployment config`,
+    ``,
     `Examine the relevant source files, diagnose the root cause, and implement a fix.`,
     `After your analysis, explain what you found and what you changed (if anything).`,
     ``,
@@ -304,14 +319,10 @@ async function pushToGitHub(issue) {
   // Check if copilot changed any files.
   let diff;
   try {
-    diff = execSync("git diff --stat", { cwd: CODEBASE_PATH, encoding: "utf8", timeout: 10_000 }).trim();
+    diff = execSync("git diff --stat 2>/dev/null", { cwd: CODEBASE_PATH, encoding: "utf8", timeout: 10_000 }).trim();
   } catch {
-    // Fallback: find-based detection (backward compat, no git repo).
     try {
-      diff = execSync(
-        `find . -type f -newer /tmp/dockyard-deploy-marker \\\n          \\( -name '*.ts' -o -name '*.tsx' -o -name '*.js' -o -name '*.mjs' -o -name '*.css' -o -name '*.html' -o -name '*.json' -o -name '*.sql' -o -name '*.md' -o -name 'Dockerfile' -o -name 'Caddyfile' -o -name '*.svg' \\) \\\n          ! -path './node_modules/*' ! -path './data/*' ! -path './scripts/issue-logs/*' \\\n          -printf '%p\\n' | sort`,
-        { cwd: CODEBASE_PATH, encoding: "utf8", timeout: 10_000 },
-      ).trim();
+      diff = execSync("git status --porcelain 2>/dev/null", { cwd: CODEBASE_PATH, encoding: "utf8", timeout: 10_000 }).trim();
     } catch {
       log("Could not detect changes — skipping push");
       return;
