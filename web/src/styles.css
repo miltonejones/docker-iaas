@@ -2896,7 +2896,7 @@ textarea:focus {
 .notif-panel__head h3 { margin: 0; font-size: 13px; }
 .notif-panel__desktop-btn { font-size: 11px; padding: 2px 8px; }
 .notif-panel__desktop-status { font-size: 11px; white-space: nowrap; }
-.notif-panel__body { overflow-y: auto; padding: 6px; }
+.notif-panel__body { flex: 1; min-height: 0; overflow-y: auto; padding: 6px; }
 .notif-row {
   display: flex;
   gap: 10px;
@@ -3367,7 +3367,7 @@ textarea:focus {
     right: 12px;
     width: calc(100vw - 24px);
     max-width: 340px;
-    max-height: calc(100vh - 80px);
+    max-height: min(360px, calc(100vh - 120px));
   }
 }
 
