@@ -7,7 +7,7 @@
 //
 // Environment variables:
 //   DOCKYARD_API       – base URL of the Dockyard API (default: http://127.0.0.1:4300)
-//   DEEPSEEK_CMD       – DeepSeek CLI command  (default: deepseek)
+//   DEEPSEEK_CMD       – Claude Code CLI command  (default: copilot)
 //   CODEBASE_PATH      – path DeepSeek should work against (default: ../.. relative to this script = repo root)
 //   POLL_INTERVAL_MS   – ms between polls when idle (default: 5000)
 //   POLL_INTERVAL_ACTIVE_MS – ms between polls after processing (default: 1000)
