@@ -17,7 +17,7 @@ type RespondStreamFn = (
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export interface SessionEvent {
-  type: "text" | "turn" | "error" | "done";
+  type: "text" | "turn" | "error" | "done" | "wait";
   delta?: string;
   messages?: unknown[];
   pending?: unknown[];
@@ -25,6 +25,11 @@ export interface SessionEvent {
   done?: boolean;
   text?: string;
   error?: string;
+  /** Wait-tool fields: emitted before the server-side sleep so the client can
+   *  show a countdown. */
+  seconds?: number;
+  reason?: string;
+  toolUseId?: string;
 }
 
 export interface SessionState {

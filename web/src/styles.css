@@ -1410,6 +1410,45 @@ textarea:focus {
 @keyframes assistant-spin {
   to { transform: rotate(360deg); }
 }
+/* Wait countdown indicator — shown while the assistant is sleeping between
+   polling cycles. A thin progress bar gives a visual heartbeat. */
+.assistant-wait {
+  margin: 0 0 8px 34px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  background: var(--bg-elev-2);
+}
+.assistant-wait__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.assistant-wait__icon {
+  font-size: 13px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.assistant-wait__label {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.assistant-wait__bar {
+  height: 4px;
+  background: var(--border-soft);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.assistant-wait__fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 1s linear;
+}
 .assistant-log__entry {
   display: flex;
   align-items: flex-start;

@@ -73,6 +73,7 @@ const LOOKUP_LABEL: Record<string, string> = {
   list_host_build_presets: 'host build presets',
   list_github_repo_files: 'GitHub repo contents',
   read_github_file: 'GitHub file content',
+  wait: 'poll interval',
 };
 
 const THINKING_WORDS = [
@@ -239,6 +240,8 @@ export function AssistantBar({
   const [expandedActions, setExpandedActions] = useState<Set<number>>(new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Live countdown state emitted by the server before a `wait` tool sleep. */
+  const [waitState, setWaitState] = useState<{ total: number; remaining: number; reason?: string } | null>(null);
   // Keep the active conversation on its newest streamed or newly added entry.
   const logRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -258,6 +261,17 @@ export function AssistantBar({
     const interval = window.setInterval(rotate, 1800);
     return () => window.clearInterval(interval);
   }, [busy]);
+  // Tick the wait countdown every second.
+  useEffect(() => {
+    if (!waitState || waitState.remaining <= 0) return;
+    const timer = window.setInterval(() => {
+      setWaitState((prev) => {
+        if (!prev || prev.remaining <= 1) return null;
+        return { ...prev, remaining: prev.remaining - 1 };
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [waitState?.total]);
   // Guards the initial-prompt effect below against React StrictMode's
   // dev-only double-invoke of effects (mount → cleanup → mount) — without
   // this, the same prompt gets submitted twice and comes back with two
@@ -480,6 +494,7 @@ export function AssistantBar({
 
     for await (const event of stream) {
       if (event.type === 'text') {
+        setWaitState(null);
         streamedText += event.delta as string;
         setLog((l) => {
           const copy = [...l];
@@ -487,6 +502,7 @@ export function AssistantBar({
           return copy;
         });
       } else if (event.type === 'turn') {
+        setWaitState(null);
         const turn = event as unknown as AssistantTurn;
         // Replace the streaming placeholder with the final text.
         setLog((l) => {
@@ -516,8 +532,13 @@ export function AssistantBar({
         }
         return;
       } else if (event.type === 'error') {
+        setWaitState(null);
         setError(event.message as string);
         return;
+      } else if (event.type === 'wait') {
+        const seconds = Number(event.seconds) || 10;
+        const reason = typeof event.reason === 'string' ? event.reason : undefined;
+        setWaitState({ total: seconds, remaining: seconds, reason });
       }
     }
   }
@@ -529,6 +550,7 @@ export function AssistantBar({
   function cancelTurn() {
     abortRef.current?.abort();
     abortRef.current = null;
+    setWaitState(null);
     setLog((l) => [...l, { kind: 'action', text: 'Cancelled' }]);
     setPending([]);
     setResolved([]);
@@ -1278,6 +1300,24 @@ Ask Dockyard.ai
               <div className="assistant-working" role="status">
                 <AppIcon name="spinner" className="assistant-working__spinner" />
                 {activeActionName ? `Running ${activeActionName} — ${thinkingWord}…` : `${thinkingWord}…`}
+              </div>
+            )}
+            {waitState && (
+              <div className="assistant-wait" role="status" aria-label={`Waiting ${waitState.remaining} of ${waitState.total} seconds`}>
+                <div className="assistant-wait__header">
+                  <span className="assistant-wait__icon">⏳</span>
+                  <span className="assistant-wait__label">
+                    {waitState.reason
+                      ? `Checking again in ${waitState.remaining}s… (${waitState.reason})`
+                      : `Checking again in ${waitState.remaining}s…`}
+                  </span>
+                </div>
+                <div className="assistant-wait__bar">
+                  <div
+                    className="assistant-wait__fill"
+                    style={{ width: `${Math.round(((waitState.total - waitState.remaining) / waitState.total) * 100)}%` }}
+                  />
+                </div>
               </div>
             )}
 

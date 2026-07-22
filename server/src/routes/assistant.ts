@@ -1362,12 +1362,15 @@ async function respondStream(
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
 
+  const abortController = new AbortController();
+  req.on("close", () => abortController.abort());
   await streamTurn(messages, (e) => {
     if (e.type === "text") send({ type: "text", delta: e.delta });
     else if (e.type === "turn") send(e as unknown as Record<string, unknown>);
     else if (e.type === "error") send({ type: "error", error: e.error });
     else if (e.type === "done") res.end();
-  });
+    else if (e.type === "wait") send({ type: "wait", seconds: e.seconds, reason: e.reason, toolUseId: e.toolUseId });
+  }, abortController.signal);
 }
 
 // Start a new turn from a natural-language prompt, optionally continuing an
@@ -1843,8 +1846,14 @@ async function streamTurn(
       }
 
       // All tools are read-only — execute inline and loop.
-      const results = await Promise.all(
-        readOnlyCalls.map(async (b) => {
+      // Separate wait calls from other read-only tools: emit a "wait" event
+      // to the client BEFORE sleeping so it can show a countdown indicator.
+      const waitCalls = readOnlyCalls.filter((b) => b.name === "wait");
+      const otherCalls = readOnlyCalls.filter((b) => b.name !== "wait");
+
+      // Execute non-wait read-only tools first (in parallel).
+      const otherResults = await Promise.all(
+        otherCalls.map(async (b) => {
           const r = await safeExecuteReadOnly(b.name, b.input as Record<string, unknown>, undefined, signal);
           return {
             type: "tool_result" as const,
@@ -1854,6 +1863,31 @@ async function streamTurn(
           };
         }),
       );
+
+      // Execute wait calls sequentially, emitting a "wait" event before each
+      // sleep so the client can show a countdown.
+      const waitResults: { type: "tool_result"; tool_use_id: string; content: string; is_error: boolean }[] = [];
+      for (const b of waitCalls) {
+        const requested = typeof b.input === "object" && b.input && "seconds" in b.input
+          ? Number((b.input as Record<string, unknown>).seconds)
+          : 10;
+        const seconds = Math.min(120, Math.max(1, Number.isFinite(requested) ? requested : 10));
+        const reason = typeof b.input === "object" && b.input && typeof (b.input as Record<string, unknown>).reason === "string"
+          ? (b.input as Record<string, unknown>).reason as string
+          : undefined;
+        if (!aborted) {
+          onEvent({ type: "wait", seconds, reason, toolUseId: b.id });
+        }
+        const r = await safeExecuteReadOnly(b.name, b.input as Record<string, unknown>, undefined, signal);
+        waitResults.push({
+          type: "tool_result" as const,
+          tool_use_id: b.id,
+          content: typeof r.content === "string" ? r.content : JSON.stringify(r.content ?? {}),
+          is_error: !r.ok,
+        });
+      }
+
+      const results = [...otherResults, ...waitResults];
       messages.push({ role: "user", content: results });
     }
 
