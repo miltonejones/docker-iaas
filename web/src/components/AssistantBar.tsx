@@ -988,6 +988,12 @@ export function AssistantBar({
       case 'clear_issues':
         return api.assistantClearIssues(str(input.category));
 
+      // Read-only tools — auto-resolved server-side, never reach client.
+      // Added as defense-in-depth in case the server sends them as pending.
+      case 'get_issue':
+      case 'list_issues':
+        return { ok: true, content: { info: `Auto-resolved server-side` } };
+
       default:
         throw new Error(`Unknown action "${action.name}".`);
     }
