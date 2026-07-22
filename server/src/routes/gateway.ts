@@ -350,9 +350,16 @@ gatewayRouter.delete('/:id', (req: Request, res: Response) => {
 
 // ── Preview (Playwright screenshot) ────────────────────────────────────
 
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+
+const PREVIEW_DIR = path.resolve(process.env.PREVIEW_DIR || 'data/previews');
+fs.mkdirSync(PREVIEW_DIR, { recursive: true });
+
 interface PreviewEntry { body: Buffer; contentType: string; at: number }
 const previewCache = new Map<string, PreviewEntry>();
-const PREVIEW_TTL_MS = 30_000; // cache screenshots for 30 seconds
+const PREVIEW_TTL_MS = 30_000;
 
 // Singleton browser + concurrency guard — launching multiple Chromium
 // instances simultaneously can OOM small instances.
@@ -368,6 +375,38 @@ function getBrowser() {
   return browserPromise;
 }
 
+function routeHash(name: string): string {
+  const routes = getRoutesByName(name);
+  return crypto.createHash('sha1').update(JSON.stringify(routes)).digest('hex').slice(0, 12);
+}
+
+function diskPath(name: string, width: number, height: number, hash: string): string {
+  return path.join(PREVIEW_DIR, `${name}_${width}x${height}_${hash}.png`);
+}
+
+function readDisk(name: string, width: number, height: number): Buffer | null {
+  const hash = routeHash(name);
+  const file = diskPath(name, width, height, hash);
+  try { return fs.readFileSync(file); }
+  catch { return null; }
+}
+
+function writeDisk(name: string, width: number, height: number, body: Buffer): string {
+  const hash = routeHash(name);
+  // Remove stale cache files for this route at any dimension.
+  const prefix = `${name}_`;
+  try {
+    for (const f of fs.readdirSync(PREVIEW_DIR)) {
+      if (f.startsWith(prefix) && !f.includes(`_${hash}.`)) {
+        fs.unlinkSync(path.join(PREVIEW_DIR, f));
+      }
+    }
+  } catch { /* best-effort cleanup */ }
+  const file = diskPath(name, width, height, hash);
+  fs.writeFileSync(file, body);
+  return file;
+}
+
 gatewayRouter.get('/preview/:name', async (req: Request, res: Response) => {
   const name = req.params.name;
   if (!name || !NAME_RE.test(name)) {
@@ -379,17 +418,26 @@ gatewayRouter.get('/preview/:name', async (req: Request, res: Response) => {
   const height = Math.min(2160, Math.max(240, Number(req.query.height) || 720));
   const cacheKey = `${name}-${width}-${height}`;
 
+  // 1) Memory cache
   const cached = previewCache.get(cacheKey);
   if (cached && Date.now() - cached.at < PREVIEW_TTL_MS) {
     res.set('Content-Type', cached.contentType);
-    res.set('Cache-Control', 'public, max-age=30');
+    res.set('Cache-Control', 'public, max-age=60');
     res.send(cached.body);
     return;
   }
 
-  // Serialise all screenshot work through a single lock so only one
-  // page is open at a time.  Concurrent requests either hit the cache
-  // above or queue behind each other.
+  // 2) Disk cache (survives restarts, auto-invalidates on route changes)
+  const diskBody = readDisk(name, width, height);
+  if (diskBody) {
+    previewCache.set(cacheKey, { body: diskBody, contentType: 'image/png', at: Date.now() });
+    res.set('Content-Type', 'image/png');
+    res.set('Cache-Control', 'public, max-age=60');
+    res.send(diskBody);
+    return;
+  }
+
+  // 3) Take a new screenshot (serialised)
   previewLock = previewLock.then(async () => {
     try {
       const browser = await getBrowser();
@@ -402,17 +450,18 @@ gatewayRouter.get('/preview/:name', async (req: Request, res: Response) => {
       const body = await page.screenshot({ type: 'png', fullPage: false });
       await page.close();
 
-      // Evict stale entries.
+      // Evict stale memory entries.
       for (const [k, v] of previewCache) {
         if (Date.now() - v.at > PREVIEW_TTL_MS) previewCache.delete(k);
       }
       previewCache.set(cacheKey, { body, contentType: 'image/png', at: Date.now() });
 
-      // Only the first waiter actually sends the response; all others
-      // will pick it up from the cache on the next event-loop tick.
+      // Persist to disk for restarts / cache busting on route changes.
+      writeDisk(name, width, height, body);
+
       if (!res.headersSent) {
         res.set('Content-Type', 'image/png');
-        res.set('Cache-Control', 'public, max-age=30');
+        res.set('Cache-Control', 'public, max-age=60');
         res.send(body);
       }
     } catch (err) {

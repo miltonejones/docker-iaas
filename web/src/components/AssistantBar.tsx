@@ -1214,7 +1214,18 @@ Ask Dockyard.ai
                   <div className="assistant-log__body">
                     {entry.kind === 'assistant' ? (
                       <>
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{entry.text}</ReactMarkdown>
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            a: ({ href, children, ...rest }) => (
+                              <a {...rest} href={href} target="_blank" rel="noreferrer">
+                                {children}
+                              </a>
+                            ),
+                          }}
+                        >
+                          {entry.text}
+                        </ReactMarkdown>
                         <button
                           className="assistant-log__copy"
                           onClick={() => copyAssistantMessage(i, entry.text)}
