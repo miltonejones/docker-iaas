@@ -1052,6 +1052,19 @@ code,
   border-color: rgba(220, 38, 38, 0.35);
   background: var(--bg-elev);
 }
+.btn--icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 8px;
+  line-height: 1;
+}
+.info-btn {
+  color: var(--muted, #94a3b8);
+}
+.info-btn:hover:not(:disabled) {
+  color: var(--accent-text, inherit);
+}
 .btn--danger:hover:not(:disabled) {
   background: var(--crit-soft);
   border-color: var(--danger);

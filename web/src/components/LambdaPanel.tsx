@@ -19,6 +19,7 @@ import type {
 } from "../types";
 import { api } from "../api";
 import { RuntimeIcon } from "../icons";
+import { InfoButton } from "./InfoButton";
 import { useToast } from "../ToastContext";
 
 const PLACEHOLDERS: Record<string, string> = {
@@ -482,7 +483,12 @@ export function LambdaPanel({
           {/* Name + runtime + dependencies — single row */}
           <div className="lambda-meta">
             {isSaved ? (
-              <span className="lambda-name-static">{name}</span>
+              <span className="lambda-name-static">
+                {name}
+                <InfoButton
+                  prompt={`Explain the "${name}" lambda function — what runtime it uses (${runtime}), what packages it depends on (${packages || 'none'}), and what it's likely used for.`}
+                />
+              </span>
             ) : (
               <input
                 className="lambda-name-input"

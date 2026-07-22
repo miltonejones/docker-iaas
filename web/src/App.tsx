@@ -14,6 +14,7 @@ import { CreateIssueModal } from './components/CreateIssueModal';
 import { LoginPage } from './components/LoginPage';
 import { useAuth } from './AuthContext';
 import { emitRefresh } from './refresh';
+import { onOpenAssistant } from './assistant';
 import { AppIcon } from './icons';
 import { ToastViewport } from './components/ToastViewport';
 import { useToast } from './ToastContext';
@@ -199,6 +200,13 @@ export function App() {
     localStorage.setItem('dockyard-visited', '1');
     window.location.replace('/gw/dockyard-marketing/');
   }, []);
+
+  // Detail pages emit this when their info icon is clicked, asking the
+  // assistant to open with a prompt explaining the object being viewed.
+  useEffect(() => onOpenAssistant((prompt) => {
+    setModalKey((k) => k + 1);
+    setAssistantModal({ prompt });
+  }), []);
 
   function submitAssistantQuery() {
     const q = assistantQuery.trim();

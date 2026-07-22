@@ -354,6 +354,20 @@ interface PreviewEntry { body: Buffer; contentType: string; at: number }
 const previewCache = new Map<string, PreviewEntry>();
 const PREVIEW_TTL_MS = 30_000; // cache screenshots for 30 seconds
 
+// Singleton browser + concurrency guard — launching multiple Chromium
+// instances simultaneously can OOM small instances.
+let browserPromise: ReturnType<typeof import('playwright').chromium.launch> | null = null;
+let previewLock: Promise<void> = Promise.resolve();
+
+function getBrowser() {
+  if (!browserPromise) {
+    browserPromise = import('playwright').then(({ chromium }) =>
+      chromium.launch({ headless: true }),
+    );
+  }
+  return browserPromise;
+}
+
 gatewayRouter.get('/preview/:name', async (req: Request, res: Response) => {
   const name = req.params.name;
   if (!name || !NAME_RE.test(name)) {
@@ -373,34 +387,42 @@ gatewayRouter.get('/preview/:name', async (req: Request, res: Response) => {
     return;
   }
 
-  try {
-    const { chromium } = await import('playwright');
-    const browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage({ viewport: { width, height } });
+  // Serialise all screenshot work through a single lock so only one
+  // page is open at a time.  Concurrent requests either hit the cache
+  // above or queue behind each other.
+  previewLock = previewLock.then(async () => {
+    try {
+      const browser = await getBrowser();
+      const page = await browser.newPage({ viewport: { width, height } });
 
-    // Navigate to the gateway route through the internal Express listener.
-    const port = process.env.PORT || 4300;
-    const url = `http://127.0.0.1:${port}/gw/${encodeURIComponent(name)}/`;
-    await page.goto(url, { waitUntil: 'networkidle', timeout: 15_000 });
+      const port = process.env.PORT || 4300;
+      const url = `http://127.0.0.1:${port}/gw/${encodeURIComponent(name)}/`;
+      await page.goto(url, { waitUntil: 'networkidle', timeout: 15_000 });
 
-    const body = await page.screenshot({ type: 'png', fullPage: false });
-    await browser.close();
+      const body = await page.screenshot({ type: 'png', fullPage: false });
+      await page.close();
 
-    // Evict stale entries so the cache doesn't grow unboundedly.
-    for (const [k, v] of previewCache) {
-      if (Date.now() - v.at > PREVIEW_TTL_MS) previewCache.delete(k);
+      // Evict stale entries.
+      for (const [k, v] of previewCache) {
+        if (Date.now() - v.at > PREVIEW_TTL_MS) previewCache.delete(k);
+      }
+      previewCache.set(cacheKey, { body, contentType: 'image/png', at: Date.now() });
+
+      // Only the first waiter actually sends the response; all others
+      // will pick it up from the cache on the next event-loop tick.
+      if (!res.headersSent) {
+        res.set('Content-Type', 'image/png');
+        res.set('Cache-Control', 'public, max-age=30');
+        res.send(body);
+      }
+    } catch (err) {
+      if (!res.headersSent) {
+        const msg = (err as Error).message;
+        if (msg.includes('Timeout') || msg.includes('timeout')) {
+          res.status(504).json({ error: 'Preview timed out — the target may be slow or unreachable.' });
+        } else {
+          res.status(500).json({ error: msg });
+        }
+      }
     }
-    previewCache.set(cacheKey, { body, contentType: 'image/png', at: Date.now() });
-
-    res.set('Content-Type', 'image/png');
-    res.set('Cache-Control', 'public, max-age=30');
-    res.send(body);
-  } catch (err) {
-    const msg = (err as Error).message;
-    if (msg.includes('Timeout') || msg.includes('timeout')) {
-      res.status(504).json({ error: 'Preview timed out — the target may be slow or unreachable.' });
-    } else {
-      res.status(500).json({ error: msg });
-    }
-  }
-});
+  });

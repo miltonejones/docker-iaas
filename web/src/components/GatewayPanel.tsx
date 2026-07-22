@@ -4,6 +4,7 @@ import type { Bucket, Container, GatewayRoute, GatewayTrafficRequest, GatewayTra
 import { api } from '../api';
 import { onRefresh } from '../refresh';
 import { AppIcon } from '../icons';
+import { InfoButton } from './InfoButton';
 import { bytes } from '../format';
 import { useToast } from '../ToastContext';
 
@@ -477,6 +478,9 @@ export function GatewayDetail({ name }: { name: string }) {
       <div className="panel__head">
         <h2>
           <span className="mono">/gw/{name}</span> <span className="count">{routes.length}</span>
+          <InfoButton
+            prompt={`Explain the gateway route "/gw/${name}" — what it does, how many endpoints it has (${routes.length}), and what traffic patterns to expect.`}
+          />
         </h2>
         <button className="btn btn--primary btn--sm" onClick={() => setAdding(true)}>
           + Add endpoint

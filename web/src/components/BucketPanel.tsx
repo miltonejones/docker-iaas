@@ -5,6 +5,7 @@ import { api } from '../api';
 import { bytes } from '../format';
 import { onRefresh } from '../refresh';
 import { AppIcon } from '../icons';
+import { InfoButton } from './InfoButton';
 import { useToast } from '../ToastContext';
 
 export function BucketList() {
@@ -203,6 +204,9 @@ export function BucketDetail({ name }: { name: string }) {
               </button>
             </span>
           ))}
+          <InfoButton
+            prompt={`Explain the "${name}" bucket${prefix ? ` (currently browsing "${prefix}")` : ''} — what it's likely used for and what kind of objects it holds.`}
+          />
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <input

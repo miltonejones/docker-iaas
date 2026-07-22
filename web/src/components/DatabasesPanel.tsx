@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { bytes } from '../format';
 import { AppIcon, PresetIcon } from '../icons';
+import { InfoButton } from './InfoButton';
 import { useToast } from '../ToastContext';
 import type {
   DatabaseConfirmationPreview,
@@ -1176,7 +1177,14 @@ export function DatabasesPanel({ activeId }: DatabasesPanelProps) {
               <>
                 <div className="db-connection-head">
                   <div>
-                    <h3>{isCreating ? 'New saved connection' : selectedConnection?.name}</h3>
+                    <h3>
+                      {isCreating ? 'New saved connection' : selectedConnection?.name}
+                      {!isCreating && selectedConnection && (
+                        <InfoButton
+                          prompt={`Explain the "${selectedConnection.name}" database connection — it's a ${selectedConnection.engine.toUpperCase()} connection, and describe what it's likely used for and any health considerations.`}
+                        />
+                      )}
+                    </h3>
                     {!isCreating && selectedConnection && (
                       <p className="muted">
                         {selectedConnection.engine.toUpperCase()} · updated{' '}

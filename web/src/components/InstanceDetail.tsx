@@ -3,6 +3,7 @@ import type { Container, ContainerDetail } from '../types';
 import { bytes, timeAgo } from '../format';
 import { api } from '../api';
 import { AppIcon } from '../icons';
+import { InfoButton } from './InfoButton';
 import { useToast } from '../ToastContext';
 
 interface Props {
@@ -122,6 +123,7 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
   const publishedPorts = (detail?.ports ?? container.ports).filter((p) => p.publicPort);
 
   const title = detail?.name || container.name || container.id.slice(0, 12);
+  const infoPrompt = `Explain the "${title}" container in detail — what image it runs (${detail?.image ?? container.image}), its current state (${running ? 'running' : 'stopped'}), exposed ports, and what it's likely used for.`;
 
   const bodySections = (
     <>
@@ -382,6 +384,7 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
           <h2>
             <span className={`dot dot--${running ? 'up' : 'down'}`} />
             {title}
+            <InfoButton prompt={infoPrompt} />
           </h2>
           <button className="btn btn--ghost btn--sm" onClick={onClose}>
             ← Instances
@@ -405,6 +408,7 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
           <h3>
             <span className={`dot dot--${running ? 'up' : 'down'}`} />
             {title}
+            <InfoButton prompt={infoPrompt} />
           </h3>
           <button className="btn btn--ghost" onClick={onClose}>
             Close
