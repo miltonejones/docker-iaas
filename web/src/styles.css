@@ -3309,11 +3309,14 @@ textarea:focus {
     padding: 14px 12px 80px; /* room for bottom nav */
   }
   .modal--assistant .assistant-panel__scroll {
+    display: flex;
+    flex-direction: column;
     flex: 1 1 0;
     min-height: 0;
     overflow-y: auto;
   }
   .modal--assistant .assistant-log {
+    flex: 1;
     max-height: none;
   }
 
