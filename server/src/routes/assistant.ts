@@ -93,6 +93,8 @@ const TITLE_MODEL = PROVIDER === 'deepseek'
 const client = new Anthropic({
   apiKey: resolveApiKey(PROVIDER),
   baseURL: PROVIDER === 'deepseek' ? 'https://api.deepseek.com/anthropic' : 'https://api.anthropic.com',
+  maxRetries: 3,
+  timeout: 300_000, // 5 min — long enough for slow model responses, short enough to not hang forever
 });
 
 const SYSTEM = `You are the Dockyard.ai assistant. You translate a user's natural-language request into tool calls that manage Lambda functions, Gateway routes, containers, Docker images, storage buckets, and saved MySQL/MongoDB connections.
@@ -120,7 +122,7 @@ Rules:
 - For MySQL reads, run_database_read_query must receive one read-only SQL statement in the sql field. For MongoDB reads, use run_database_read_query with collection plus mode/find/aggregate/count and JSON filter/projection/sort/pipeline fields as needed. Never use execute_database_mutation or execute_database_migration for a read-only request.
 - Destructive or disruptive actions (delete_*, prune_*, container_action) still go through the normal tool-call flow — the user reviews and confirms every tool call before it executes, so call the tool directly rather than asking "are you sure?" in text first. write_container_file, write_container_files, write_bucket_objects, replace_in_container_file, replace_in_bucket_object, update_container_env, host-file copies, and launch_container are no exception: call them directly; the user confirms before they run.
 - Database writes, migrations, grants, backups, restores, and saved-connection create/update/delete/test actions are also confirmed by the user before client execution, so call the appropriate tool directly instead of asking for a second textual confirmation.
-- For GitHub: use list_github_repo_files and read_github_file to browse or read one repo's content (public repos need no token; private repos need a configured GitHub token and fail with a clear error otherwise). When the user wants to pull an ENTIRE repo (not just one file) onto Dockyard, use pull_github_repo_to_bucket (bucket must already exist) or pull_github_repo_to_container (container must be running) — these download the whole repo tree and write every file, preserving folder structure; do not try to read and re-write each file individually for a whole-repo pull. Pass clean: true to delete the destination first, ensuring stale files from a previous pull don't linger. To commit and push changes back to GitHub, use commit_and_push_github_files with the complete new content of every changed file — it clones (or refreshes an existing local clone), commits, and pushes to the given branch (or the repo's default branch); this always requires a configured GitHub token. All four mutating GitHub tools (the two pull tools and commit_and_push_github_files) require user confirmation — call them directly rather than asking a second time in text.
+- For GitHub: use list_github_repo_files and read_github_file to browse or read one repo's content (public repos need no token; private repos need a configured GitHub token and fail with a clear error otherwise). Use get_github_workflow_status to check CI/deploy workflow progress — it returns recent runs with status, conclusion, and a direct HTML URL. When the user wants to pull an ENTIRE repo (not just one file) onto Dockyard, use pull_github_repo_to_bucket (bucket must already exist) or pull_github_repo_to_container (container must be running) — these download the whole repo tree and write every file, preserving folder structure; do not try to read and re-write each file individually for a whole-repo pull. Pass clean: true to delete the destination first, ensuring stale files from a previous pull don't linger. To commit and push changes back to GitHub, use commit_and_push_github_files with the complete new content of every changed file — it clones (or refreshes an existing local clone), commits, and pushes to the given branch (or the repo's default branch); this always requires a configured GitHub token. All four mutating GitHub tools (the two pull tools and commit_and_push_github_files) require user confirmation — call them directly rather than asking a second time in text.
 - When the user asks you to monitor or poll something over time (e.g. "check the consumer log every 30 seconds and tell me when it's deployed", "let me know when the container is up"), use the wait tool between checks instead of ending your turn and waiting for the user to say "update?"/"now?" again — call the relevant read-only check (list_issues, get_issue, get_container_logs, probe_container_endpoint, inspect_container, etc.), then call wait for the requested interval (max 120s per call), then check again, repeating until the condition is met. Only stop and report back once the condition is satisfied, you hit the automatic round limit, or you hit an error — don't narrate every individual wait/check cycle.
 - When done, give a short (1-2 sentence) confirmation of what was done — no more.`;
 
@@ -1728,10 +1730,17 @@ function isTransientAnthropicError(err: unknown): boolean {
   if (err instanceof Anthropic.InternalServerError) return true;
   const status = (err as { status?: number } | undefined)?.status;
   if (typeof status === "number" && status >= 500) return true;
-  const code = (err as { code?: string; cause?: { code?: string } } | undefined)?.code
-    ?? (err as { cause?: { code?: string } } | undefined)?.cause?.code;
+  // Dig through cause chains — fetch/undici bury the real code in nested causes.
+  let code: string | undefined;
+  for (let c: unknown = err; c && typeof c === "object"; c = (c as { cause?: unknown }).cause) {
+    const candidate = (c as { code?: string }).code;
+    if (candidate) { code = candidate; break; }
+  }
+  // Catch all undici-level errors (UND_ERR_*) since any of them can be
+  // triggered by a stale pooled connection after an idle wait period.
+  if (code?.startsWith("UND_ERR_")) return true;
   return code === "ECONNRESET" || code === "ETIMEDOUT" || code === "ENOTFOUND"
-    || code === "EAI_AGAIN" || code === "ECONNREFUSED" || code === "UND_ERR_SOCKET";
+    || code === "EAI_AGAIN" || code === "ECONNREFUSED";
 }
 
 const RETRY_DELAYS_MS = [1000, 2000, 4000];
@@ -1776,10 +1785,14 @@ async function streamTurn(
           break;
         } catch (err) {
           if (aborted) return;
-          // Only safe to silently retry if nothing has been streamed to the
-          // client yet for this attempt — otherwise a retry would duplicate
-          // partial text. If text already went out, surface the error as-is.
-          if (!textEmitted && attempt < RETRY_DELAYS_MS.length && isTransientAnthropicError(err)) {
+          if (attempt < RETRY_DELAYS_MS.length && isTransientAnthropicError(err)) {
+            // If we already streamed partial text to the client before the
+            // connection dropped, insert a separator so the user can see that
+            // a retry occurred — the new stream will produce a fresh complete
+            // response that supersedes the partial text.
+            if (textEmitted) {
+              onEvent({ type: "text", delta: "\n\n---\n*[Connection interrupted — reconnecting...]*\n\n" });
+            }
             await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
             continue;
           }

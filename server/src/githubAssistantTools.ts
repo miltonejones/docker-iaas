@@ -101,6 +101,108 @@ function normalizedRepoPath(value: unknown): string {
 }
 
 // ---------------------------------------------------------------------------
+// Read-only: Actions API — query workflow run status so the assistant can
+// report deploy/CI progress without relying on indirect signals.
+// ---------------------------------------------------------------------------
+
+interface GitHubWorkflow {
+  id: number;
+  name: string;
+  path: string;
+  state: string;
+}
+
+interface GitHubWorkflowRun {
+  id: number;
+  name: string;
+  status: string;
+  conclusion: string | null;
+  html_url: string;
+  created_at: string;
+  updated_at: string;
+  head_branch: string;
+  event: string;
+  run_attempt: number;
+  workflow_id: number;
+}
+
+interface GitHubWorkflowRunList {
+  total_count: number;
+  workflow_runs: GitHubWorkflowRun[];
+}
+
+function formatRun(run: GitHubWorkflowRun) {
+  return {
+    id: run.id,
+    name: run.name,
+    status: run.status,
+    conclusion: run.conclusion,
+    branch: run.head_branch,
+    event: run.event,
+    attempt: run.run_attempt,
+    htmlUrl: run.html_url,
+    createdAt: run.created_at,
+    updatedAt: run.updated_at,
+  };
+}
+
+export async function getGithubWorkflowStatus(input: Record<string, unknown>) {
+  const owner = repoOwner(input.owner);
+  const repo = repoName(input.repo);
+  const runId = typeof input.run_id === 'string' ? input.run_id.trim() : typeof input.run_id === 'number' ? String(input.run_id) : undefined;
+  const workflow = typeof input.workflow === 'string' ? input.workflow.trim() : undefined;
+  const branch = typeof input.branch === 'string' ? input.branch.trim() : undefined;
+  const limitRaw = Number(input.limit);
+  const limit = Math.min(20, Math.max(1, Number.isFinite(limitRaw) ? limitRaw : 5));
+
+  if (runId) {
+    const url = `${GITHUB_API}/repos/${owner}/${repo}/actions/runs/${encodeURIComponent(runId)}`;
+    const run: GitHubWorkflowRun = await githubJson(url);
+    return { owner, repo, runs: [formatRun(run)] };
+  }
+
+  let url: string;
+  if (workflow) {
+    if (/^\d+$/.test(workflow)) {
+      url = `${GITHUB_API}/repos/${owner}/${repo}/actions/workflows/${workflow}/runs`;
+    } else {
+      const wfUrl = `${GITHUB_API}/repos/${owner}/${repo}/actions/workflows`;
+      const wfResult = await githubJson<{ workflows: GitHubWorkflow[] }>(wfUrl).catch(() => {
+        throw new Error(`Unable to list workflows for ${owner}/${repo}. Make sure Actions are enabled for this repository.`);
+      });
+      const match = wfResult.workflows.find(
+        (w) => w.path === workflow || w.path.endsWith(`/${workflow}`) || w.name === workflow,
+      );
+      if (!match) {
+        const names = wfResult.workflows.map((w) => `${w.name} (${w.path})`).join(', ');
+        throw new Error(
+          `Workflow "${workflow}" not found in ${owner}/${repo}. Available workflows: ${names || '(none)'}`,
+        );
+      }
+      url = `${GITHUB_API}/repos/${owner}/${repo}/actions/workflows/${match.id}/runs`;
+    }
+  } else {
+    url = `${GITHUB_API}/repos/${owner}/${repo}/actions/runs`;
+  }
+
+  const params = new URLSearchParams();
+  if (branch) params.set('branch', branch);
+  params.set('per_page', String(limit));
+  url += `?${params.toString()}`;
+
+  const result = await githubJson<GitHubWorkflowRunList>(url);
+
+  return {
+    owner,
+    repo,
+    totalCount: result.total_count,
+    branch: branch || null,
+    workflow: workflow || null,
+    runs: result.workflow_runs.slice(0, limit).map(formatRun),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Read-only: Contents API (list a directory, read one file) — no clone, no
 // token required for public repos.
 // ---------------------------------------------------------------------------
@@ -507,6 +609,23 @@ export async function commitAndPushGithubFiles(input: Record<string, unknown>) {
 
 export const GITHUB_ASSISTANT_TOOLS: Anthropic.Tool[] = [
   {
+    name: 'get_github_workflow_status',
+    description:
+      'Query GitHub Actions workflow run status for a repository (read-only, runs automatically with no confirmation). Returns recent workflow runs with status (queued/in_progress/completed), conclusion (success/failure/cancelled/etc.), branch, and a direct HTML URL so you can report CI/deploy progress. Use this when the user asks about CI status, deploy progress, or whether a workflow is still running. Public repos need no token; private repos require a configured GitHub token.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        owner: { type: 'string', description: 'Repository owner (user or organization)' },
+        repo: { type: 'string', description: 'Repository name' },
+        workflow: { type: 'string', description: 'Workflow filename (e.g. "ci.yml"), workflow name, or numeric workflow ID. Omit to list all recent runs across every workflow.' },
+        branch: { type: 'string', description: 'Only list runs for this branch. Omit to include all branches.' },
+        run_id: { type: 'string', description: 'Get details for a specific run ID instead of listing. Takes precedence over workflow/branch/limit when provided.' },
+        limit: { type: 'number', description: 'Max runs to return (default 5, max 20). Ignored when run_id is set.' },
+      },
+      required: ['owner', 'repo'],
+    },
+  },
+  {
     name: 'list_github_repo_files',
     description:
       'List files and folders at a path in a GitHub repository (read-only, runs automatically with no confirmation). Public repos need no token; private repos require a configured GitHub token. Use this before reading a file to see what exists.',
@@ -599,10 +718,12 @@ export const GITHUB_ASSISTANT_TOOLS: Anthropic.Tool[] = [
   },
 ];
 
-export const GITHUB_ASSISTANT_READ_ONLY_TOOLS = new Set(['list_github_repo_files', 'read_github_file']);
+export const GITHUB_ASSISTANT_READ_ONLY_TOOLS = new Set(['get_github_workflow_status', 'list_github_repo_files', 'read_github_file']);
 
 export async function executeGithubAssistantReadOnlyTool(name: string, input: Record<string, unknown>): Promise<unknown> {
   switch (name) {
+    case 'get_github_workflow_status':
+      return getGithubWorkflowStatus(input);
     case 'list_github_repo_files':
       return listGithubRepoFiles(input);
     case 'read_github_file':
