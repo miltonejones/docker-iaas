@@ -48,6 +48,23 @@ notificationsRouter.get('/', (req: Request, res: Response) => {
   res.json({ entries: entries.slice(-MAX_HISTORY) });
 });
 
+/** Accept a notification event from an external consumer (e.g. the containerized
+ *  issue-consumer) and append it to the shared log so the SSE stream and the
+ *  web UI pick it up in real time without a host volume mount. */
+notificationsRouter.post('/', (req: Request, res: Response) => {
+  const entry = req.body;
+  if (!entry || !entry.ts || !entry.summary) {
+    return res.status(400).json({ error: 'Invalid notification entry — required fields: ts, summary' });
+  }
+  const line = JSON.stringify(entry) + '\n';
+  try {
+    fs.appendFileSync(NOTIFY_LOG, line, 'utf8');
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /** SSE stream — polls the log file for growth and pushes new lines only. */
 notificationsRouter.get('/stream', (req: Request, res: Response) => {
   res.set({
