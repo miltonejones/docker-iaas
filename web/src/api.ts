@@ -729,6 +729,16 @@ export interface NotificationEntry {
   body?: string;
 }
 
+/** Fetch notifications from the REST API. Used as initial data load so the
+ *  panel shows entries even if the SSE EventSource connection hasn't delivered
+ *  its first history frame yet (or never connects due to auth / network). */
+export async function fetchNotifications(): Promise<NotificationEntry[]> {
+  const res = await fetch('/api/notifications');
+  if (!res.ok) throw new Error(`Notifications fetch failed: ${res.status}`);
+  const data = (await res.json()) as { entries: NotificationEntry[] };
+  return data.entries ?? [];
+}
+
 /** Clear all notification entries from the server log. */
 export async function clearNotifications(): Promise<void> {
   await fetch('/api/notifications', { method: 'DELETE' });
@@ -744,15 +754,34 @@ export function subscribeNotifications(
   const source = new EventSource(
     token ? `/api/notifications/stream?token=${encodeURIComponent(token)}` : '/api/notifications/stream',
   );
+  let receivedHistory = false;
+  source.onopen = () => {
+    // Connection established — if we don't receive a history frame within a
+    // reasonable window the caller can fall back to its REST-fetched data.
+  };
   source.onmessage = (e) => {
     try {
       const data = JSON.parse(e.data) as
         | { type: 'history'; entries: NotificationEntry[] }
         | { type: 'entry'; entry: NotificationEntry };
-      if (data.type === 'history') onHistory(data.entries);
-      else if (data.type === 'entry') onEntry(data.entry);
+      if (data.type === 'history') {
+        receivedHistory = true;
+        onHistory(data.entries);
+      } else if (data.type === 'entry') {
+        onEntry(data.entry);
+      }
     } catch {
       /* ignore malformed frame */
+    }
+  };
+  source.onerror = () => {
+    // EventSource auto-reconnects after a delay.  If we never received the
+    // initial history frame the caller's REST fallback still populates the
+    // panel.  No need to surface errors to the user — the connection is
+    // best-effort and the REST-fetched data covers the gap.
+    if (!receivedHistory) {
+      // The caller's REST fetch already populated the panel, so this is
+      // only a problem if the REST fetch also failed (caller handles that).
     }
   };
   return () => source.close();

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { clearNotifications, subscribeNotifications, type NotificationEntry } from '../api';
+import { clearNotifications, fetchNotifications, subscribeNotifications, type NotificationEntry } from '../api';
 import { AppIcon } from '../icons';
 import { useToast } from '../ToastContext';
 import {
@@ -83,6 +83,26 @@ export function NotificationBell() {
     // That is why OS desktop notifications never fire.
     [toast.show],
   );
+
+  // Fetch initial entries via REST on mount so the panel has data even if the
+  // SSE EventSource connection hasn't delivered its first history frame yet
+  // (or never connects — e.g. auth timing, proxy buffering, browser quirk).
+  useEffect(() => {
+    let cancelled = false;
+    fetchNotifications()
+      .then((entries) => {
+        if (cancelled) return;
+        if (entries.length > 0) {
+          setEntries(entries.slice(-MAX_STORED));
+          lastNotifiedTs.current = entries[entries.length - 1].ts;
+        }
+        initialized.current = true;
+      })
+      .catch((err) => {
+        if (!cancelled) console.error('fetchNotifications failed', err);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     const unsubscribe = subscribeNotifications(
