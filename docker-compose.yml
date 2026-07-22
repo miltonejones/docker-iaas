@@ -24,6 +24,11 @@ services:
       - /:/host:ro
       # Persist the SQLite database (gateway routes, functions, settings).
       - ./data:/app/data
+      # Expose the consumer's notification log (see scripts/issue-consumer.mjs)
+      # so server/src/routes/notifications.ts can read/tail it — without this
+      # mount /app/scripts doesn't exist in the image and the web UI's
+      # notification bell / desktop alerts never receive live events.
+      - ./scripts/issue-logs:/app/scripts/issue-logs:ro
     secrets:
       # Mounted read-only at /run/secrets/anthropic_api_key inside the
       # container — never exposed via `docker inspect`/env, unlike a plain
