@@ -381,6 +381,7 @@ async function consumeOne() {
     // copilot/claude -p runs non-interactively; no TTY needed.
     const child = spawn(DEEPSEEK_CMD, [
       "-p", prompt,
+      "--model", process.env.DEEPSEEK_MODEL || "deepseek-v4-pro",
       "--dangerously-skip-permissions",
     ], {
       cwd: CODEBASE_PATH,
