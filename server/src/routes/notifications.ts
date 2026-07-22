@@ -49,6 +49,16 @@ notificationsRouter.get('/', requireAuth, (req: Request, res: Response) => {
   res.json({ entries: entries.slice(-MAX_HISTORY) });
 });
 
+/** Clear the entire notification log. */
+notificationsRouter.delete('/', requireAuth, (_req: Request, res: Response) => {
+  try {
+    fs.writeFileSync(NOTIFY_LOG, '', 'utf8');
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 /** Accept a notification event from an external consumer (e.g. the containerized
  *  issue-consumer) and append it to the shared log so the SSE stream and the
  *  web UI pick it up in real time without a host volume mount. */

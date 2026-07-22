@@ -739,6 +739,11 @@ export interface NotificationEntry {
   body?: string;
 }
 
+/** Clear all notification entries from the server log. */
+export async function clearNotifications(): Promise<void> {
+  await fetch('/api/notifications', { method: 'DELETE' });
+}
+
 /** Subscribe to the live notification stream. Returns an unsubscribe function.
  *  Emits the recent history first, then one call per new entry as it arrives. */
 export function subscribeNotifications(

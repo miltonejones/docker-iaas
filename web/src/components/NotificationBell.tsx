@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { subscribeNotifications, type NotificationEntry } from '../api';
+import { clearNotifications, subscribeNotifications, type NotificationEntry } from '../api';
 import { AppIcon } from '../icons';
 import { useToast } from '../ToastContext';
 import {
@@ -151,6 +151,17 @@ export function NotificationBell() {
     [entries, lastSeenTs],
   );
 
+  const clearAll = useCallback(async () => {
+    if (entries.length === 0) return;
+    try {
+      await clearNotifications();
+      setEntries([]);
+      toast.show('Notifications cleared', 'success');
+    } catch (err) {
+      console.error('clear notifications', err);
+    }
+  }, [entries.length, toast.show]);
+
   const toggle = useCallback(() => {
     setOpen((o) => {
       const next = !o;
@@ -199,6 +210,16 @@ export function NotificationBell() {
             )}
             {isDesktopNotificationSupported() && desktopPermission === 'granted' && (
               <span className="muted notif-panel__desktop-status">Desktop alerts on</span>
+            )}
+            {ordered.length > 0 && (
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm notif-panel__clear-btn"
+                onClick={clearAll}
+                title="Clear all notifications"
+              >
+                Clear
+              </button>
             )}
           </div>
           <div className="notif-panel__body">
