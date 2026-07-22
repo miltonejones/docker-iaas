@@ -6,8 +6,12 @@ RUN apk add --no-cache git ca-certificates
 # Claude Code CLI (talks to DeepSeek via Anthropic-compatible API)
 RUN npm install -g @anthropic-ai/claude-code
 
+# Non-root user — Claude refuses --dangerously-skip-permissions as root.
+RUN adduser -D -h /app consumer
+USER consumer
+
 WORKDIR /app
 
 # Only copy what the consumer needs
-COPY package.json ./
-COPY scripts/ ./scripts/
+COPY --chown=consumer:consumer package.json ./
+COPY --chown=consumer:consumer scripts/ ./scripts/
