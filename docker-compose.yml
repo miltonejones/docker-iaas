@@ -60,6 +60,9 @@ services:
       dockerfile: Dockerfile.consumer
     container_name: dockyard-consumer-ctr
     command: ["node", "scripts/issue-consumer.mjs"]
+    labels:
+      iaas.protected: "true"
+      iaas.description: "Dockyard issue consumer — Claude Code + DeepSeek v4-pro. Polls API directly, auto-fixes, pushes to GitHub. Managed by docker-compose."
     environment:
       DOCKYARD_API: http://console:4300
       DEEPSEEK_CMD: /usr/local/bin/claude
