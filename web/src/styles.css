@@ -1415,7 +1415,7 @@ textarea:focus {
 .assistant-wait {
   margin: 0 0 8px 34px;
   padding: 8px 10px;
-  border: 1px solid var(--border-soft);
+  border: 1px solid var(--border);
   border-radius: var(--r-sm);
   background: var(--bg-elev-2);
 }
@@ -1439,7 +1439,7 @@ textarea:focus {
 }
 .assistant-wait__bar {
   height: 4px;
-  background: var(--border-soft);
+  background: var(--border);
   border-radius: 2px;
   overflow: hidden;
 }
