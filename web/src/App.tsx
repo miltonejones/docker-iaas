@@ -399,9 +399,12 @@ export function App() {
                 {sessionsList.map((s) => (
                   <div key={s.id} className="offcanvas-session-row-wrap">
                     <button className="offcanvas-session-row" onClick={() => openSessionInAssistant(s.id)}>
-                      <span className="offcanvas-session-row__name">{s.name}</span>
+                      <span className="offcanvas-session-row__name">
+                        {s.running && <span className="session-running-dot" title="Active — processing" />}
+                        {s.name}
+                      </span>
                       <span className="offcanvas-session-row__time muted">
-                        {timeAgo(new Date(s.updatedAt).getTime() / 1000)}
+                        {s.running ? "Active" : timeAgo(new Date(s.updatedAt).getTime() / 1000)}
                       </span>
                     </button>
                     <button

@@ -664,6 +664,22 @@ export const api = {
   assistantDeleteSession: (id: string) =>
     fetch(`/api/assistant/sessions/${id}`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r)),
 
+  /** Open an SSE stream to a session for live events. Returns an EventSource. */
+  assistantSessionStream: (id: string) =>
+    new EventSource(`/api/assistant/sessions/${id}/stream`),
+
+  /** Send a message (and optional tool results) to a session. */
+  assistantSessionSend: (id: string, body: { prompt?: string; results?: { toolUseId: string; ok: boolean; content: unknown }[]; state?: unknown }) =>
+    fetch(`/api/assistant/sessions/${id}/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }).then((r) => json<{ ok: true; sessionId: string }>(r)),
+
+  /** Abort the current turn in a session. */
+  assistantSessionAbort: (id: string) =>
+    fetch(`/api/assistant/sessions/${id}/abort`, { method: 'POST' }).then((r) => json<{ ok: true }>(r)),
+
   assistantReportIssue: (summary: string, category?: string, details?: Record<string, unknown>) =>
     fetch('/api/assistant/issues', {
       method: 'POST',

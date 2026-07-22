@@ -384,6 +384,7 @@ export interface AssistantSessionSummary {
   name: string;
   createdAt: string;
   updatedAt: string;
+  running?: boolean;
 }
 
 export interface AssistantSession extends AssistantSessionSummary {

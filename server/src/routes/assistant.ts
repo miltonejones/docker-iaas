@@ -32,6 +32,7 @@ import {
   clearAssistantIssues,
   ASSISTANT_ISSUE_STATUSES,
 } from "../db.js";
+import { sessionRegistry } from "../sessionRunner.js";
 import { getS3Client } from "../minio.js";
 import { PRESETS } from "../presets.js";
 import { listHostBuildPresets } from "./hostBuilds.js";
@@ -1308,22 +1309,12 @@ function extractText(content: Anthropic.ContentBlock[]): string {
 
 const MAX_AUTO_ROUNDS = 8;
 
-/** Stream `messages` to Claude via SSE and keep looping as long as every tool
- *  call in a turn is read-only — those get executed here immediately and fed
- *  back without ever reaching the client. As soon as a turn has no tool calls
- *  (done) or includes a mutating one, the final turn data is sent as an SSE
- *  event and the stream ends. Text deltas are streamed to the client in
- *  real-time so the user sees the model's response as it's generated.
- *  Mutating tools are never executed here — that stays the client's job,
- *  after the user confirms. */
+/** Thin SSE wrapper around streamTurn for the old /plan and /confirm endpoints. */
 async function respondStream(
   messages: Anthropic.MessageParam[],
   req: Request,
   res: Response,
 ): Promise<void> {
-  // Don't flush headers early — let the first res.write() send them
-  // implicitly with chunked transfer encoding. Flushing early causes the
-  // client to see headers with no body and close the connection.
   res.set({
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
@@ -1335,134 +1326,12 @@ async function respondStream(
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
 
-  let aborted = false;
-  // Use the response's 'close' event to detect client disconnect — the
-  // request's 'close' fires as soon as the request body is parsed, which
-  // is before we even start streaming.
-  res.on("close", () => {
-    if (!res.writableFinished) {
-      aborted = true;
-    }
+  await streamTurn(messages, (e) => {
+    if (e.type === "text") send({ type: "text", delta: e.delta });
+    else if (e.type === "turn") send(e as unknown as Record<string, unknown>);
+    else if (e.type === "error") send({ type: "error", error: e.error });
+    else if (e.type === "done") res.end();
   });
-
-  try {
-    for (let round = 0; round < MAX_AUTO_ROUNDS; round++) {
-      if (aborted) return;
-
-      const stream = client.messages.stream({
-        model: MAIN_MODEL,
-        // Tool calls that echo a whole file set back (replace_lambda_function_files,
-        // write_container_file with a large payload, etc.) can otherwise blow past a
-        // small cap mid-generation, truncating the tool_use JSON. Streaming already
-        // sidesteps the HTTP-timeout risk a large cap would normally carry.
-        max_tokens: 32000,
-        system: SYSTEM,
-        tools,
-        messages,
-      });
-
-      // Stream text deltas to the client in real-time.
-      stream.on("text", (delta) => {
-        if (!aborted) send({ type: "text", delta });
-      });
-
-      // Wait for the full message (this also drives the stream to completion,
-      // so the 'text' listener above fires as chunks arrive).
-      let finalMessage: Anthropic.Message;
-      try {
-        finalMessage = await stream.finalMessage();
-      } catch (err) {
-        if (aborted) return;
-        throw err;
-      }
-      if (aborted) return;
-
-      messages.push({ role: "assistant", content: finalMessage.content });
-
-      const toolUses = finalMessage.content.filter(
-        (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
-      );
-      const readOnlyCalls = toolUses.filter((b) => READ_ONLY_TOOLS.has(b.name));
-      const mutatingCalls = toolUses.filter(
-        (b) => !READ_ONLY_TOOLS.has(b.name),
-      );
-
-      if (toolUses.length === 0) {
-        send({
-          type: "turn",
-          messages,
-          pending: [],
-          autoResolved: [],
-          done: true,
-          text: extractText(finalMessage.content),
-        });
-        res.end();
-        return;
-      }
-
-      if (mutatingCalls.length > 0) {
-        // Can't resolve the read-only calls alone — every tool_result for
-        // this turn has to go back together, and the mutating one(s) need a
-        // client-side decision first. Compute the read-only results now and
-        // hand them to the client to hold until the mutating ones are answered.
-        const autoResolved: ResolvedResult[] = await Promise.all(
-          readOnlyCalls.map(async (b) => {
-            const r = await safeExecuteReadOnly(
-              b.name,
-              b.input as Record<string, unknown>,
-              getAuthUser(req)?.userId,
-            );
-            return { toolUseId: b.id, ok: r.ok, content: r.content };
-          }),
-        );
-        if (aborted) return;
-        send({
-          type: "turn",
-          messages,
-          pending: mutatingCalls.map((b) => ({
-            id: b.id,
-            name: b.name,
-            input: b.input as Record<string, unknown>,
-          })),
-          autoResolved,
-          done: false,
-          text: extractText(finalMessage.content),
-        });
-        res.end();
-        return;
-      }
-
-      // Every tool call this round was read-only — resolve them all and loop
-      // back to Claude without involving the client.
-      const resolved = await Promise.all(
-        readOnlyCalls.map((b) =>
-          safeExecuteReadOnly(b.name, b.input as Record<string, unknown>, getAuthUser(req)?.userId),
-        ),
-      );
-      if (aborted) return;
-      messages.push({
-        role: "user",
-        content: readOnlyCalls.map((b, i) => ({
-          type: "tool_result" as const,
-          tool_use_id: b.id,
-          content: JSON.stringify(resolved[i].content),
-          is_error: !resolved[i].ok,
-        })),
-      });
-    }
-
-    send({
-      type: "error",
-      message:
-        "Too many automatic lookups in a row without resolving — try rephrasing the request.",
-    });
-  } catch (err) {
-    if (!aborted) {
-      send({ type: "error", message: (err as Error).message });
-    }
-  } finally {
-    res.end();
-  }
 }
 
 // Start a new turn from a natural-language prompt, optionally continuing an
@@ -1611,6 +1480,7 @@ function toSessionSummary(r: {
     name: r.name,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    running: sessionRegistry.has(r.id) && (sessionRegistry.get(r.id)?.isRunning ?? false),
   };
 }
 
@@ -1796,4 +1666,192 @@ assistantRouter.delete("/issues", (req: Request, res: Response) => {
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
+});
+
+// ── Session Runner endpoints ─────────────────────────────────────────────────
+import { getOrCreateSession, type SessionEvent } from "../sessionRunner.js";
+
+/** Refactored streaming: writes events to a callback instead of directly to `res`.
+ *  Used by both the old HTTP endpoints (via respondStream wrapper) and the new
+ *  SessionRunner. */
+async function streamTurn(
+  messages: Anthropic.MessageParam[],
+  onEvent: (e: SessionEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  let aborted = false;
+  const onAbort = () => { aborted = true; };
+  signal?.addEventListener("abort", onAbort, { once: true });
+
+  try {
+    for (let round = 0; round < MAX_AUTO_ROUNDS; round++) {
+      if (aborted) return;
+
+      const stream = client.messages.stream({
+        model: MAIN_MODEL,
+        max_tokens: 32000,
+        system: SYSTEM,
+        tools,
+        messages,
+      });
+
+      stream.on("text", (delta) => {
+        if (!aborted) onEvent({ type: "text", delta });
+      });
+
+      let finalMessage: Anthropic.Message;
+      try {
+        finalMessage = await stream.finalMessage();
+      } catch (err) {
+        if (aborted) return;
+        throw err;
+      }
+      if (aborted) return;
+
+      messages.push({ role: "assistant", content: finalMessage.content });
+
+      const toolUses = finalMessage.content.filter(
+        (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
+      );
+      const readOnlyCalls = toolUses.filter((b) => READ_ONLY_TOOLS.has(b.name));
+      const mutatingCalls = toolUses.filter(
+        (b) => !READ_ONLY_TOOLS.has(b.name),
+      );
+
+      if (toolUses.length === 0) {
+        onEvent({
+          type: "turn",
+          messages,
+          pending: [],
+          autoResolved: [],
+          done: true,
+          text: extractText(finalMessage.content),
+        });
+        return;
+      }
+
+      if (mutatingCalls.length > 0) {
+        const autoResolved: ResolvedResult[] = await Promise.all(
+          readOnlyCalls.map(async (b) => {
+            const r = await safeExecuteReadOnly(b.name, b.input as Record<string, unknown>);
+            return { toolUseId: b.id, ok: r.ok, content: r.content };
+          }),
+        );
+        onEvent({
+          type: "turn",
+          messages,
+          pending: toolUses.map((b) => ({ id: b.id, name: b.name, input: b.input })),
+          autoResolved,
+          done: false,
+          text: extractText(finalMessage.content),
+        });
+        return;
+      }
+
+      // All tools are read-only — execute inline and loop.
+      const results = await Promise.all(
+        readOnlyCalls.map(async (b) => {
+          const r = await safeExecuteReadOnly(b.name, b.input as Record<string, unknown>);
+          return {
+            type: "tool_result" as const,
+            tool_use_id: b.id,
+            content: typeof r.content === "string" ? r.content : JSON.stringify(r.content ?? {}),
+            is_error: !r.ok,
+          };
+        }),
+      );
+      messages.push({ role: "user", content: results });
+    }
+  } finally {
+    signal?.removeEventListener("abort", onAbort);
+  }
+}
+
+/** SSE subscription — streams live session events to one client. */
+assistantRouter.get("/sessions/:id/stream", (req: Request, res: Response) => {
+  const userId = getAuthUser(req)?.userId;
+  const sessionId = req.params.id;
+
+  // Load the session from DB to get its name
+  const row = getAssistantSession(sessionId, userId);
+  if (!row) {
+    res.status(404).json({ error: "Session not found." });
+    return;
+  }
+
+  const runner = getOrCreateSession(sessionId, row.name, userId, streamTurn, client);
+
+  res.set({
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+  res.status(200);
+
+  const send = (data: Record<string, unknown>) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+
+  // Send current state as catch-up
+  const current = getAssistantSession(sessionId, userId);
+  if (current) {
+    send({ type: "state", ...JSON.parse(current.state) });
+  }
+  send({ type: "status", running: runner.isRunning });
+
+  // Subscribe to live events
+  const onEvent = (e: SessionEvent) => { send(e as unknown as Record<string, unknown>); };
+
+  runner.on("event", onEvent);
+
+  const onClose = () => {
+    runner.off("event", onEvent);
+  };
+  res.on("close", onClose);
+});
+
+/** Send a user message (and optional tool results) to a session. */
+assistantRouter.post("/sessions/:id/send", async (req: Request, res: Response) => {
+  try {
+    const userId = getAuthUser(req)?.userId;
+    const sessionId = req.params.id;
+    const { prompt, results: toolResults, state } = req.body as {
+      prompt?: string;
+      results?: { toolUseId: string; ok: boolean; content: unknown }[];
+      state?: { messages: unknown[]; log: unknown[]; pending: unknown[]; resolved: unknown[] };
+    };
+
+    if (!prompt?.trim() && !toolResults?.length) {
+      res.status(400).json({ error: "A prompt or tool results are required." });
+      return;
+    }
+
+    const row = getAssistantSession(sessionId, userId);
+    if (!row) {
+      res.status(404).json({ error: "Session not found." });
+      return;
+    }
+
+    const runner = getOrCreateSession(sessionId, row.name, userId, streamTurn, client);
+
+    // Start processing in the background — client subscribes via /stream.
+    const sessionState = state || JSON.parse(row.state);
+    runner.send(sessionState, prompt?.trim() || undefined, toolResults);
+
+    // Persist the updated state immediately
+    if (state) {
+      updateAssistantSession(sessionId, { state: JSON.stringify(state) });
+    }
+
+    res.json({ ok: true, sessionId });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+/** Abort the current turn in a session. */
+assistantRouter.post("/sessions/:id/abort", (req: Request, res: Response) => {
+  const runner = sessionRegistry.get(req.params.id);
+  if (runner) runner.abort();
+  res.json({ ok: true });
 });
