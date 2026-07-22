@@ -480,3 +480,5 @@ Notes:
   and persisted in the SQLite db.
 - Adding auth, volume management UI, and container stats (CPU/mem) streaming
   are natural next steps.
+
+The Ask Dockyard assistant runs on DeepSeek.

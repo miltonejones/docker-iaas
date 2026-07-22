@@ -381,10 +381,10 @@ async function consumeOne() {
   let stderr = "";
 
   await new Promise((resolve) => {
-    // copilot -p runs non-interactively; no TTY needed.
+    // copilot/claude -p runs non-interactively; no TTY needed.
     const child = spawn(DEEPSEEK_CMD, [
       "-p", prompt,
-      "--yolo",
+      "--dangerously-skip-permissions",
     ], {
       cwd: CODEBASE_PATH,
       stdio: ["ignore", "pipe", "pipe"],

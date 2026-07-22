@@ -50,32 +50,59 @@ export function NotificationBell() {
   const toast = useToast();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const initialized = useRef(false);
+  // Highest entry timestamp we've already surfaced a toast/desktop notification
+  // for. EventSource silently reconnects on any network hiccup or server
+  // redeploy, and each reconnect re-sends the full backlog as a fresh
+  // "history" frame rather than one "entry" frame per new item. Without this
+  // tracker, entries delivered via a post-reconnect history resync would
+  // still populate the dropdown (setEntries always runs) but would never
+  // reach the toast/showDesktopNotification calls below, which historically
+  // only fired for the "entry" SSE frame.
+  const lastNotifiedTs = useRef('');
   const [desktopPermission, setDesktopPermission] = useState<DesktopPermission>(() =>
     getDesktopPermission(),
+  );
+
+  const notify = useCallback(
+    (entry: NotificationEntry) => {
+      toast.show(entry.summary, kindFor(entry.summary));
+      // Fire an OS-level desktop notification too, so issue/consumer
+      // activity is visible even when this tab is backgrounded or
+      // unfocused (see desktopNotify.ts). This is the in-browser
+      // replacement for scripts/notify-watcher.mjs.
+      showDesktopNotification(entry.summary, entry.body);
+    },
+    [toast],
   );
 
   useEffect(() => {
     const unsubscribe = subscribeNotifications(
       (history) => {
-        setEntries(history.slice(-MAX_STORED));
+        const sliced = history.slice(-MAX_STORED);
+        setEntries(sliced);
+        if (initialized.current) {
+          // Reconnect: any entries newer than the last one we notified about
+          // arrived while we were disconnected (or were bundled into this
+          // resync instead of a live "entry" frame) — notify for those too.
+          for (const entry of sliced) {
+            if (entry.ts > lastNotifiedTs.current) notify(entry);
+          }
+        }
+        if (sliced.length > 0) lastNotifiedTs.current = sliced[sliced.length - 1].ts;
         initialized.current = true;
       },
       (entry) => {
         setEntries((list) => [...list, entry].slice(-MAX_STORED));
-        // Only notify entries that arrive live, not the catch-up history.
-        if (initialized.current) {
-          toast.show(entry.summary, kindFor(entry.summary));
-          // Fire an OS-level desktop notification too, so issue/consumer
-          // activity is visible even when this tab is backgrounded or
-          // unfocused (see desktopNotify.ts). This is the in-browser
-          // replacement for scripts/notify-watcher.mjs.
-          showDesktopNotification(entry.summary, entry.body);
+        // Only notify entries that arrive live, not the initial catch-up history.
+        if (initialized.current && entry.ts > lastNotifiedTs.current) {
+          notify(entry);
+          lastNotifiedTs.current = entry.ts;
         }
       },
     );
     return unsubscribe;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [notify]);
 
   const requestPermission = useCallback(async () => {
     const result = await requestDesktopPermission();
