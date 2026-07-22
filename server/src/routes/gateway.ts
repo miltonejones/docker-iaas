@@ -426,3 +426,4 @@ gatewayRouter.get('/preview/:name', async (req: Request, res: Response) => {
       }
     }
   });
+});
