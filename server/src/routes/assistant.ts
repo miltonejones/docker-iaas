@@ -1717,6 +1717,25 @@ assistantRouter.delete("/issues", (req: Request, res: Response) => {
 // ── Session Runner endpoints ─────────────────────────────────────────────────
 import { getOrCreateSession, type SessionEvent } from "../sessionRunner.js";
 
+/** Transient network/server hiccups (dropped connection, timeout, 5xx, rate
+ *  limit) shouldn't kill a long multi-round turn — e.g. a session that's
+ *  polling via the `wait` tool across many rounds would otherwise lose all
+ *  progress and abort the whole conversation because of one blip. Anything
+ *  else (bad request, auth failure, etc.) is not retried. */
+function isTransientAnthropicError(err: unknown): boolean {
+  if (err instanceof Anthropic.APIConnectionError) return true;
+  if (err instanceof Anthropic.RateLimitError) return true;
+  if (err instanceof Anthropic.InternalServerError) return true;
+  const status = (err as { status?: number } | undefined)?.status;
+  if (typeof status === "number" && status >= 500) return true;
+  const code = (err as { code?: string; cause?: { code?: string } } | undefined)?.code
+    ?? (err as { cause?: { code?: string } } | undefined)?.cause?.code;
+  return code === "ECONNRESET" || code === "ETIMEDOUT" || code === "ENOTFOUND"
+    || code === "EAI_AGAIN" || code === "ECONNREFUSED" || code === "UND_ERR_SOCKET";
+}
+
+const RETRY_DELAYS_MS = [1000, 2000, 4000];
+
 /** Refactored streaming: writes events to a callback instead of directly to `res`.
  *  Used by both the old HTTP endpoints (via respondStream wrapper) and the new
  *  SessionRunner. */
@@ -1733,26 +1752,42 @@ async function streamTurn(
     for (let round = 0; round < MAX_AUTO_ROUNDS; round++) {
       if (aborted) return;
 
-      const stream = client.messages.stream({
-        model: MAIN_MODEL,
-        max_tokens: 32000,
-        system: SYSTEM,
-        tools,
-        messages,
-      });
-
-      stream.on("text", (delta) => {
-        if (!aborted) onEvent({ type: "text", delta });
-      });
-
-      let finalMessage: Anthropic.Message;
-      try {
-        finalMessage = await stream.finalMessage();
-      } catch (err) {
+      let finalMessage: Anthropic.Message | undefined;
+      for (let attempt = 0; ; attempt++) {
         if (aborted) return;
-        throw err;
+        let textEmitted = false;
+        const stream = client.messages.stream({
+          model: MAIN_MODEL,
+          max_tokens: 32000,
+          system: SYSTEM,
+          tools,
+          messages,
+        });
+
+        stream.on("text", (delta) => {
+          if (!aborted) {
+            textEmitted = true;
+            onEvent({ type: "text", delta });
+          }
+        });
+
+        try {
+          finalMessage = await stream.finalMessage();
+          break;
+        } catch (err) {
+          if (aborted) return;
+          // Only safe to silently retry if nothing has been streamed to the
+          // client yet for this attempt — otherwise a retry would duplicate
+          // partial text. If text already went out, surface the error as-is.
+          if (!textEmitted && attempt < RETRY_DELAYS_MS.length && isTransientAnthropicError(err)) {
+            await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
+            continue;
+          }
+          throw err;
+        }
       }
       if (aborted) return;
+      if (!finalMessage) return;
 
       messages.push({ role: "assistant", content: finalMessage.content });
 
