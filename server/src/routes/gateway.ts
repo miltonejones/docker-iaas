@@ -214,38 +214,38 @@ gatewayRouter.get('/traffic/requests', (req: Request, res: Response) => {
       totalMatched: result.totalMatched,
       requests: result.events.map(trafficEventJson),
     });
+  } catch (err) {
+    const status = err instanceof GatewayApiError ? err.status : 500;
+    sendError(res, status, (err as Error).message);
+  }
+});
 
-    gatewayRouter.get('/traffic/timeseries', (req: Request, res: Response) => {
-      try {
-        const windowHours = integerQuery(
-          req.query.windowHours,
-          DEFAULT_WINDOW_HOURS,
-          'windowHours',
-          1,
-          MAX_WINDOW_HOURS,
-        );
-        const until = new Date();
-        const since = new Date(until.getTime() - windowHours * 60 * 60 * 1000);
-        const rows = summarizeGatewayTrafficByHour({
-          since: since.toISOString(),
-          until: until.toISOString(),
-        });
-        res.json({
-          windowHours,
-          since: since.toISOString(),
-          until: until.toISOString(),
-          buckets: rows.map((row) => ({
-            start: row.bucket_start,
-            requestCount: row.request_count,
-            successfulRequests: row.success_count,
-            clientErrorRequests: row.client_error_count,
-            serverErrorRequests: row.server_error_count,
-          })),
-        });
-      } catch (err) {
-        const status = err instanceof GatewayApiError ? err.status : 500;
-        sendError(res, status, (err as Error).message);
-      }
+gatewayRouter.get('/traffic/timeseries', (req: Request, res: Response) => {
+  try {
+    const windowHours = integerQuery(
+      req.query.windowHours,
+      DEFAULT_WINDOW_HOURS,
+      'windowHours',
+      1,
+      MAX_WINDOW_HOURS,
+    );
+    const until = new Date();
+    const since = new Date(until.getTime() - windowHours * 60 * 60 * 1000);
+    const rows = summarizeGatewayTrafficByHour({
+      since: since.toISOString(),
+      until: until.toISOString(),
+    });
+    res.json({
+      windowHours,
+      since: since.toISOString(),
+      until: until.toISOString(),
+      buckets: rows.map((row) => ({
+        start: row.bucket_start,
+        requestCount: row.request_count,
+        successfulRequests: row.success_count,
+        clientErrorRequests: row.client_error_count,
+        serverErrorRequests: row.server_error_count,
+      })),
     });
   } catch (err) {
     const status = err instanceof GatewayApiError ? err.status : 500;
