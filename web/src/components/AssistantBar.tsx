@@ -144,16 +144,6 @@ const DESTRUCTIVE = new Set([
   'clear_issues',
 ]);
 
-/** Fields whose values are system-resolved identifiers — display as read-only
- *  code blocks rather than editable inputs so users aren't confused into
- *  thinking they need to change them. */
-const READONLY_FIELDS = new Set([
-  'id',
-  'connectionId',
-  'presetId',
-  'issueId',
-]);
-
 /** autoResolved entries only carry a toolUseId — look the tool's name back
  *  up from the tool_use block that requested it, so we can show a friendly
  *  "Looked up: containers" line instead of nothing at all. */
@@ -1340,42 +1330,50 @@ Ask Dockyard.ai
               </h4>
               {Object.keys(fields).length === 0 && <p className="hint">No parameters — takes effect immediately on confirm.</p>}
               {Object.entries(fields).map(([key, value]) => {
-                const isReadonly = READONLY_FIELDS.has(key);
-                if (isReadonly) {
+                if (key === 'code' || key === 'content') {
                   return (
-                    <div className="field field--readonly" key={key}>
+                    <label className="field" key={key}>
                       <span>{key}</span>
-                      <code className="field__readonly-value">{String(value ?? '')}</code>
-                    </div>
+                      <textarea
+                        rows={8}
+                        spellCheck={false}
+                        value={String(value ?? '')}
+                        onChange={(e) => editField(action.id, key, e.target.value)}
+                      />
+                    </label>
                   );
                 }
+                if (typeof value === 'object' && value !== null) {
+                  return (
+                    <label className="field" key={key}>
+                      <span>{key}</span>
+                      <textarea
+                        rows={4}
+                        spellCheck={false}
+                        value={JSON.stringify(value, null, 2)}
+                        onChange={(e) => editJsonField(action.id, key, e.target.value)}
+                      />
+                    </label>
+                  );
+                }
+                if (typeof value === 'boolean') {
+                  return (
+                    <label className="field" key={key}>
+                      <span>{key}</span>
+                      <input
+                        type="checkbox"
+                        checked={value}
+                        onChange={(e) => editField(action.id, key, e.target.checked)}
+                      />
+                    </label>
+                  );
+                }
+                {/* Default: render as read-only formatted code block instead of editable input */}
                 return (
-                <label className="field" key={key}>
-                  <span>{key}</span>
-                  {key === 'code' || key === 'content' ? (
-                    <textarea
-                      rows={8}
-                      spellCheck={false}
-                      value={String(value ?? '')}
-                      onChange={(e) => editField(action.id, key, e.target.value)}
-                    />
-                  ) : typeof value === 'object' && value !== null ? (
-                    <textarea
-                      rows={4}
-                      spellCheck={false}
-                      value={JSON.stringify(value, null, 2)}
-                      onChange={(e) => editJsonField(action.id, key, e.target.value)}
-                    />
-                  ) : typeof value === 'boolean' ? (
-                    <input
-                      type="checkbox"
-                      checked={value}
-                      onChange={(e) => editField(action.id, key, e.target.checked)}
-                    />
-                  ) : (
-                    <input value={String(value ?? '')} onChange={(e) => editField(action.id, key, e.target.value)} />
-                  )}
-                </label>
+                  <div className="field field--readonly" key={key}>
+                    <span>{key}</span>
+                    <code className="field__readonly-value">{String(value ?? '')}</code>
+                  </div>
                 );
               })}
               <div className="pending-action-card__actions">
