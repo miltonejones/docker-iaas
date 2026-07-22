@@ -74,11 +74,15 @@ test("updateIssueOnServer PATCHes the issue with resolved status", async () => {
   assert.equal(body.resolvedBy, "assistant");
 });
 
-test("updateIssueOnServer creates the issue locally then retries PATCH on 404", async () => {
+test("updateIssueOnServer skips the base instead of creating a duplicate on 404", async () => {
+  // After the fix for "Consumer resolves duplicate issue copies but doesn't
+  // close the original", a 404 on PATCH means the issue doesn't exist on this
+  // server. We must NOT create a copy — that would produce a duplicate with a
+  // different ID while leaving the original unresolved. Instead we skip this
+  // base and let the other configured bases (or the original queue server)
+  // handle the resolution.
   const mock = mockFetchSequence([
     fakeResponse(404, {}),
-    fakeResponse(201, { id: "local-42" }),
-    fakeResponse(200, { ok: true }),
   ]);
   try {
     await updateIssueOnServer(
@@ -90,11 +94,12 @@ test("updateIssueOnServer creates the issue locally then retries PATCH on 404", 
     mock.restore();
   }
 
-  assert.equal(mock.calls.length, 3);
+  assert.equal(mock.calls.length, 1, "expected only one PATCH attempt, no duplicate-creating POST");
   assert.equal(
-    mock.calls[2].url,
-    "http://api.invalid/api/assistant/issues/local-42",
+    mock.calls[0].url,
+    "http://api.invalid/api/assistant/issues/external-9",
   );
+  assert.equal(mock.calls[0].opts.method, "PATCH");
 });
 
 test("consumeOne calls update_issue (PATCH) once the CLI process completes", async () => {
