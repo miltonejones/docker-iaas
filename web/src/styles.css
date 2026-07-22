@@ -3352,6 +3352,9 @@ textarea:focus {
 
   /* --- Notifications dropdown: constrain to viewport --- */
   .notif-panel {
+    position: fixed;
+    top: 56px;
+    right: 12px;
     width: calc(100vw - 24px);
     max-width: 340px;
     max-height: calc(100vh - 80px);
