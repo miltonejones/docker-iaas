@@ -143,6 +143,16 @@ const DESTRUCTIVE = new Set([
   'clear_issues',
 ]);
 
+/** Fields whose values are system-resolved identifiers — display as read-only
+ *  code blocks rather than editable inputs so users aren't confused into
+ *  thinking they need to change them. */
+const READONLY_FIELDS = new Set([
+  'id',
+  'connectionId',
+  'presetId',
+  'issueId',
+]);
+
 /** autoResolved entries only carry a toolUseId — look the tool's name back
  *  up from the tool_use block that requested it, so we can show a friendly
  *  "Looked up: containers" line instead of nothing at all. */
@@ -1283,7 +1293,17 @@ Ask Dockyard.ai
                 {ACTION_LABEL[action.name] ?? action.name}
               </h4>
               {Object.keys(fields).length === 0 && <p className="hint">No parameters — takes effect immediately on confirm.</p>}
-              {Object.entries(fields).map(([key, value]) => (
+              {Object.entries(fields).map(([key, value]) => {
+                const isReadonly = READONLY_FIELDS.has(key);
+                if (isReadonly) {
+                  return (
+                    <div className="field field--readonly" key={key}>
+                      <span>{key}</span>
+                      <code className="field__readonly-value">{String(value ?? '')}</code>
+                    </div>
+                  );
+                }
+                return (
                 <label className="field" key={key}>
                   <span>{key}</span>
                   {key === 'code' || key === 'content' ? (
@@ -1310,7 +1330,8 @@ Ask Dockyard.ai
                     <input value={String(value ?? '')} onChange={(e) => editField(action.id, key, e.target.value)} />
                   )}
                 </label>
-              ))}
+                );
+              })}
               <div className="pending-action-card__actions">
                 <button
                   className={`btn btn--sm ${destructive ? 'btn--danger' : 'btn--primary'}`}

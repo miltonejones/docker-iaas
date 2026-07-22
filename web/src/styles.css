@@ -1652,6 +1652,29 @@ textarea:focus {
 .pending-action-card .field:last-of-type {
   margin-bottom: 12px;
 }
+.field--readonly {
+  display: block;
+  margin: 0 0 16px;
+}
+.field--readonly > span {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.field__readonly-value {
+  display: block;
+  width: 100%;
+  padding: 9px 11px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r-sm);
+  font-family: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-size: 13px;
+  color: var(--accent-text);
+  word-break: break-all;
+  user-select: all;
+}
 .pending-action-card textarea {
   background: #282c34;
   color: #abb2bf;
