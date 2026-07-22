@@ -3,6 +3,7 @@ import type { BuildCacheEntry, Container, DockerImage, DockerVolume } from '../t
 import { api } from '../api';
 import { bytes, timeAgo } from '../format';
 import { AppIcon } from '../icons';
+import { InfoButton } from './InfoButton';
 
 function ageLabel(epochOrIso: number | string): string {
   if (!epochOrIso) return '—';
@@ -89,7 +90,12 @@ export function FootprintDetail({ category, onClose }: Props) {
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal modal--detail" onClick={(e) => e.stopPropagation()}>
         <div className="modal__head">
-          <h3>{category}</h3>
+          <h3>
+            {category}
+            <InfoButton
+              prompt={`Explain the "${category}" Docker footprint category — what these ${category.toLowerCase()} are, why they take up disk space${data ? ` (currently ${data.length} item${data.length === 1 ? '' : 's'})` : ''}, and when it's safe to remove them.`}
+            />
+          </h3>
           <div style={{ display: 'flex', gap: 8 }}>
             {category === 'Build cache' && data && data.length > 0 && (
               <button
