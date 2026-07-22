@@ -292,15 +292,8 @@ async function pushToGitHub(issue) {
   }
   log(`Changes detected:\n${diff}`);
 
-  // Commit & push to GitHub (CI handles the deploy).
-  try {
-    execSync("git pull --rebase origin main", { cwd: CODEBASE_PATH, timeout: 30_000 });
-  } catch (err) {
-    log(`git pull failed (possible conflict): ${err.message}`);
-    notify("⚠️ Merge conflict", `Fix for "${issue.summary}" couldn't merge — needs manual review`);
-    return;
-  }
-
+  // Commit locally first so copilot's changes are staged, then pull --rebase
+  // to integrate any new commits from the remote.
   try {
     execSync(`git add -A && git commit -m "fix: ${issue.summary}"`, {
       cwd: CODEBASE_PATH,
@@ -308,11 +301,21 @@ async function pushToGitHub(issue) {
       timeout: 10_000,
     });
   } catch (err) {
-    // "nothing to commit" is fine — changes may have been in untracked dirs.
-    if (!err.message.includes("nothing to commit")) {
-      log(`git commit failed: ${err.message}`);
+    if (err.message.includes("nothing to commit")) {
+      log("No file changes — skipping push");
       return;
     }
+    log(`git commit failed: ${err.message}`);
+    return;
+  }
+
+  try {
+    execSync("git pull --rebase origin main", { cwd: CODEBASE_PATH, timeout: 30_000 });
+  } catch (err) {
+    log(`Merge conflict: ${err.message}`);
+    notify("⚠️ Merge conflict", `Fix for "${issue.summary}" needs manual review`);
+    try { execSync("git rebase --abort", { cwd: CODEBASE_PATH, timeout: 5_000 }); } catch {}
+    return;
   }
 
   try {
