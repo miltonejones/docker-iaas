@@ -121,9 +121,23 @@ Rules:
 - Destructive or disruptive actions (delete_*, prune_*, container_action) still go through the normal tool-call flow — the user reviews and confirms every tool call before it executes, so call the tool directly rather than asking "are you sure?" in text first. write_container_file, write_container_files, write_bucket_objects, replace_in_container_file, replace_in_bucket_object, update_container_env, host-file copies, and launch_container are no exception: call them directly; the user confirms before they run.
 - Database writes, migrations, grants, backups, restores, and saved-connection create/update/delete/test actions are also confirmed by the user before client execution, so call the appropriate tool directly instead of asking for a second textual confirmation.
 - For GitHub: use list_github_repo_files and read_github_file to browse or read one repo's content (public repos need no token; private repos need a configured GitHub token and fail with a clear error otherwise). When the user wants to pull an ENTIRE repo (not just one file) onto Dockyard, use pull_github_repo_to_bucket (bucket must already exist) or pull_github_repo_to_container (container must be running) — these download the whole repo tree and write every file, preserving folder structure; do not try to read and re-write each file individually for a whole-repo pull. Pass clean: true to delete the destination first, ensuring stale files from a previous pull don't linger. To commit and push changes back to GitHub, use commit_and_push_github_files with the complete new content of every changed file — it clones (or refreshes an existing local clone), commits, and pushes to the given branch (or the repo's default branch); this always requires a configured GitHub token. All four mutating GitHub tools (the two pull tools and commit_and_push_github_files) require user confirmation — call them directly rather than asking a second time in text.
+- When the user asks you to monitor or poll something over time (e.g. "check the consumer log every 30 seconds and tell me when it's deployed", "let me know when the container is up"), use the wait tool between checks instead of ending your turn and waiting for the user to say "update?"/"now?" again — call the relevant read-only check (list_issues, get_issue, get_container_logs, probe_container_endpoint, inspect_container, etc.), then call wait for the requested interval (max 120s per call), then check again, repeating until the condition is met. Only stop and report back once the condition is satisfied, you hit the automatic round limit, or you hit an error — don't narrate every individual wait/check cycle.
 - When done, give a short (1-2 sentence) confirmation of what was done — no more.`;
 
 const tools: Anthropic.Tool[] = [
+  {
+    name: "wait",
+    description:
+      "Pause for a short interval and then automatically continue the conversation, so you can poll something (e.g. list_issues, get_issue, get_container_logs, probe_container_endpoint, inspect_container) periodically without the user having to re-prompt you each time. Use this for requests like \"check the consumer log every 30 seconds and tell me when it's deployed.\" Pauses at most 120 seconds per call — for a longer poll, call wait again followed by another check, repeating the wait/check pair until the condition is met or the automatic round limit is reached. When the round limit is reached before the condition is met, report what you found so far and tell the user they can ask you to keep checking.",
+    input_schema: {
+      type: "object",
+      properties: {
+        seconds: { type: "number", description: "How long to pause, in seconds (1-120)." },
+        reason: { type: "string", description: "Optional short note on what you're waiting for/about to re-check." },
+      },
+      required: ["seconds"],
+    },
+  },
   {
     name: "create_lambda_function",
     description:
@@ -995,6 +1009,7 @@ const tools: Anthropic.Tool[] = [
  *  loops back to Claude immediately — the client never sees them and never
  *  has to confirm a plain lookup. */
 const READ_ONLY_TOOLS = new Set([
+  "wait",
   "list_containers",
   "list_functions",
   "list_gateway_routes",
@@ -1035,8 +1050,23 @@ async function executeReadOnlyTool(
   name: string,
   input: Record<string, unknown>,
   userId?: string,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   switch (name) {
+    case "wait": {
+      const requested = typeof input.seconds === "number" ? input.seconds : Number(input.seconds) || 10;
+      const seconds = Math.min(120, Math.max(1, requested));
+      await new Promise<void>((resolve) => {
+        if (signal?.aborted) { resolve(); return; }
+        const timer = setTimeout(() => {
+          signal?.removeEventListener("abort", onAbort);
+          resolve();
+        }, seconds * 1000);
+        const onAbort = () => { clearTimeout(timer); resolve(); };
+        signal?.addEventListener("abort", onAbort, { once: true });
+      });
+      return { waited: seconds, message: `Waited ${seconds}s.${input.reason ? ` (${input.reason})` : ""}` };
+    }
     case "list_containers": {
       const list = await docker.listContainers({ all: true });
       return list.map((c) => ({
@@ -1266,9 +1296,10 @@ async function safeExecuteReadOnly(
   name: string,
   input: Record<string, unknown>,
   userId?: string,
+  signal?: AbortSignal,
 ): Promise<{ ok: boolean; content: unknown }> {
   try {
-    return { ok: true, content: await executeReadOnlyTool(name, input, userId) };
+    return { ok: true, content: await executeReadOnlyTool(name, input, userId, signal) };
   } catch (err) {
     return { ok: false, content: { error: (err as Error).message } };
   }
@@ -1308,7 +1339,9 @@ function extractText(content: Anthropic.ContentBlock[]): string {
     .trim();
 }
 
-const MAX_AUTO_ROUNDS = 8;
+/** Caps automatic (no-user-confirmation) tool round-trips per turn. Also bounds how many
+ *  wait/re-check poll cycles the assistant can run before it must stop and report back. */
+const MAX_AUTO_ROUNDS = 30;
 
 /** Thin SSE wrapper around streamTurn for the old /plan and /confirm endpoints. */
 async function respondStream(
@@ -1746,7 +1779,7 @@ async function streamTurn(
       if (mutatingCalls.length > 0) {
         const autoResolved: ResolvedResult[] = await Promise.all(
           readOnlyCalls.map(async (b) => {
-            const r = await safeExecuteReadOnly(b.name, b.input as Record<string, unknown>);
+            const r = await safeExecuteReadOnly(b.name, b.input as Record<string, unknown>, undefined, signal);
             return { toolUseId: b.id, ok: r.ok, content: r.content };
           }),
         );
@@ -1764,7 +1797,7 @@ async function streamTurn(
       // All tools are read-only — execute inline and loop.
       const results = await Promise.all(
         readOnlyCalls.map(async (b) => {
-          const r = await safeExecuteReadOnly(b.name, b.input as Record<string, unknown>);
+          const r = await safeExecuteReadOnly(b.name, b.input as Record<string, unknown>, undefined, signal);
           return {
             type: "tool_result" as const,
             tool_use_id: b.id,
@@ -1774,6 +1807,19 @@ async function streamTurn(
         }),
       );
       messages.push({ role: "user", content: results });
+    }
+
+    // Round limit reached without a natural stop (e.g. a long wait/re-check poll).
+    // Emit a final turn so the client isn't left hanging silently.
+    if (!aborted) {
+      onEvent({
+        type: "turn",
+        messages,
+        pending: [],
+        autoResolved: [],
+        done: true,
+        text: "Reached the automatic check limit for this turn. Ask me to keep checking if you'd like me to continue.",
+      });
     }
   } finally {
     signal?.removeEventListener("abort", onAbort);
