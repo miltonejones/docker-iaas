@@ -17,6 +17,7 @@ import { emitRefresh } from './refresh';
 import { onOpenAssistant } from './assistant';
 import { AppIcon } from './icons';
 import { ToastViewport } from './components/ToastViewport';
+import { NotificationBell } from './components/NotificationBell';
 import { useToast } from './ToastContext';
 
 const SERVICES = [
@@ -355,6 +356,7 @@ export function App() {
             </label>
           </div>
           <div className="topbar__right">
+            <NotificationBell />
             <button
               className="btn btn--ghost btn--sm"
               onClick={() => {

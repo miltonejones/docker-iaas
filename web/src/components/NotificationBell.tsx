@@ -1,0 +1,129 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { subscribeNotifications, type NotificationEntry } from '../api';
+import { AppIcon } from '../icons';
+import { useToast } from '../ToastContext';
+
+const MAX_STORED = 200;
+const SEEN_KEY = 'dockyard.notifications.lastSeenTs';
+
+/** Map an emoji-prefixed summary (see scripts/notify-watcher.mjs) to a toast kind. */
+function kindFor(summary: string): 'success' | 'error' | 'info' {
+  if (summary.startsWith('✅')) return 'success';
+  if (summary.startsWith('❌') || summary.startsWith('🐛')) return 'error';
+  return 'info';
+}
+
+/** Map an emoji-prefixed summary to an icon, mirroring notify-watcher.mjs's pickIcon(). */
+function iconFor(summary: string): string {
+  if (summary.startsWith('🐛')) return 'warning';
+  if (summary.startsWith('🚀')) return 'function';
+  if (summary.startsWith('✅')) return 'check';
+  if (summary.startsWith('❌')) return 'warning';
+  return 'info';
+}
+
+function formatTime(ts: string): string {
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return ts;
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+/** Bell icon in the topbar that surfaces live consumer/issue events pushed
+ *  over SSE from the server's notification log — the same event stream the
+ *  desktop notify-watcher.mjs script tails via SSH. */
+export function NotificationBell() {
+  const [entries, setEntries] = useState<NotificationEntry[]>([]);
+  const [open, setOpen] = useState(false);
+  const [lastSeenTs, setLastSeenTs] = useState<string>(() => localStorage.getItem(SEEN_KEY) || '');
+  const toast = useToast();
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const initialized = useRef(false);
+
+  useEffect(() => {
+    const unsubscribe = subscribeNotifications(
+      (history) => {
+        setEntries(history.slice(-MAX_STORED));
+        initialized.current = true;
+      },
+      (entry) => {
+        setEntries((list) => [...list, entry].slice(-MAX_STORED));
+        // Only toast entries that arrive live, not the catch-up history.
+        if (initialized.current) {
+          toast.show(entry.summary, kindFor(entry.summary));
+        }
+      },
+    );
+    return unsubscribe;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const onDocClick = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, []);
+
+  const unreadCount = useMemo(
+    () => entries.filter((e) => e.ts > lastSeenTs).length,
+    [entries, lastSeenTs],
+  );
+
+  const toggle = useCallback(() => {
+    setOpen((o) => {
+      const next = !o;
+      if (next && entries.length > 0) {
+        const latest = entries[entries.length - 1].ts;
+        setLastSeenTs(latest);
+        localStorage.setItem(SEEN_KEY, latest);
+      }
+      return next;
+    });
+  }, [entries]);
+
+  const ordered = useMemo(() => [...entries].reverse(), [entries]);
+
+  return (
+    <div className="notif-bell" ref={rootRef}>
+      <button
+        className="btn btn--ghost btn--sm notif-bell__trigger"
+        onClick={toggle}
+        title="Notifications"
+        aria-label="Notifications"
+      >
+        <AppIcon name="bell" />
+        {unreadCount > 0 && (
+          <span className="notif-bell__badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
+        )}
+      </button>
+      {open && (
+        <div className="notif-panel">
+          <div className="notif-panel__head">
+            <h3>Notifications</h3>
+          </div>
+          <div className="notif-panel__body">
+            {ordered.length === 0 && <p className="muted empty-sm">No notifications yet.</p>}
+            {ordered.map((e, i) => (
+              <div key={`${e.ts}-${i}`} className={`notif-row notif-row--${kindFor(e.summary)}`}>
+                <span className="notif-row__icon">
+                  <AppIcon name={iconFor(e.summary) as never} />
+                </span>
+                <div className="notif-row__body">
+                  <div className="notif-row__summary">{e.summary}</div>
+                  {e.body && <div className="notif-row__detail muted">{e.body}</div>}
+                  <div className="notif-row__time muted">{formatTime(e.ts)}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

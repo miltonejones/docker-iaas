@@ -724,6 +724,35 @@ export const api = {
     }).then((r) => json<{ ok: true; deleted: number }>(r)),
 };
 
+/** A single consumer/issue event surfaced by the notification log. */
+export interface NotificationEntry {
+  ts: string;
+  level: string;
+  summary: string;
+  body?: string;
+}
+
+/** Subscribe to the live notification stream. Returns an unsubscribe function.
+ *  Emits the recent history first, then one call per new entry as it arrives. */
+export function subscribeNotifications(
+  onHistory: (entries: NotificationEntry[]) => void,
+  onEntry: (entry: NotificationEntry) => void,
+): () => void {
+  const source = new EventSource('/api/notifications/stream');
+  source.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data) as
+        | { type: 'history'; entries: NotificationEntry[] }
+        | { type: 'entry'; entry: NotificationEntry };
+      if (data.type === 'history') onHistory(data.entries);
+      else if (data.type === 'entry') onEntry(data.entry);
+    } catch {
+      /* ignore malformed frame */
+    }
+  };
+  return () => source.close();
+}
+
 /** Subscribe to the live usage stream. Returns an unsubscribe function. */
 export function subscribeUsage(onSnapshot: (s: UsageSnapshot) => void): () => void {
   const source = new EventSource('/api/system/usage/stream');

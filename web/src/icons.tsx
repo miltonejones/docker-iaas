@@ -3,6 +3,7 @@ import {
   faBolt,
   faArrowUpRightFromSquare,
   faBars,
+  faBell,
   faBoxArchive,
   faBucket,
   faCheck,
@@ -42,6 +43,7 @@ import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 const UI_ICONS: Record<string, IconDefinition> = {
   assistant: faWandMagicSparkles,
   menu: faBars,
+  bell: faBell,
   spinner: faSpinner,
   database: faDatabase,
   bucket: faBucket,
