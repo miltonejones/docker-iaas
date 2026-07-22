@@ -8,7 +8,6 @@ import assert from "node:assert/strict";
 // Point the consumer at fake endpoints and a no-op "CLI" (`true` exits 0
 // immediately) *before* importing the module, since these are read once
 // at import time.
-process.env.ISSUE_QUEUE_URL = "http://queue.invalid/consume";
 process.env.DOCKYARD_API = "http://api.invalid";
 process.env.DEEPSEEK_CMD = "true";
 
@@ -111,7 +110,7 @@ test("consumeOne calls update_issue (PATCH) once the CLI process completes", asy
   };
 
   const mock = mockFetchSequence([
-    fakeResponse(200, { issue }), // POST to the queue returns work
+    fakeResponse(200, [issue]), // GET from API returns array of open issues
     fakeResponse(200, { ok: true }), // PATCH update on completion
   ]);
   try {
@@ -121,8 +120,12 @@ test("consumeOne calls update_issue (PATCH) once the CLI process completes", asy
     mock.restore();
   }
 
-  assert.equal(mock.calls.length, 2, "expected a queue fetch and an update_issue PATCH");
-  assert.equal(mock.calls[0].opts.method, "POST");
+  assert.equal(mock.calls.length, 2, "expected an API GET and an update_issue PATCH");
+  assert.equal(mock.calls[0].opts.method, "GET");
+  assert.equal(
+    mock.calls[0].url,
+    "http://api.invalid/api/assistant/issues?status=open",
+  );
   assert.equal(mock.calls[1].opts.method, "PATCH");
   assert.equal(
     mock.calls[1].url,

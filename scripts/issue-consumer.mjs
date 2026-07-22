@@ -1,11 +1,12 @@
 #!/usr/bin/env node
-// Polls the Dockyard issue queue and feeds each issue to a local DeepSeek CLI
-// with access to this codebase.  Logs every session to scripts/issue-logs/.
+// Polls the Dockyard API directly for open issues and feeds each one to a
+// local DeepSeek CLI with access to this codebase.  Logs every session to
+// scripts/issue-logs/.
 //
 //   node scripts/issue-consumer.mjs
 //
 // Environment variables:
-//   ISSUE_QUEUE_URL    – consume endpoint (default: https://dockyard-ai.com/gw/issues/consume)
+//   DOCKYARD_API       – base URL of the Dockyard API (default: http://127.0.0.1:4300)
 //   DEEPSEEK_CMD       – DeepSeek CLI command  (default: deepseek)
 //   CODEBASE_PATH      – path DeepSeek should work against (default: ../.. relative to this script = repo root)
 //   POLL_INTERVAL_MS   – ms between polls when idle (default: 5000)
@@ -19,8 +20,6 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const QUEUE_URL =
-  process.env.ISSUE_QUEUE_URL || "https://dockyard-ai.com/gw/issues/consume";
 const DEEPSEEK_CMD = process.env.DEEPSEEK_CMD || "copilot";
 const CODEBASE_PATH = path.resolve(
   process.env.CODEBASE_PATH || path.join(__dirname, ".."),
@@ -298,46 +297,62 @@ async function pushToGitHub(issue) {
 }
 
 async function consumeOne() {
+  // Auth is required to poll the API directly.  If we don't have a token yet
+  // (e.g. DB unavailable and DOCKYARD_API_TOKEN not set), log a heartbeat and
+  // keep waiting — initAuthHeader may succeed on a later retry.
+  if (!authHeader) {
+    if (Date.now() - lastHeartbeat > 60_000) {
+      log("No auth token — cannot poll for issues. Set DOCKYARD_API_TOKEN or ensure the DB is accessible.");
+      lastHeartbeat = Date.now();
+    }
+    return false;
+  }
+
   let res;
   try {
-    res = await fetch(QUEUE_URL, {
-      method: "POST",
+    const pollUrl = `${DOCKYARD_API}/api/assistant/issues?status=open`;
+    res = await fetch(pollUrl, {
+      method: "GET",
+      headers: {
+        Authorization: authHeader,
+      },
       signal: AbortSignal.timeout(15_000),
     });
   } catch (err) {
-    log(`Failed to reach queue: ${err.message}`);
+    log(`Failed to reach API: ${err.message}`);
     return false;
   }
 
   if (!res.ok) {
-    log(`Queue returned HTTP ${res.status}`);
+    log(`API returned HTTP ${res.status}`);
     return false;
   }
 
-  let body;
+  let issues;
   try {
-    body = await res.json();
+    issues = await res.json();
   } catch {
-    log("Queue returned unparseable response");
+    log("API returned unparseable response");
     return false;
   }
 
-  if (!body.issue) {
+  if (!Array.isArray(issues) || issues.length === 0) {
     // Log a heartbeat once a minute so we know the daemon is alive.
     if (Date.now() - lastHeartbeat > 60_000) {
-      log("Polling — queue empty");
+      log("Polling — no open issues");
       lastHeartbeat = Date.now();
     }
-    return false; // empty
+    return false;
   }
 
-  const issue = body.issue;
-
-  // Skip if we've seen this exact summary recently — true duplicate.
-  if (isDuplicate(issue.summary)) {
-    log(`Skipping ${issue.id} — duplicate summary: "${issue.summary}"`);
-    notify(`⏭️ Skipped duplicate: ${issue.summary}`, `Same summary seen within ${DEDUPE_WINDOW_MS / 60_000} min`);
-    return true;
+  // Pick the first open issue we haven't seen recently.
+  const issue = issues.find((i) => !isDuplicate(i.summary));
+  if (!issue) {
+    if (Date.now() - lastHeartbeat > 60_000) {
+      log(`Polling — ${issues.length} open issue(s), all recently processed`);
+      lastHeartbeat = Date.now();
+    }
+    return false;
   }
 
   log(`Processing issue ${issue.id}: ${issue.summary}`);
@@ -451,8 +466,8 @@ async function consumeOne() {
 }
 
 async function loop() {
-  log(`Consumer started. Queue: ${QUEUE_URL}  CLI: ${DEEPSEEK_CMD}  Codebase: ${CODEBASE_PATH}  EC2: ${ON_EC2}`);
-  notifyLog("🟢 Consumer online", `Queue: ${QUEUE_URL}\nCodebase: ${CODEBASE_PATH}\nEC2: ${ON_EC2}`);
+  log(`Consumer started. API: ${DOCKYARD_API}  CLI: ${DEEPSEEK_CMD}  Codebase: ${CODEBASE_PATH}  EC2: ${ON_EC2}`);
+  notifyLog("🟢 Consumer online", `API: ${DOCKYARD_API}\nCodebase: ${CODEBASE_PATH}\nEC2: ${ON_EC2}`);
   initAuthHeader();
   while (running) {
     try {
