@@ -1352,6 +1352,7 @@ async function respondStream(
     if (e.type === "text") send({ type: "text", delta: e.delta });
     else if (e.type === "turn") send(e as unknown as Record<string, unknown>);
     else if (e.type === "error") send({ type: "error", error: e.error });
+    else if (e.type === "wait") send({ type: "wait", seconds: e.seconds, reason: e.reason, toolUseId: e.toolUseId });
   });
   res.end();
 }
