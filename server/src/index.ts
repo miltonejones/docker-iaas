@@ -18,7 +18,7 @@ import { databasesRouter } from './routes/databases.js';
 import { githubRouter } from './routes/github.js';
 import { notificationsRouter } from './routes/notifications.js';
 import { authRouter } from './routes/auth.js';
-import { requireAuth } from './auth.js';
+import { requireAuth, optionalAuth } from './auth.js';
 import { gatewayProxyRouter } from './gatewayProxy.js';
 import { initDb } from './db.js';
 import { connectToRelay } from './relay.js';
@@ -55,7 +55,7 @@ app.use('/api/host-builds', requireAuth, hostBuildsRouter);
 app.use('/api/databases', requireAuth, databasesRouter);
 app.use('/api/github', githubRouter);
 app.use('/api/assistant', requireAuth, assistantRouter);
-app.use('/api/notifications', requireAuth, notificationsRouter);
+app.use('/api/notifications', optionalAuth, notificationsRouter);
 app.use('/api/auth', authRouter);
 
 // Serve the built frontend in production (web/dist), if present.
