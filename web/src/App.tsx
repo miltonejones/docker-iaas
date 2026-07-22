@@ -537,6 +537,31 @@ export function App() {
           </a>
         </footer>
         {createIssueOpen && <CreateIssueModal onClose={() => setCreateIssueOpen(false)} />}
+
+        {/* Bottom tab bar — visible on mobile (≤640px) */}
+        <nav className="bottom-nav" role="navigation" aria-label="Mobile navigation">
+          {SERVICES.map((s) => (
+            <NavLink
+              key={s.path}
+              to={s.path}
+              end={s.path === '/'}
+              className={({ isActive }) =>
+                `bottom-nav__item${isActive ? ' bottom-nav__item--active' : ''}`
+              }
+            >
+              <AppIcon name={s.icon} />
+              <span>{s.label}</span>
+            </NavLink>
+          ))}
+          <button
+            className="bottom-nav__item"
+            onClick={() => onOpenAssistant({ prompt: '' })}
+            title="Ask Dockyard"
+          >
+            <AppIcon name="assistant" />
+            <span>Ask</span>
+          </button>
+        </nav>
       </div>
     </BrowserRouter>
   );

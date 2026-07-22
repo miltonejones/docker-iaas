@@ -4,13 +4,15 @@
   "description": "Personal container management console",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0d1117",
-  "theme_color": "#4f8cff",
+  "orientation": "any",
+  "background_color": "#f3f4f7",
+  "theme_color": "#2563eb",
   "icons": [
     {
       "src": "/favicon.svg",
       "sizes": "any",
-      "type": "image/svg+xml"
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
     }
   ]
 }

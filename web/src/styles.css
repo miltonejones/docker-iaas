@@ -2968,3 +2968,366 @@ textarea:focus {
   object-fit: cover;
   display: block;
 }
+
+/* ==========================================================================
+   Mobile: ≤640px — single-column layouts, fullscreen assistant, bottom nav
+   ========================================================================== */
+@media (max-width: 640px) {
+  /* --- App shell --- */
+  .app {
+    padding: 0 0 72px; /* leave room for bottom nav */
+  }
+  .content {
+    padding: 12px 12px;
+    gap: 16px;
+  }
+
+  /* --- Topbar: compact --- */
+  .topbar {
+    padding: 10px 12px;
+    margin: 0;
+    width: 100%;
+    gap: 8px;
+  }
+  .topbar__left {
+    gap: 10px;
+  }
+  .topbar__center {
+    flex: 1;
+    min-width: 0;
+  }
+  .topbar__center .assistant-search {
+    width: 100%;
+  }
+  .brand h1 {
+    font-size: 0;       /* hide text */
+  }
+  .brand h1::after {
+    content: "Dockyard";
+    font-size: 15px;
+  }
+  .brand__mark {
+    font-size: 22px;
+  }
+
+  /* --- Footer & service dropdown → hidden (bottom nav replaces them) --- */
+  .app-footer {
+    display: none;
+  }
+  .service-dropdown {
+    display: none;
+  }
+  .breadcrumbs {
+    padding: 0 12px;
+    font-size: 12px;
+  }
+
+  /* --- Bottom tab bar --- */
+  .bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 900;
+    background: var(--bg-elev);
+    border-top: 1px solid var(--border);
+    padding: 6px 4px max(6px, env(safe-area-inset-bottom));
+    justify-content: space-around;
+    box-shadow: 0 -1px 8px rgba(16,24,40,0.06);
+  }
+  .bottom-nav__item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 6px 10px;
+    border: none;
+    background: none;
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+    border-radius: var(--r-sm);
+    min-width: 56px;
+    transition: color 0.15s, background 0.15s;
+  }
+  .bottom-nav__item--active {
+    color: var(--accent);
+    background: var(--accent-dim);
+  }
+  .bottom-nav__item svg,
+  .bottom-nav__item .app-icon {
+    width: 22px;
+    height: 22px;
+  }
+
+  /* --- Workspace: drop pinned assistant sidebar --- */
+  .assistant-pinned-panel {
+    display: none;
+  }
+
+  /* --- Two-pane layouts → stack --- */
+  .panel-layout {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    min-height: 0;
+  }
+  .panel-sidebar {
+    gap: 8px;
+  }
+  .panel-item-list {
+    max-height: 140px;
+  }
+  .panel-new-btn {
+    width: 100%;
+  }
+
+  /* --- Usage / gauge --- */
+  .usage {
+    grid-template-columns: 1fr;
+    gap: 14px;
+    padding: 14px;
+  }
+  .gauge__ring {
+    width: 90px;
+    height: 90px;
+  }
+  .usage__docker {
+    border-left: none;
+    border-top: 1px solid var(--border);
+    padding-left: 0;
+    padding-top: 14px;
+  }
+  .breakdown {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  /* --- Home cards --- */
+  .home-cards {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  .home-links-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  /* --- Instance grid → 1 column --- */
+  .instance-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  /* --- Gallery / buckets → 1 column --- */
+  .gallery {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  /* --- Key-value detail rows → stack --- */
+  .detail-kv {
+    grid-template-columns: 1fr;
+    gap: 0 8px;
+  }
+  .detail-kv dt {
+    padding: 6px 0 0;
+    font-weight: 600;
+  }
+  .detail-kv dd {
+    padding: 2px 0 6px;
+  }
+  .env-row {
+    grid-template-columns: 1fr;
+  }
+  .env-row-detail {
+    grid-template-columns: 1fr;
+  }
+
+  /* --- Database panels → stack --- */
+  .db-split {
+    grid-template-columns: 1fr;
+  }
+  .db-form-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .db-key-value {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .db-toolbar__field {
+    min-width: 0;
+  }
+  .db-activity-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* --- Tables: scroll with sticky first column --- */
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 0 -12px;
+    padding: 0 12px;
+  }
+  .table {
+    min-width: 600px;
+  }
+  .table th:first-child,
+  .table td:first-child {
+    position: sticky;
+    left: 0;
+    background: var(--bg-elev);
+    z-index: 1;
+    box-shadow: 2px 0 4px rgba(16,24,40,0.06);
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .table th:first-child {
+    background: var(--bg-elev-2);
+  }
+
+  /* --- Modals: full-width --- */
+  .modal {
+    width: 100%;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+  .modal--detail {
+    width: 100%;
+    max-height: 100vh;
+  }
+  .modal--logs {
+    width: 100%;
+    max-height: 100vh;
+  }
+  .modal--assistant {
+    width: 100%;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+  .modal__foot {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* --- Assistant: fullscreen when modal --- */
+  .modal--assistant {
+    position: fixed;
+    inset: 0;
+    max-height: none;
+    overflow-y: auto;
+    padding: 14px 12px 80px; /* room for bottom nav */
+  }
+
+  /* --- Offcanvas: full-width --- */
+  .offcanvas {
+    min-width: 0;
+    max-width: none;
+    width: 100%;
+  }
+
+  /* --- Launch modal --- */
+  .launch-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* --- Port/env rows --- */
+  .port-row {
+    flex-wrap: wrap;
+  }
+  .port-row input {
+    width: 80px;
+  }
+  .port-row .port-container {
+    width: 100px;
+  }
+
+  /* --- Buttons: full-width in panels --- */
+  .detail-actions {
+    flex-direction: column;
+  }
+  .detail-actions .btn {
+    width: 100%;
+    text-align: center;
+  }
+
+  /* --- Lambda --- */
+  .lambda-name-input,
+  .lambda-name-static {
+    min-width: 0;
+  }
+  .lambda-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}
+
+/* ==========================================================================
+   Small phones: ≤480px — tighter padding, single home cards
+   ========================================================================== */
+@media (max-width: 480px) {
+  .app {
+    padding: 0 0 68px;
+  }
+  .content {
+    padding: 8px 8px;
+    gap: 12px;
+  }
+
+  .topbar {
+    padding: 8px 10px;
+    gap: 6px;
+  }
+  .topbar__left {
+    gap: 6px;
+  }
+  .brand {
+    gap: 6px;
+  }
+  .brand h1 {
+    font-size: 0;
+  }
+  .brand h1::after {
+    content: "Dockyard";
+    font-size: 14px;
+  }
+  .brand__mark {
+    font-size: 20px;
+  }
+
+  .bottom-nav {
+    padding: 4px 2px max(4px, env(safe-area-inset-bottom));
+  }
+  .bottom-nav__item {
+    padding: 4px 6px;
+    font-size: 9px;
+    min-width: 48px;
+  }
+  .bottom-nav__item svg,
+  .bottom-nav__item .app-icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .home-cards {
+    grid-template-columns: 1fr;
+  }
+  .breakdown {
+    gap: 6px;
+  }
+  .db-key-value {
+    grid-template-columns: 1fr;
+  }
+  .panel {
+    padding: 14px 12px 16px;
+  }
+  .home-card {
+    padding: 16px 14px;
+  }
+}

@@ -1,0 +1,43 @@
+[Unit]
+Description=Dockyard Issue Consumer — polls the issue queue and auto-fixes via copilot
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/home/ec2-user/docker-iaas
+ExecStart=/usr/bin/node scripts/issue-consumer.mjs
+
+# Always restart after a crash.
+Restart=always
+RestartSec=10
+
+# Give copilot time to finish processing before a clean shutdown.
+TimeoutStopSec=300
+
+# ── Environment (tune these on the EC2 host) ──────────────────────────
+
+# The consumer is running directly on EC2 — skip rsync-to-self.
+Environment=CONSUMER_ON_EC2=true
+
+# Where to pull issues from.
+Environment=ISSUE_QUEUE_URL=https://dockyard-ai.com/gw/issues/consume
+
+# The AI CLI to drive (must be installed and authenticated on EC2).
+Environment=DEEPSEEK_CMD=copilot
+
+# Auth for PATCH-ing issue status back to the local API.
+# Point at the local dockyard console (docker compose service).
+Environment=DOCKYARD_API=http://127.0.0.1:4300
+
+# JWT secret must match the server's JWT_SECRET so signed tokens are accepted.
+Environment=JWT_SECRET=dockyard-dev-secret-change-in-production
+
+# ── Logging ───────────────────────────────────────────────────────────
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dockyard-consumer
+
+[Install]
+WantedBy=multi-user.target

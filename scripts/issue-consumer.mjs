@@ -29,6 +29,7 @@ const LOG_DIR = path.join(__dirname, "issue-logs");
 const POLL_MS = Number(process.env.POLL_INTERVAL_MS) || 5_000;
 const ACTIVE_MS = Number(process.env.POLL_INTERVAL_ACTIVE_MS) || 1_000;
 const DOCKYARD_API = process.env.DOCKYARD_API || "http://127.0.0.1:4300";
+const ON_EC2 = process.env.ON_EC2 === "true" || process.env.CONSUMER_ON_EC2 === "true";
 
 // ── Auth token for PATCH-ing issues back to the local server ──────────
 const JWT_SECRET = process.env.JWT_SECRET || "dockyard-dev-secret-change-in-production";
@@ -83,6 +84,7 @@ function initAuthHeader() {
 }
 
 let running = true;
+let lastHeartbeat = 0;
 
 // Track recently seen issue summaries to detect true duplicates.
 // Key: normalized summary, Value: timestamp when first seen.
@@ -103,14 +105,33 @@ function isDuplicate(summary) {
 
 fs.mkdirSync(LOG_DIR, { recursive: true });
 
-function notify(summary, body = "") {
-  const n = spawn("notify-send", [
-    "--app-name=Dockyard",
-    "--icon=dialog-information",
+const NOTIFY_LOG = path.join(LOG_DIR, "notifications.jsonl");
+
+/** Append a structured notification event so a local watcher can relay it. */
+function notifyLog(summary, body = "", level = "info") {
+  const entry = JSON.stringify({
+    ts: new Date().toISOString(),
+    level,
     summary,
-    body,
-  ], { stdio: "ignore", detached: true });
-  n.unref();
+    body: body || "",
+  }) + "\n";
+  try { fs.appendFileSync(NOTIFY_LOG, entry, "utf8"); } catch {}
+}
+
+function notify(summary, body = "") {
+  notifyLog(summary, body);
+  try {
+    const n = spawn("notify-send", [
+      "--app-name=Dockyard",
+      "--icon=dialog-information",
+      summary,
+      body,
+    ], { stdio: "ignore", detached: true });
+    n.on("error", () => {}); // suppress ENOENT on headless servers
+    n.unref();
+  } catch {
+    // notify-send not available (e.g. headless server) — log handles it
+  }
 }
 
 /** Extract a concise resolution summary from assistant stdout. */
@@ -245,79 +266,62 @@ function logFilename(issueId) {
   return path.join(LOG_DIR, `${safe}-${date}.md`);
 }
 
-async function deploy(issue) {
-  // Check if copilot actually changed any files
+async function pushToGitHub(issue) {
   const { execSync } = await import("node:child_process");
+
+  // Check if copilot changed any files.
   let diff;
   try {
     diff = execSync("git diff --stat", { cwd: CODEBASE_PATH, encoding: "utf8", timeout: 10_000 }).trim();
   } catch {
-    log("git diff failed — skipping deploy");
-    return;
+    // Fallback: find-based detection (backward compat, no git repo).
+    try {
+      diff = execSync(
+        `find . -type f -newer /tmp/dockyard-deploy-marker \\\n          \\( -name '*.ts' -o -name '*.tsx' -o -name '*.js' -o -name '*.mjs' -o -name '*.css' -o -name '*.html' -o -name '*.json' -o -name '*.sql' -o -name '*.md' -o -name 'Dockerfile' -o -name 'Caddyfile' -o -name '*.svg' \\) \\\n          ! -path './node_modules/*' ! -path './data/*' ! -path './scripts/issue-logs/*' \\\n          -printf '%p\\n' | sort`,
+        { cwd: CODEBASE_PATH, encoding: "utf8", timeout: 10_000 },
+      ).trim();
+    } catch {
+      log("Could not detect changes — skipping push");
+      return;
+    }
   }
+
   if (!diff) {
-    log("No file changes — skipping deploy");
+    log("No file changes — skipping push");
     return;
   }
   log(`Changes detected:\n${diff}`);
-  notify("🚀 Deploying...", "Local + EC2 deploy started");
 
-  // --- Local deploy ---
-  log("Starting local deploy...");
+  // Commit & push to GitHub (CI handles the deploy).
   try {
-    const localOut = execSync(
-      "docker compose up --build -d --remove-orphans && docker image prune -f",
-      { cwd: CODEBASE_PATH, encoding: "utf8", timeout: 300_000 },
-    );
-    log(`Local deploy OK:\n${localOut.trim()}`);
+    execSync("git pull --rebase origin main", { cwd: CODEBASE_PATH, timeout: 30_000 });
   } catch (err) {
-    log(`Local deploy FAILED: ${err.message}`);
-    notify("❌ Local deploy failed", err.message);
-    return; // don't proceed to EC2 if local fails
+    log(`git pull failed (possible conflict): ${err.message}`);
+    notify("⚠️ Merge conflict", `Fix for "${issue.summary}" couldn't merge — needs manual review`);
+    return;
   }
 
-  // --- EC2 deploy ---
-  log("Starting EC2 deploy...");
-  const keyFile = "/home/miltonejones/.ssh/dockyard-key.pem";
-  const remote = "ec2-user@54.162.111.41";
-  const remotePath = "/home/ec2-user/docker-iaas";
-  const sshOpts = `ssh -i ${keyFile} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15`;
+  try {
+    execSync(`git add -A && git commit -m "fix: ${issue.summary}"`, {
+      cwd: CODEBASE_PATH,
+      encoding: "utf8",
+      timeout: 10_000,
+    });
+  } catch (err) {
+    // "nothing to commit" is fine — changes may have been in untracked dirs.
+    if (!err.message.includes("nothing to commit")) {
+      log(`git commit failed: ${err.message}`);
+      return;
+    }
+  }
 
   try {
-    // rsync source (excluding sensitive/persistent paths)
-    execSync(
-      `rsync -az --delete ` +
-        `--exclude '.git/' --exclude 'node_modules/' --exclude 'data/' ` +
-        `--exclude '.env' --exclude '.claude/' ` +
-        `-e '${sshOpts}' ` +
-        `./ ${remote}:${remotePath}/`,
-      { cwd: CODEBASE_PATH, encoding: "utf8", timeout: 120_000 },
-    );
-    log("rsync OK");
-
-    // Remote docker compose
-    const remoteOut = execSync(
-      `${sshOpts} ${remote} ` +
-        `'cd ${remotePath} && docker compose up --build -d --remove-orphans && docker image prune -f'`,
-      { encoding: "utf8", timeout: 300_000 },
-    );
-    log(`EC2 deploy OK:\n${remoteOut.trim()}`);
-    notify("✅ Deployed to EC2", "Local + EC2 deploy complete");
-
-    // Auto-commit so the working tree is clean for the next issue.
-    try {
-      execSync(`git add -A && git commit -m "fix: ${issue.summary}"`, {
-        cwd: CODEBASE_PATH,
-        encoding: "utf8",
-        timeout: 10_000,
-      });
-      log("Changes committed.");
-    } catch (err) {
-      log(`git commit failed: ${err.message}`);
-    }
+    execSync("git push origin main", { cwd: CODEBASE_PATH, timeout: 30_000 });
+    log("Pushed to GitHub — CI will deploy.");
+    notify("📤 Pushed fix to GitHub", issue.summary);
   } catch (err) {
-    log(`EC2 deploy FAILED: ${err.message}`);
-    notify("❌ EC2 deploy failed", err.message);
+    log(`git push failed: ${err.message}`);
+    notify("⚠️ Push failed", `Fix for "${issue.summary}" couldn't push — will retry`);
   }
 }
 
@@ -347,6 +351,11 @@ async function consumeOne() {
   }
 
   if (!body.issue) {
+    // Log a heartbeat once a minute so we know the daemon is alive.
+    if (Date.now() - lastHeartbeat > 60_000) {
+      log("Polling — queue empty");
+      lastHeartbeat = Date.now();
+    }
     return false; // empty
   }
 
@@ -429,7 +438,7 @@ async function consumeOne() {
           "resolved",
           extractResolution(stdout),
         );
-        deploy(issue); // fire-and-forget — don't block next poll
+        pushToGitHub(issue); // fire-and-forget — CI handles the deploy
       } else {
         log(`Copilot exited with code ${code} for issue ${issue.id}`);
         notify(`❌ Failed: ${issue.summary}`, `Exit code: ${code}`);
@@ -470,7 +479,8 @@ async function consumeOne() {
 }
 
 async function loop() {
-  log(`Consumer started. Queue: ${QUEUE_URL}  CLI: ${DEEPSEEK_CMD}  Codebase: ${CODEBASE_PATH}`);
+  log(`Consumer started. Queue: ${QUEUE_URL}  CLI: ${DEEPSEEK_CMD}  Codebase: ${CODEBASE_PATH}  EC2: ${ON_EC2}`);
+  notifyLog("🟢 Consumer online", `Queue: ${QUEUE_URL}\nCodebase: ${CODEBASE_PATH}\nEC2: ${ON_EC2}`);
   initAuthHeader();
   while (running) {
     try {
@@ -512,5 +522,6 @@ export {
   consumeOne,
   extractResolution,
   formatPrompt,
+  pushToGitHub,
   setAuthHeaderForTest,
 };

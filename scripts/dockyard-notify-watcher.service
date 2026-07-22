@@ -1,0 +1,20 @@
+[Unit]
+Description=Dockyard notification watcher — relays EC2 consumer events to local desktop
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/node %h/Projects/docker-iaas/scripts/notify-watcher.mjs
+Restart=always
+RestartSec=10
+
+# Give SSH time to disconnect gracefully.
+TimeoutStopSec=15
+
+# notify-send needs access to the user's desktop session.
+Environment=DISPLAY=:0
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%U/bus
+
+[Install]
+WantedBy=default.target
