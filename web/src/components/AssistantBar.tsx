@@ -57,6 +57,7 @@ const ACTION_LABEL: Record<string, string> = {
   replace_in_bucket_object: 'Replace text in bucket file',
   write_container_files: 'Write container files',
   write_bucket_objects: 'Write bucket files',
+  report_issue: 'Report issue',
   delete_issue: 'Delete issue',
   clear_issues: 'Clear issues',
   update_issue: 'Update issue',

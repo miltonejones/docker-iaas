@@ -106,10 +106,12 @@ fs.mkdirSync(LOG_DIR, { recursive: true });
 
 const NOTIFY_LOG = path.join(LOG_DIR, "notifications.jsonl");
 
-/** Append a structured notification event so a local watcher can relay it.
- *  Also POSTs to the Dockyard API so notifications reach the shared log even
- *  when the consumer runs in a container without a host volume mount — the
- *  Dockyard server's own volume mount writes them to the host filesystem. */
+/** Append a structured notification event.  Tries a direct filesystem write
+ *  first (no network dependency).  When the consumer runs in a container
+ *  without a host volume mount that write fails, so we fall back to POSTing
+ *  the entry to the Dockyard API, which writes it to the shared log from
+ *  inside the server process.  This avoids double-writing the same entry
+ *  (once by the consumer, once by the server) when both paths work. */
 function notifyLog(summary, body = "", level = "info") {
   const entry = JSON.stringify({
     ts: new Date().toISOString(),
@@ -117,17 +119,27 @@ function notifyLog(summary, body = "", level = "info") {
     summary,
     body: body || "",
   }) + "\n";
-  try { fs.appendFileSync(NOTIFY_LOG, entry, "utf8"); } catch {}
 
-  // Fire-and-forget POST to the Dockyard API so that containerized consumers
-  // without a host volume mount still deliver notifications to the shared log.
-  const payload = JSON.parse(entry);
-  fetch(`${DOCKYARD_API}/api/notifications`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(5_000),
-  }).catch(() => {}); // best-effort — ignore unreachable API
+  let wrote = false;
+  try {
+    fs.appendFileSync(NOTIFY_LOG, entry, "utf8");
+    wrote = true;
+  } catch {
+    // Direct write failed — the consumer is likely running in a container
+    // without a host volume mount.  Fall through to the API POST below.
+  }
+
+  if (!wrote) {
+    // Fire-and-forget POST so containerized consumers without a host volume
+    // mount still deliver notifications to the shared log.
+    const payload = JSON.parse(entry);
+    fetch(`${DOCKYARD_API}/api/notifications`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(5_000),
+    }).catch(() => {}); // best-effort — ignore unreachable API
+  }
 }
 
 function notify(summary, body = "") {
