@@ -307,7 +307,8 @@ function formatPrompt(issue) {
     `4. Summarize your changes at the end.`,
     ``,
     `Important rules:`,
-    `- When changing text on a page, find the EXACT current text in the actual file, verify it's not already what was requested, and replace it. Do NOT assume the change was already made just because you found those words somewhere unrelated (footer, comments, etc.). The issue description tells you what the NEW text should be — find the OLD text that needs replacing.`,
+    `- NEVER skip an edit because you found the target text somewhere else in the file. If the issue says to put text in a specific area (hero, heading, button, title), you must PUT it there — even if that text already appears in the footer, sidebar, or anywhere else. Delete or replace whatever is currently in the target area.`,
+    `- The issue describes the desired END STATE. Your job is to change files so that end state is achieved. Finding the requested text in an unrelated spot does NOT mean the job is done.`,
     `- Never edit scripts/issue-consumer.mjs — it is the consumer itself.`,
    ].join("\n");
 }
