@@ -148,8 +148,8 @@ function extractResolution(stdout) {
 }
 
 /** PATCH /api/assistant/issues/:id against a single API base.  If the issue
- *  isn't found (404), creates it on that server first, then patches the
- *  newly-assigned local id. */
+ *  isn't found (404), logs and skips — creating a copy would produce a
+ *  duplicate with a different ID while leaving the original unresolved. */
 async function updateIssueOneBase(baseUrl, issue, status, resolution) {
   const issueId = issue?.id;
   const patchUrl = `${baseUrl}/api/assistant/issues/${encodeURIComponent(issueId)}`;
@@ -164,42 +164,11 @@ async function updateIssueOneBase(baseUrl, issue, status, resolution) {
   });
 
   if (res.status === 404) {
-    log(`Issue ${issueId} not found on ${baseUrl} — creating it first.`);
-    const createRes = await fetch(`${baseUrl}/api/assistant/issues`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: authHeader,
-      },
-      body: JSON.stringify({
-        summary: issue.summary,
-        category: issue.category,
-        details: issue.details,
-      }),
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (!createRes.ok) {
-      log(`Failed to create issue ${issueId} on ${baseUrl}: HTTP ${createRes.status}`);
-      return false;
-    }
-    const created = await createRes.json();
-    const localId = created?.id;
-    if (!localId) {
-      log(`Created issue for ${issueId} on ${baseUrl} but response had no id.`);
-      return false;
-    }
-    res = await fetch(
-      `${baseUrl}/api/assistant/issues/${encodeURIComponent(localId)}`,
-      {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: authHeader,
-        },
-        body: JSON.stringify({ status, resolution, resolvedBy: "assistant" }),
-        signal: AbortSignal.timeout(10_000),
-      },
-    );
+    // The issue doesn't exist on this server — nothing to update here.
+    // Creating a copy would produce a duplicate with a different ID while
+    // leaving the original unresolved, so just skip this base.
+    log(`Issue ${issueId} not found on ${baseUrl} — skipping (nothing to resolve).`);
+    return false;
   }
 
   if (res.ok) {
