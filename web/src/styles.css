@@ -2983,6 +2983,11 @@ textarea:focus {
   display: block;
 }
 
+/* Bottom tab bar (mobile-only, enabled in the ≤640px media query below) --- */
+.bottom-nav {
+  display: none;
+}
+
 /* ==========================================================================
    Mobile: ≤640px — single-column layouts, fullscreen assistant, bottom nav
    ========================================================================== */
