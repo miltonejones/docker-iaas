@@ -6,10 +6,12 @@
 //   node scripts/issue-consumer.mjs
 //
 // Environment variables:
-//   DOCKYARD_API       – base URL of the Dockyard API (default: http://127.0.0.1:4300)
-//   DEEPSEEK_CMD       – Claude Code CLI command  (default: copilot)
-//   CODEBASE_PATH      – path DeepSeek should work against (default: ../.. relative to this script = repo root)
-//   POLL_INTERVAL_MS   – ms between polls when idle (default: 5000)
+//   DOCKYARD_API          – base URL of the Dockyard API (default: http://127.0.0.1:4300)
+//   DOCKYARD_API_TOKEN    – pre-issued JWT Bearer token (skip all bootstrap logic)
+//   CONSUMER_API_KEY      – pre-shared key exchanged for a JWT via POST /api/auth/consumer
+//   DEEPSEEK_CMD          – Claude Code CLI command  (default: copilot)
+//   CODEBASE_PATH         – path DeepSeek should work against (default: ../.. relative to this script = repo root)
+//   POLL_INTERVAL_MS      – ms between polls when idle (default: 5000)
 //   POLL_INTERVAL_ACTIVE_MS – ms between polls after processing (default: 1000)
 
 import { spawn, execSync } from "node:child_process";
@@ -47,27 +49,64 @@ if (process.env.EC2_API || process.env.EC2_HOST) {
   ISSUE_API_BASES.push(ec2Host);
 }
 
-/** Try to resolve a userId from the project DB and sign a JWT. Falls back
- *  to the DOCKYARD_API_TOKEN env var if the DB is unreachable. */
-function initAuthHeader() {
+/** Resolve an auth header for the consumer, trying multiple strategies in
+ *  order of preference:
+ *
+ *  1. DOCKYARD_API_TOKEN env var — explicit, pre-issued Bearer token.
+ *  2. CONSUMER_API_KEY env var  — calls POST /api/auth/consumer with a
+ *     pre-shared key to obtain a fresh JWT.  Requires the server to have
+ *     the same CONSUMER_API_KEY configured.  Works without DB access.
+ *  3. Local SQLite DB (node:sqlite) — reads the first user from
+ *     data/iaas.db and crafts a JWT manually.  Uses Node's built-in
+ *     DatabaseSync (no native compilation needed, unlike better-sqlite3). */
+async function initAuthHeader() {
   if (authHeader) {
     log("Using DOCKYARD_API_TOKEN for issue updates.");
     return;
   }
+
+  // ── Strategy 2: CONSUMER_API_KEY → call the API for a fresh JWT ──────
+  const consumerKey = process.env.CONSUMER_API_KEY;
+  if (consumerKey) {
+    try {
+      const res = await fetch(`${DOCKYARD_API}/api/auth/consumer`, {
+        method: "POST",
+        headers: { "x-consumer-api-key": consumerKey },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (res.ok) {
+        const body = await res.json();
+        authHeader = `Bearer ${body.token}`;
+        log(`Authenticated via consumer API key as ${body.email} (${body.userId}).`);
+        return;
+      }
+      if (res.status === 404) {
+        log("Consumer API key OK but no users registered yet — waiting for first user.");
+        return;
+      }
+      log(`Consumer API key exchange failed (HTTP ${res.status}) — falling back to DB.`);
+    } catch (err) {
+      log(`Consumer API key exchange error (${err.message}) — falling back to DB.`);
+    }
+  }
+
+  // ── Strategy 3: read the local SQLite DB (node:sqlite, no native deps) ──
   try {
     const dbFile = path.join(CODEBASE_PATH, "data", "iaas.db");
     if (!fs.existsSync(dbFile)) {
-      log("No iaas.db found — set DOCKYARD_API_TOKEN to enable issue updates.");
+      log("No iaas.db found — set DOCKYARD_API_TOKEN or CONSUMER_API_KEY to enable issue updates.");
       return;
     }
-    const q = `const D=require('better-sqlite3');const d=new D('${dbFile}',{readonly:true});const r=d.prepare('SELECT id,email FROM users LIMIT 1').get();d.close();console.log(r?JSON.stringify(r):'')`;
+    // Use Node's built-in node:sqlite (DatabaseSync) instead of better-sqlite3.
+    // DatabaseSync is available in Node ≥22.5 and has the same synchronous API.
+    const q = `const{DatabaseSync}=require('node:sqlite');const d=new DatabaseSync('${dbFile}',{readonly:true});const r=d.prepare('SELECT id,email FROM users ORDER BY created_at ASC LIMIT 1').get();d.close();console.log(r?JSON.stringify(r):'')`;
     const out = execSync(`"${process.execPath}" -e "${q.replace(/"/g, '\\"')}"`, {
       cwd: CODEBASE_PATH,
       encoding: "utf8",
       timeout: 5_000,
     }).trim();
     if (!out) {
-      log("No user in iaas.db — set DOCKYARD_API_TOKEN to enable issue updates.");
+      log("No user in iaas.db — set DOCKYARD_API_TOKEN or CONSUMER_API_KEY to enable issue updates.");
       return;
     }
     const row = JSON.parse(out);
@@ -76,9 +115,9 @@ function initAuthHeader() {
     const payload = Buffer.from(JSON.stringify({ userId: row.id, email: row.email, iat: now, exp: now + 86400 })).toString("base64url");
     const sig = crypto.createHmac("sha256", JWT_SECRET).update(`${header}.${payload}`).digest("base64url");
     authHeader = `Bearer ${header}.${payload}.${sig}`;
-    log(`Authenticated as ${row.email} (${row.id}) for issue updates.`);
+    log(`Authenticated as ${row.email} (${row.id}) via local DB for issue updates.`);
   } catch (err) {
-    log(`Failed to init auth from DB (set DOCKYARD_API_TOKEN to bypass): ${err.message}`);
+    log(`Failed to init auth from DB (set DOCKYARD_API_TOKEN or CONSUMER_API_KEY to bypass): ${err.message}`);
   }
 }
 
@@ -323,11 +362,11 @@ async function pushToGitHub(issue) {
 
 async function consumeOne() {
   // Auth is required to poll the API directly.  If we don't have a token yet
-  // (e.g. DB unavailable and DOCKYARD_API_TOKEN not set), log a heartbeat and
-  // keep waiting — initAuthHeader may succeed on a later retry.
+  // (e.g. DB unavailable and no DOCKYARD_API_TOKEN / CONSUMER_API_KEY set), log
+  // a heartbeat and keep waiting — initAuthHeader may succeed on a later retry.
   if (!authHeader) {
     if (Date.now() - lastHeartbeat > 60_000) {
-      log("No auth token — cannot poll for issues. Set DOCKYARD_API_TOKEN or ensure the DB is accessible.");
+      log("No auth token — cannot poll for issues. Set DOCKYARD_API_TOKEN, CONSUMER_API_KEY, or ensure the DB is accessible.");
       lastHeartbeat = Date.now();
     }
     return false;
@@ -494,7 +533,7 @@ async function consumeOne() {
 async function loop() {
   log(`Consumer started. API: ${DOCKYARD_API}  CLI: ${DEEPSEEK_CMD}  Codebase: ${CODEBASE_PATH}  EC2: ${ON_EC2}`);
   notifyLog("🟢 Consumer online", `API: ${DOCKYARD_API}\nCodebase: ${CODEBASE_PATH}\nEC2: ${ON_EC2}`);
-  initAuthHeader();
+  await initAuthHeader();
   while (running) {
     try {
       const hadWork = await consumeOne();

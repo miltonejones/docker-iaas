@@ -1353,6 +1353,14 @@ export function hasUsers(): boolean {
   return row.count > 0;
 }
 
+/** Return the first user record (by creation order), or undefined if the
+ *  users table is empty.  Used by the consumer token endpoint to pick a
+ *  tenant identity when the consumer authenticates with an API key rather
+ *  than user credentials. */
+export function getFirstUser(): UserRow | undefined {
+  return db.prepare('SELECT * FROM users ORDER BY created_at ASC LIMIT 1').get() as UserRow | undefined;
+}
+
 export function getUserByEmail(email: string): UserRow | undefined {
   return db.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase()) as UserRow | undefined;
 }

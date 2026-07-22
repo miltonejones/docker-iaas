@@ -15,6 +15,10 @@ services:
       DEEPSEEK_MODEL: "${DEEPSEEK_MODEL:-deepseek-v4-pro}"
       DEEPSEEK_TITLE_MODEL: "${DEEPSEEK_TITLE_MODEL:-deepseek-v4-flash}"
       ISSUE_WEBHOOK_URL: "${ISSUE_WEBHOOK_URL:-}"
+      # Pre-shared key that lets the issue consumer obtain a JWT without
+      # needing direct SQLite DB access.  Must match CONSUMER_API_KEY on
+      # the consumer side.
+      CONSUMER_API_KEY: "${CONSUMER_API_KEY:-}"
     labels:
       iaas.system: 'true'
     volumes:
