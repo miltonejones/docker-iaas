@@ -1740,7 +1740,7 @@ async function streamTurn(
         onEvent({
           type: "turn",
           messages,
-          pending: toolUses.map((b) => ({ id: b.id, name: b.name, input: b.input })),
+          pending: mutatingCalls.map((b) => ({ id: b.id, name: b.name, input: b.input })),
           autoResolved,
           done: false,
           text: extractText(finalMessage.content),
