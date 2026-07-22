@@ -90,6 +90,26 @@ export function NotificationBell() {
     return () => document.removeEventListener('mousedown', onDocClick);
   }, []);
 
+  // Browsers refuse to show the native permission prompt unless it's triggered
+  // by a user gesture (click/keydown), so a prompt can never fire automatically
+  // on page load. Instead, ask for permission on the user's first interaction
+  // with the page (if we haven't asked before), so a reload doesn't require
+  // hunting down the bell's "Enable desktop alerts" button to see the prompt.
+  useEffect(() => {
+    if (!isDesktopNotificationSupported() || getDesktopPermission() !== 'default') return;
+    const onFirstInteraction = () => {
+      requestPermission();
+      document.removeEventListener('click', onFirstInteraction);
+      document.removeEventListener('keydown', onFirstInteraction);
+    };
+    document.addEventListener('click', onFirstInteraction, { once: true });
+    document.addEventListener('keydown', onFirstInteraction, { once: true });
+    return () => {
+      document.removeEventListener('click', onFirstInteraction);
+      document.removeEventListener('keydown', onFirstInteraction);
+    };
+  }, [requestPermission]);
+
   const unreadCount = useMemo(
     () => entries.filter((e) => e.ts > lastSeenTs).length,
     [entries, lastSeenTs],
