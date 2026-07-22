@@ -72,7 +72,16 @@ export function NotificationBell() {
       // replacement for scripts/notify-watcher.mjs.
       showDesktopNotification(entry.summary, entry.body);
     },
-    [toast],
+    // toast.show is itself a stable useCallback (its only dependency,
+    // dismiss, is also stable), so depending on it instead of the whole
+    // toast object prevents notify from changing every render.  If the
+    // whole toast object is a dependency, the SSE EventSource effect
+    // below resubscribes on every render (creating a new EventSource
+    // each time), which means the connection never lives long enough to
+    // receive a live "entry" frame — only the initial "history" frame
+    // arrives, and lastNotifiedTs filters that out as already-seen.
+    // That is why OS desktop notifications never fire.
+    [toast.show],
   );
 
   useEffect(() => {

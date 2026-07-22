@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
 
 export type ToastKind = 'success' | 'error' | 'info';
 
@@ -40,8 +40,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const success = useCallback((message: string) => show(message, 'success'), [show]);
   const error = useCallback((message: string) => show(message, 'error'), [show]);
 
+  // Memoize the context value so consuming components don't re-render
+  // every time ToastProvider renders — the callbacks (show, success,
+  // error, dismiss) are all stable useCallback refs; only toasts changes.
+  const value = useMemo(
+    () => ({ toasts, show, success, error, dismiss }),
+    [toasts, show, success, error, dismiss],
+  );
+
   return (
-    <ToastContext.Provider value={{ toasts, show, success, error, dismiss }}>
+    <ToastContext.Provider value={value}>
       {children}
     </ToastContext.Provider>
   );

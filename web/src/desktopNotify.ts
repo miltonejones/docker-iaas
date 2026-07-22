@@ -47,9 +47,10 @@ export function showDesktopNotification(summary: string, body?: string): void {
       window.focus();
       n.close();
     };
-  } catch {
+  } catch (err) {
     // Some environments (e.g. certain mobile browsers) throw on `new Notification`
     // even when permission is granted and require the ServiceWorkerRegistration
-    // API instead; fail silently rather than breaking the UI.
+    // API instead; log the error for diagnosis rather than failing silently.
+    console.error('Failed to show desktop notification', err);
   }
 }
