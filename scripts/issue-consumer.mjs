@@ -123,11 +123,10 @@ function notifyLog(summary, body = "", level = "info") {
 
 /** POST a notification entry to the Dockyard API so the web UI picks it up. */
 function postNotify(entry) {
-  if (!authHeader) return;
   try {
     fetch(`${DOCKYARD_API}/api/notifications`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: authHeader },
+      headers: { "Content-Type": "application/json" },
       body: entry,
       signal: AbortSignal.timeout(5_000),
     }).catch(() => {});
