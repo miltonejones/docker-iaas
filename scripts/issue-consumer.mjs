@@ -116,21 +116,6 @@ function notifyLog(summary, body = "", level = "info") {
     body: body || "",
   }) + "\n";
   try { fs.appendFileSync(NOTIFY_LOG, entry, "utf8"); } catch {}
-
-  // Fire-and-forget POST to the Dockyard API for containerized consumers.
-  postNotify(entry);
-}
-
-/** POST a notification entry to the Dockyard API so the web UI picks it up. */
-function postNotify(entry) {
-  try {
-    fetch(`${DOCKYARD_API}/api/notifications`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: entry,
-      signal: AbortSignal.timeout(5_000),
-    }).catch(() => {});
-  } catch {}
 }
 
 function notify(summary, body = "") {
@@ -399,7 +384,6 @@ async function consumeOne() {
     // copilot/claude -p runs non-interactively; no TTY needed.
     const child = spawn(DEEPSEEK_CMD, [
       "-p", prompt,
-      "--model", process.env.DEEPSEEK_MODEL || "deepseek-chat",
       "--dangerously-skip-permissions",
     ], {
       cwd: CODEBASE_PATH,

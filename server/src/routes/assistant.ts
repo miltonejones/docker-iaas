@@ -30,7 +30,6 @@ import {
   updateAssistantIssue,
   deleteAssistantIssue,
   clearAssistantIssues,
-  countAssistantIssuesByStatus,
   ASSISTANT_ISSUE_STATUSES,
 } from "../db.js";
 import { sessionRegistry } from "../sessionRunner.js";
@@ -93,8 +92,6 @@ const TITLE_MODEL = PROVIDER === 'deepseek'
 const client = new Anthropic({
   apiKey: resolveApiKey(PROVIDER),
   baseURL: PROVIDER === 'deepseek' ? 'https://api.deepseek.com/anthropic' : 'https://api.anthropic.com',
-  maxRetries: 3,
-  timeout: 300_000, // 5 min — long enough for slow model responses, short enough to not hang forever
 });
 
 const SYSTEM = `You are the Dockyard.ai assistant. You translate a user's natural-language request into tool calls that manage Lambda functions, Gateway routes, containers, Docker images, storage buckets, and saved MySQL/MongoDB connections.
@@ -122,24 +119,10 @@ Rules:
 - For MySQL reads, run_database_read_query must receive one read-only SQL statement in the sql field. For MongoDB reads, use run_database_read_query with collection plus mode/find/aggregate/count and JSON filter/projection/sort/pipeline fields as needed. Never use execute_database_mutation or execute_database_migration for a read-only request.
 - Destructive or disruptive actions (delete_*, prune_*, container_action) still go through the normal tool-call flow — the user reviews and confirms every tool call before it executes, so call the tool directly rather than asking "are you sure?" in text first. write_container_file, write_container_files, write_bucket_objects, replace_in_container_file, replace_in_bucket_object, update_container_env, host-file copies, and launch_container are no exception: call them directly; the user confirms before they run.
 - Database writes, migrations, grants, backups, restores, and saved-connection create/update/delete/test actions are also confirmed by the user before client execution, so call the appropriate tool directly instead of asking for a second textual confirmation.
-- For GitHub: use list_github_repo_files and read_github_file to browse or read one repo's content (public repos need no token; private repos need a configured GitHub token and fail with a clear error otherwise). Use get_github_workflow_status to check CI/deploy workflow progress — it returns recent runs with status, conclusion, and a direct HTML URL. When the user wants to pull an ENTIRE repo (not just one file) onto Dockyard, use pull_github_repo_to_bucket (bucket must already exist) or pull_github_repo_to_container (container must be running) — these download the whole repo tree and write every file, preserving folder structure; do not try to read and re-write each file individually for a whole-repo pull. Pass clean: true to delete the destination first, ensuring stale files from a previous pull don't linger. To commit and push changes back to GitHub, use commit_and_push_github_files with the complete new content of every changed file — it clones (or refreshes an existing local clone), commits, and pushes to the given branch (or the repo's default branch); this always requires a configured GitHub token. All four mutating GitHub tools (the two pull tools and commit_and_push_github_files) require user confirmation — call them directly rather than asking a second time in text.
-- When the user asks you to monitor or poll something over time (e.g. "check the consumer log every 30 seconds and tell me when it's deployed", "let me know when the container is up"), use the wait tool between checks instead of ending your turn and waiting for the user to say "update?"/"now?" again — call the relevant read-only check (list_issues, get_issue, get_container_logs, probe_container_endpoint, inspect_container, etc.), then call wait for the requested interval (max 120s per call), then check again, repeating until the condition is met. Only stop and report back once the condition is satisfied, you hit the automatic round limit, or you hit an error — don't narrate every individual wait/check cycle.
+- For GitHub: use list_github_repo_files and read_github_file to browse or read one repo's content (public repos need no token; private repos need a configured GitHub token and fail with a clear error otherwise). When the user wants to pull an ENTIRE repo (not just one file) onto Dockyard, use pull_github_repo_to_bucket (bucket must already exist) or pull_github_repo_to_container (container must be running) — these download the whole repo tree and write every file, preserving folder structure; do not try to read and re-write each file individually for a whole-repo pull. Pass clean: true to delete the destination first, ensuring stale files from a previous pull don't linger. To commit and push changes back to GitHub, use commit_and_push_github_files with the complete new content of every changed file — it clones (or refreshes an existing local clone), commits, and pushes to the given branch (or the repo's default branch); this always requires a configured GitHub token. All four mutating GitHub tools (the two pull tools and commit_and_push_github_files) require user confirmation — call them directly rather than asking a second time in text.
 - When done, give a short (1-2 sentence) confirmation of what was done — no more.`;
 
 const tools: Anthropic.Tool[] = [
-  {
-    name: "wait",
-    description:
-      "Pause for a short interval and then automatically continue the conversation, so you can poll something (e.g. list_issues, get_issue, get_container_logs, probe_container_endpoint, inspect_container) periodically without the user having to re-prompt you each time. Use this for requests like \"check the consumer log every 30 seconds and tell me when it's deployed.\" Pauses at most 120 seconds per call — for a longer poll, call wait again followed by another check, repeating the wait/check pair until the condition is met or the automatic round limit is reached. When the round limit is reached before the condition is met, report what you found so far and tell the user they can ask you to keep checking.",
-    input_schema: {
-      type: "object",
-      properties: {
-        seconds: { type: "number", description: "How long to pause, in seconds (1-120)." },
-        reason: { type: "string", description: "Optional short note on what you're waiting for/about to re-check." },
-      },
-      required: ["seconds"],
-    },
-  },
   {
     name: "create_lambda_function",
     description:
@@ -1011,7 +994,6 @@ const tools: Anthropic.Tool[] = [
  *  loops back to Claude immediately — the client never sees them and never
  *  has to confirm a plain lookup. */
 const READ_ONLY_TOOLS = new Set([
-  "wait",
   "list_containers",
   "list_functions",
   "list_gateway_routes",
@@ -1052,23 +1034,8 @@ async function executeReadOnlyTool(
   name: string,
   input: Record<string, unknown>,
   userId?: string,
-  signal?: AbortSignal,
 ): Promise<unknown> {
   switch (name) {
-    case "wait": {
-      const requested = typeof input.seconds === "number" ? input.seconds : Number(input.seconds) || 10;
-      const seconds = Math.min(120, Math.max(1, requested));
-      await new Promise<void>((resolve) => {
-        if (signal?.aborted) { resolve(); return; }
-        const timer = setTimeout(() => {
-          signal?.removeEventListener("abort", onAbort);
-          resolve();
-        }, seconds * 1000);
-        const onAbort = () => { clearTimeout(timer); resolve(); };
-        signal?.addEventListener("abort", onAbort, { once: true });
-      });
-      return { waited: seconds, message: `Waited ${seconds}s.${input.reason ? ` (${input.reason})` : ""}` };
-    }
     case "list_containers": {
       const list = await docker.listContainers({ all: true });
       return list.map((c) => ({
@@ -1298,10 +1265,9 @@ async function safeExecuteReadOnly(
   name: string,
   input: Record<string, unknown>,
   userId?: string,
-  signal?: AbortSignal,
 ): Promise<{ ok: boolean; content: unknown }> {
   try {
-    return { ok: true, content: await executeReadOnlyTool(name, input, userId, signal) };
+    return { ok: true, content: await executeReadOnlyTool(name, input, userId) };
   } catch (err) {
     return { ok: false, content: { error: (err as Error).message } };
   }
@@ -1341,9 +1307,7 @@ function extractText(content: Anthropic.ContentBlock[]): string {
     .trim();
 }
 
-/** Caps automatic (no-user-confirmation) tool round-trips per turn. Also bounds how many
- *  wait/re-check poll cycles the assistant can run before it must stop and report back. */
-const MAX_AUTO_ROUNDS = 30;
+const MAX_AUTO_ROUNDS = 8;
 
 /** Thin SSE wrapper around streamTurn for the old /plan and /confirm endpoints. */
 async function respondStream(
@@ -1362,15 +1326,12 @@ async function respondStream(
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
 
-  const abortController = new AbortController();
-  req.on("close", () => abortController.abort());
   await streamTurn(messages, (e) => {
     if (e.type === "text") send({ type: "text", delta: e.delta });
     else if (e.type === "turn") send(e as unknown as Record<string, unknown>);
     else if (e.type === "error") send({ type: "error", error: e.error });
-    else if (e.type === "done") res.end();
-    else if (e.type === "wait") send({ type: "wait", seconds: e.seconds, reason: e.reason, toolUseId: e.toolUseId });
-  }, abortController.signal);
+  });
+  res.end();
 }
 
 // Start a new turn from a natural-language prompt, optionally continuing an
@@ -1623,18 +1584,6 @@ assistantRouter.get("/issues", (req: Request, res: Response) => {
   }
 });
 
-assistantRouter.get("/issues/counts", (req: Request, res: Response) => {
-  try {
-    const userId = getAuthUser(req)?.userId;
-    const counts = countAssistantIssuesByStatus(userId);
-    const open = (counts.open ?? 0) + (counts.in_progress ?? 0);
-    const resolved = (counts.resolved ?? 0) + (counts.closed ?? 0) + (counts.wont_fix ?? 0);
-    res.json({ open, resolved, byStatus: counts });
-  } catch (err) {
-    res.status(500).json({ error: (err as Error).message });
-  }
-});
-
 assistantRouter.post("/issues", (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
@@ -1722,32 +1671,6 @@ assistantRouter.delete("/issues", (req: Request, res: Response) => {
 // ── Session Runner endpoints ─────────────────────────────────────────────────
 import { getOrCreateSession, type SessionEvent } from "../sessionRunner.js";
 
-/** Transient network/server hiccups (dropped connection, timeout, 5xx, rate
- *  limit) shouldn't kill a long multi-round turn — e.g. a session that's
- *  polling via the `wait` tool across many rounds would otherwise lose all
- *  progress and abort the whole conversation because of one blip. Anything
- *  else (bad request, auth failure, etc.) is not retried. */
-function isTransientAnthropicError(err: unknown): boolean {
-  if (err instanceof Anthropic.APIConnectionError) return true;
-  if (err instanceof Anthropic.RateLimitError) return true;
-  if (err instanceof Anthropic.InternalServerError) return true;
-  const status = (err as { status?: number } | undefined)?.status;
-  if (typeof status === "number" && status >= 500) return true;
-  // Dig through cause chains — fetch/undici bury the real code in nested causes.
-  let code: string | undefined;
-  for (let c: unknown = err; c && typeof c === "object"; c = (c as { cause?: unknown }).cause) {
-    const candidate = (c as { code?: string }).code;
-    if (candidate) { code = candidate; break; }
-  }
-  // Catch all undici-level errors (UND_ERR_*) since any of them can be
-  // triggered by a stale pooled connection after an idle wait period.
-  if (code?.startsWith("UND_ERR_")) return true;
-  return code === "ECONNRESET" || code === "ETIMEDOUT" || code === "ENOTFOUND"
-    || code === "EAI_AGAIN" || code === "ECONNREFUSED";
-}
-
-const RETRY_DELAYS_MS = [1000, 2000, 4000];
-
 /** Refactored streaming: writes events to a callback instead of directly to `res`.
  *  Used by both the old HTTP endpoints (via respondStream wrapper) and the new
  *  SessionRunner. */
@@ -1764,46 +1687,26 @@ async function streamTurn(
     for (let round = 0; round < MAX_AUTO_ROUNDS; round++) {
       if (aborted) return;
 
-      let finalMessage: Anthropic.Message | undefined;
-      for (let attempt = 0; ; attempt++) {
+      const stream = client.messages.stream({
+        model: MAIN_MODEL,
+        max_tokens: 32000,
+        system: SYSTEM,
+        tools,
+        messages,
+      });
+
+      stream.on("text", (delta) => {
+        if (!aborted) onEvent({ type: "text", delta });
+      });
+
+      let finalMessage: Anthropic.Message;
+      try {
+        finalMessage = await stream.finalMessage();
+      } catch (err) {
         if (aborted) return;
-        let textEmitted = false;
-        const stream = client.messages.stream({
-          model: MAIN_MODEL,
-          max_tokens: 32000,
-          system: SYSTEM,
-          tools,
-          messages,
-        });
-
-        stream.on("text", (delta) => {
-          if (!aborted) {
-            textEmitted = true;
-            onEvent({ type: "text", delta });
-          }
-        });
-
-        try {
-          finalMessage = await stream.finalMessage();
-          break;
-        } catch (err) {
-          if (aborted) return;
-          if (attempt < RETRY_DELAYS_MS.length && isTransientAnthropicError(err)) {
-            // If we already streamed partial text to the client before the
-            // connection dropped, insert a separator so the user can see that
-            // a retry occurred — the new stream will produce a fresh complete
-            // response that supersedes the partial text.
-            if (textEmitted) {
-              onEvent({ type: "text", delta: "\n\n---\n*[Connection interrupted — reconnecting...]*\n\n" });
-            }
-            await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
-            continue;
-          }
-          throw err;
-        }
+        throw err;
       }
       if (aborted) return;
-      if (!finalMessage) return;
 
       messages.push({ role: "assistant", content: finalMessage.content });
 
@@ -1830,7 +1733,7 @@ async function streamTurn(
       if (mutatingCalls.length > 0) {
         const autoResolved: ResolvedResult[] = await Promise.all(
           readOnlyCalls.map(async (b) => {
-            const r = await safeExecuteReadOnly(b.name, b.input as Record<string, unknown>, undefined, signal);
+            const r = await safeExecuteReadOnly(b.name, b.input as Record<string, unknown>);
             return { toolUseId: b.id, ok: r.ok, content: r.content };
           }),
         );
@@ -1846,15 +1749,9 @@ async function streamTurn(
       }
 
       // All tools are read-only — execute inline and loop.
-      // Separate wait calls from other read-only tools: emit a "wait" event
-      // to the client BEFORE sleeping so it can show a countdown indicator.
-      const waitCalls = readOnlyCalls.filter((b) => b.name === "wait");
-      const otherCalls = readOnlyCalls.filter((b) => b.name !== "wait");
-
-      // Execute non-wait read-only tools first (in parallel).
-      const otherResults = await Promise.all(
-        otherCalls.map(async (b) => {
-          const r = await safeExecuteReadOnly(b.name, b.input as Record<string, unknown>, undefined, signal);
+      const results = await Promise.all(
+        readOnlyCalls.map(async (b) => {
+          const r = await safeExecuteReadOnly(b.name, b.input as Record<string, unknown>);
           return {
             type: "tool_result" as const,
             tool_use_id: b.id,
@@ -1863,45 +1760,7 @@ async function streamTurn(
           };
         }),
       );
-
-      // Execute wait calls sequentially, emitting a "wait" event before each
-      // sleep so the client can show a countdown.
-      const waitResults: { type: "tool_result"; tool_use_id: string; content: string; is_error: boolean }[] = [];
-      for (const b of waitCalls) {
-        const requested = typeof b.input === "object" && b.input && "seconds" in b.input
-          ? Number((b.input as Record<string, unknown>).seconds)
-          : 10;
-        const seconds = Math.min(120, Math.max(1, Number.isFinite(requested) ? requested : 10));
-        const reason = typeof b.input === "object" && b.input && typeof (b.input as Record<string, unknown>).reason === "string"
-          ? (b.input as Record<string, unknown>).reason as string
-          : undefined;
-        if (!aborted) {
-          onEvent({ type: "wait", seconds, reason, toolUseId: b.id });
-        }
-        const r = await safeExecuteReadOnly(b.name, b.input as Record<string, unknown>, undefined, signal);
-        waitResults.push({
-          type: "tool_result" as const,
-          tool_use_id: b.id,
-          content: typeof r.content === "string" ? r.content : JSON.stringify(r.content ?? {}),
-          is_error: !r.ok,
-        });
-      }
-
-      const results = [...otherResults, ...waitResults];
       messages.push({ role: "user", content: results });
-    }
-
-    // Round limit reached without a natural stop (e.g. a long wait/re-check poll).
-    // Emit a final turn so the client isn't left hanging silently.
-    if (!aborted) {
-      onEvent({
-        type: "turn",
-        messages,
-        pending: [],
-        autoResolved: [],
-        done: true,
-        text: "Reached the automatic check limit for this turn. Ask me to keep checking if you'd like me to continue.",
-      });
     }
   } finally {
     signal?.removeEventListener("abort", onAbort);
