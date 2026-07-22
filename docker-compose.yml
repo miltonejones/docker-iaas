@@ -78,6 +78,8 @@ services:
     volumes:
       - ./data:/app/data:ro
       - ./scripts/issue-logs:/app/scripts/issue-logs
+      # Mount the git repo so the consumer can commit and push fixes.
+      - ./.git:/app/.git:rw
     depends_on:
       - console
     restart: unless-stopped
