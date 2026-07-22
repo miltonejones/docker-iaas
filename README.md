@@ -2,7 +2,8 @@
 
 A personal container management console — stand up and manage containers from a
 gallery of presets in an **EC2-style** interface, with **disk usage front and
-center** and reported continuously. Plus on-demand lambda functions.
+center** and reported continuously. Plus on-demand lambda functions, an
+**automated issue-to-fix pipeline**, and a real-time notification system.
 
 ![stack](https://img.shields.io/badge/stack-Node%20%2B%20React%20%2B%20dockerode-4f8cff)
 
@@ -42,13 +43,57 @@ center** and reported continuously. Plus on-demand lambda functions.
   preview/execute confirmed mutations, migrations, structured MySQL/MongoDB
   grants, and record backup / restore jobs for smaller datasets.
 
+### Issue tracking & auto-fix pipeline
+
+Dockyard includes a built-in issue tracker backed by an **automated consumer**
+that picks up filed issues and fixes them autonomously:
+
+- **File issues** from the assistant chat or the web UI — categories include
+  bug, missing_feature, performance, security, and general.
+- **Autonomous diagnosis & fix** — a containerized consumer polls the issue
+  queue, feeds each issue to **Claude Code** (backed by **DeepSeek v4-pro**),
+  and implements fixes directly in the codebase.
+- **Git push & CI deploy** — fixes are committed and pushed to GitHub, then
+  the CI pipeline (GitHub Actions) rebuilds and redeploys the Dockyard
+  console via `docker compose up --build`.
+- **Full lifecycle visibility** — every step is tracked:
+  🐛 issue filed → ✅ fixed → 📤 pushed → ✅ deployed
+- **Deduplication** — the consumer skips duplicate issues (same summary within
+  10 minutes) to avoid redundant work.
+- **Merge conflict handling** — if a fix can't merge, it's flagged for manual
+  review (⚠️) instead of being silently dropped.
+
+The consumer runs as a protected Docker container (`issue-consumer-v2`) inside
+Dockyard itself: Node 22 Alpine, non-root user, with Claude Code and DeepSeek
+v4-pro. It clones the repo from GitHub as its source of truth and uses a
+personal access token to push fixes back.
+
+### Notification system
+
+Dockyard surfaces real-time event notifications through multiple channels:
+
+- **In-app toast notifications** — pop up in the corner of the screen for
+  live events (issue created, fixed, pushed, deployed, etc.).
+- **Notification dropdown** — a bell icon in the toolbar with a scrollable
+  history of recent events, updated in real time via SSE.
+- **OS-level desktop notifications** — when the Dockyard tab is in the
+  background, the browser's Notification API fires native desktop popups
+  (requires a one-time permission grant). The existing `notify-watcher.mjs`
+  SSH-based desktop notifier is no longer necessary.
+
+The notification pipeline works through a dedicated `POST /api/notifications`
+endpoint. The containerized consumer POSTs each event to the Dockyard API,
+which appends it to the shared `notifications.jsonl` log. The server's SSE
+stream polls this file and pushes new entries to connected browsers in real
+time.
+
 ## Architecture
 
 ```
 dockyard/
   server/   Express + dockerode REST API and SSE usage stream (TypeScript, ESM)
   web/      React + Vite dashboard (TypeScript)
-  scripts/  dev launcher that runs both together
+  scripts/  dev launcher, issue-consumer, notify-watcher, host-build-helper
   Dockerfile / docker-compose.yml  run the console itself as a container
 ```
 
@@ -295,6 +340,9 @@ Current backup caveats:
 | `GET  /api/databases/jobs?limit=`    | List backup / restore jobs           |
 | `GET  /api/databases/jobs/:id`       | Read one backup / restore job        |
 | `GET  /api/databases/jobs/:id/download` | Download the saved backup artifact |
+| `GET  /api/notifications`            | Recent notification history          |
+| `POST /api/notifications`            | Append a notification entry (used by containerized consumer) |
+| `GET  /api/notifications/stream`     | SSE stream of live notification events |
 | `*  /gw/:name/*`                     | The route itself — see below         |
 
 ### Assistant client contracts for DB actions
