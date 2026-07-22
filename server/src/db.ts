@@ -1191,6 +1191,23 @@ export function listAssistantIssues(limit = 50, userId?: string, status?: string
     .all(...params) as AssistantIssueRow[];
 }
 
+/** Count issues per status, scoped to a user's own issues plus unowned ones. */
+export function countAssistantIssuesByStatus(userId?: string): Record<string, number> {
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+  if (userId) {
+    clauses.push('(user_id = ? OR user_id IS NULL)');
+    params.push(userId);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  const rows = db
+    .prepare(`SELECT status, COUNT(*) AS count FROM assistant_issues ${where} GROUP BY status`)
+    .all(...params) as { status: string; count: number }[];
+  const counts: Record<string, number> = {};
+  for (const row of rows) counts[row.status] = row.count;
+  return counts;
+}
+
 export function getAssistantIssue(id: string, userId?: string): AssistantIssueRow | undefined {
   const row = db.prepare('SELECT * FROM assistant_issues WHERE id = ?').get(id) as AssistantIssueRow | undefined;
   if (row && userId && row.user_id !== userId && row.user_id !== null) return undefined;

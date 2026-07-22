@@ -680,6 +680,11 @@ export const api = {
   assistantSessionAbort: (id: string) =>
     fetch(`/api/assistant/sessions/${id}/abort`, { method: 'POST' }).then((r) => json<{ ok: true }>(r)),
 
+  assistantIssueCounts: () =>
+    fetch('/api/assistant/issues/counts').then((r) =>
+      json<{ open: number; resolved: number; byStatus: Record<string, number> }>(r),
+    ),
+
   assistantReportIssue: (summary: string, category?: string, details?: Record<string, unknown>) =>
     fetch('/api/assistant/issues', {
       method: 'POST',

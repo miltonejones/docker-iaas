@@ -30,6 +30,7 @@ import {
   updateAssistantIssue,
   deleteAssistantIssue,
   clearAssistantIssues,
+  countAssistantIssuesByStatus,
   ASSISTANT_ISSUE_STATUSES,
 } from "../db.js";
 import { sessionRegistry } from "../sessionRunner.js";
@@ -1579,6 +1580,18 @@ assistantRouter.get("/issues", (req: Request, res: Response) => {
     const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 20));
     const status = typeof req.query.status === "string" ? req.query.status : undefined;
     res.json(listAssistantIssues(limit, userId, status).map(toIssueSummary));
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+assistantRouter.get("/issues/counts", (req: Request, res: Response) => {
+  try {
+    const userId = getAuthUser(req)?.userId;
+    const counts = countAssistantIssuesByStatus(userId);
+    const open = (counts.open ?? 0) + (counts.in_progress ?? 0);
+    const resolved = (counts.resolved ?? 0) + (counts.closed ?? 0) + (counts.wont_fix ?? 0);
+    res.json({ open, resolved, byStatus: counts });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

@@ -20,6 +20,8 @@ export function HomePage({ snapshot, live, onPrune, pruning, runningCount, total
   const [fnCount, setFnCount] = useState(0);
   const [bucketCount, setBucketCount] = useState(0);
   const [routeCount, setRouteCount] = useState(0);
+  const [openIssueCount, setOpenIssueCount] = useState(0);
+  const [resolvedIssueCount, setResolvedIssueCount] = useState(0);
   const [gatewayLinks, setGatewayLinks] = useState<GatewayRoute[]>([]);
   const [traffic, setTraffic] = useState<GatewayTrafficTimeseries | null>(null);
 
@@ -27,6 +29,10 @@ export function HomePage({ snapshot, live, onPrune, pruning, runningCount, total
     api.lambdaListFunctions().then((list) => setFnCount(list.length)).catch(() => {});
     api.bucketList().then((list) => setBucketCount(list.length)).catch(() => {});
     api.gatewayTrafficTimeseries().then(setTraffic).catch(() => {});
+    api.assistantIssueCounts().then((counts) => {
+      setOpenIssueCount(counts.open);
+      setResolvedIssueCount(counts.resolved);
+    }).catch(() => {});
     api.gatewayList().then((list) => {
       setRouteCount(list.length);
       const links = new Map<string, GatewayRoute>();
@@ -94,6 +100,14 @@ export function HomePage({ snapshot, live, onPrune, pruning, runningCount, total
           <span className="home-card__num">{routeCount}</span>
           <span className="home-card__label">Gateway routes</span>
         </button>
+        <div className="home-card glow">
+          <span className="home-card__num">{openIssueCount}</span>
+          <span className="home-card__label">Open issues</span>
+        </div>
+        <div className="home-card glow">
+          <span className="home-card__num">{resolvedIssueCount}</span>
+          <span className="home-card__label">Resolved issues</span>
+        </div>
       </div>
 
       <div className="home-links-grid">
