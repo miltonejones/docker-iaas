@@ -33,12 +33,20 @@ export async function requestDesktopPermission(): Promise<DesktopPermission> {
 }
 
 /** Fire an OS-level desktop notification if permission has been granted.
- *  No-ops silently when unsupported or not permitted. */
+ *  No-ops (with a console warning) when unsupported or not permitted so the
+ *  failure reason is always visible in the browser console. */
 export function showDesktopNotification(summary: string, body?: string): void {
-  if (getDesktopPermission() !== 'granted') return;
+  const perm = getDesktopPermission();
+  if (perm !== 'granted') {
+    console.warn(
+      `[Dockyard] Skipped desktop notification — permission is "${perm}".`,
+      'Click the bell → "Enable desktop alerts" to grant it.',
+    );
+    return;
+  }
   try {
     const n = new Notification(summary, {
-      body,
+      body: body || undefined,
       icon: '/favicon.svg',
       tag: `dockyard-${summary}`,
     });
@@ -51,6 +59,6 @@ export function showDesktopNotification(summary: string, body?: string): void {
     // Some environments (e.g. certain mobile browsers) throw on `new Notification`
     // even when permission is granted and require the ServiceWorkerRegistration
     // API instead; log the error for diagnosis rather than failing silently.
-    console.error('Failed to show desktop notification', err);
+    console.error('[Dockyard] Failed to show desktop notification', err);
   }
 }
