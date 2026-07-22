@@ -305,7 +305,11 @@ function formatPrompt(issue) {
     `2. Reproduce the reasoning — why did this happen?`,
     `3. If there is a clear fix, implement it by editing the files.`,
     `4. Summarize your changes at the end.`,
-  ].join("\n");
+    ``,
+    `Important rules:`,
+    `- When changing text on a page, find the EXACT current text in the actual file, verify it's not already what was requested, and replace it. Do NOT assume the change was already made just because you found those words somewhere unrelated (footer, comments, etc.). The issue description tells you what the NEW text should be — find the OLD text that needs replacing.`,
+    `- Never edit scripts/issue-consumer.mjs — it is the consumer itself.`,
+   ].join("\n");
 }
 
 function logFilename(issueId) {

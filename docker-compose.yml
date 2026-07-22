@@ -75,6 +75,8 @@ services:
       GIT_AUTHOR_EMAIL: "dockyard@miltonejones.dev"
       GIT_COMMITTER_NAME: "Dockyard AI"
       GIT_COMMITTER_EMAIL: "dockyard@miltonejones.dev"
+    # Match host UID so mounted volumes (issue-logs, .git, data) are writable.
+    user: "1000:1000"
     volumes:
       - ./data:/app/data:ro
       - ./scripts/issue-logs:/app/scripts/issue-logs
