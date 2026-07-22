@@ -555,8 +555,8 @@ export function App() {
           ))}
           <button
             className="bottom-nav__item"
-            onClick={() => onOpenAssistant({ prompt: '' })}
-            title="Ask Dockyard"
+            onClick={() => setCreateIssueOpen(true)}
+            title="Create an issue"
           >
             <AppIcon name="assistant" />
             <span>Ask</span>
