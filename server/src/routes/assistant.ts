@@ -30,6 +30,7 @@ import {
   updateAssistantIssue,
   deleteAssistantIssue,
   clearAssistantIssues,
+  countAssistantIssuesByStatus,
   ASSISTANT_ISSUE_STATUSES,
 } from "../db.js";
 import { sessionRegistry } from "../sessionRunner.js";
@@ -1595,6 +1596,20 @@ assistantRouter.delete("/sessions/:id", (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 // Assistant issue reporting
 // ---------------------------------------------------------------------------
+
+assistantRouter.get("/issues/counts", (req: Request, res: Response) => {
+  try {
+    const userId = getAuthUser(req)?.userId;
+    const byStatus = countAssistantIssuesByStatus(userId);
+    res.json({
+      open: byStatus.open ?? 0,
+      resolved: (byStatus.resolved ?? 0) + (byStatus.closed ?? 0),
+      byStatus,
+    });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
 
 assistantRouter.get("/issues", (req: Request, res: Response) => {
   try {

@@ -415,4 +415,7 @@ export interface AssistantIssue {
   category: string;
   details: unknown;
   createdAt: string;
+  status: string;
+  resolution: string | null;
+  resolvedBy: string | null;
 }

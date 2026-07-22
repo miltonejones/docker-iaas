@@ -1,4 +1,5 @@
 import type {
+  AssistantIssue,
   AssistantSession,
   AssistantSessionState,
   AssistantSessionSummary,
@@ -697,7 +698,7 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ summary, category, details }),
-    }).then((r) => json<{ id: string; summary: string; category: string; details: unknown; createdAt: string }>(r)),
+    }).then((r) => json<AssistantIssue>(r)),
 
   assistantDeleteIssue: (issueId: string) =>
     fetch(`/api/assistant/issues/${encodeURIComponent(issueId)}`, { method: 'DELETE' }).then((r) =>
@@ -712,18 +713,7 @@ export const api = {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(fields),
-    }).then((r) =>
-      json<{
-        id: string;
-        summary: string;
-        category: string;
-        details: unknown;
-        createdAt: string;
-        status: string;
-        resolution: string | null;
-        resolvedBy: string | null;
-      }>(r),
-    ),
+    }).then((r) => json<AssistantIssue>(r)),
 
   assistantClearIssues: (category?: string) =>
     fetch(`/api/assistant/issues${category ? `?category=${encodeURIComponent(category)}` : ''}`, {
