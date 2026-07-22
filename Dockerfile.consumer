@@ -19,5 +19,5 @@ COPY --chown=consumer:consumer web/ ./web/
 COPY --chown=consumer:consumer server/ ./server/
 COPY --chown=consumer:consumer relay/ ./relay/
 COPY --chown=consumer:consumer .github/ ./.github/
-COPY --chown=consumer:consumer README.md Caddyfile docker-compose.yml Dockerfile ./ 2>/dev/null || true
-COPY --chown=consumer:consumer testing/ ./testing/ 2>/dev/null || true
+COPY --chown=consumer:consumer README.md Caddyfile docker-compose.yml Dockerfile ./ 
+COPY --chown=consumer:consumer testing/ ./testing/
