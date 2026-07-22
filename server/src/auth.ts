@@ -19,13 +19,18 @@ export function signToken(user: { id: string; email: string }): string {
  *  populating req.authUser. Returns 401 if absent, expired, or invalid. */
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
+  // The browser's native EventSource API cannot set request headers, so SSE
+  // endpoints (e.g. /api/notifications/stream) accept the token via a
+  // `?token=` query parameter as a fallback for authenticated clients.
+  const queryToken = typeof req.query.token === 'string' ? req.query.token : undefined;
+  const token = header?.startsWith('Bearer ') ? header.slice(7) : queryToken;
+  if (!token) {
     res.status(401).json({ error: 'Authorization header required.' });
     return;
   }
 
   try {
-    const payload = jwt.verify(header.slice(7), JWT_SECRET) as AuthUser;
+    const payload = jwt.verify(token, JWT_SECRET) as AuthUser;
     const user = getUserById(payload.userId);
     if (!user) {
       res.status(401).json({ error: 'User not found.' });

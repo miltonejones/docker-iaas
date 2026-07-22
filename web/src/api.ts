@@ -66,6 +66,13 @@ export function setAuthHeadersProvider(fn: () => Record<string, string>) {
   authHeaders = fn;
 }
 
+/** Extract the raw bearer token, if any — needed for EventSource connections,
+ *  which cannot set an Authorization header the way fetch() can. */
+function getAuthToken(): string | undefined {
+  const header = authHeaders().Authorization;
+  return header?.startsWith('Bearer ') ? header.slice(7) : undefined;
+}
+
 // Intercept global fetch to inject auth headers on same-origin /api/ requests.
 const _originalFetch = globalThis.fetch;
 globalThis.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
@@ -738,7 +745,10 @@ export function subscribeNotifications(
   onHistory: (entries: NotificationEntry[]) => void,
   onEntry: (entry: NotificationEntry) => void,
 ): () => void {
-  const source = new EventSource('/api/notifications/stream');
+  const token = getAuthToken();
+  const source = new EventSource(
+    token ? `/api/notifications/stream?token=${encodeURIComponent(token)}` : '/api/notifications/stream',
+  );
   source.onmessage = (e) => {
     try {
       const data = JSON.parse(e.data) as
