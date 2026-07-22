@@ -190,15 +190,16 @@ export function App() {
   const [sessionsQuery, setSessionsQuery] = useState('');
   const lastBeat = useRef<number>(0);
 
-  // First-ever visit to the console's root path sends the browser to the
-  // marketing site instead. Tracked in localStorage so it only fires once
-  // per browser, and only on "/" — deep links (e.g. a saved /functions/:id
-  // bookmark) are never hijacked.
+  // First-ever visit to the console's root path also opens the marketing
+  // site. Tracked in localStorage so it only fires once per browser, and
+  // only on "/" — deep links (e.g. a saved /functions/:id bookmark) are
+  // never hijacked. Gateway links always open in a new window rather than
+  // replacing the console tab.
   useEffect(() => {
     if (window.location.pathname !== '/') return;
     if (localStorage.getItem('dockyard-visited')) return;
     localStorage.setItem('dockyard-visited', '1');
-    window.location.replace('/gw/dockyard-marketing/');
+    window.open('/gw/dockyard-marketing/', '_blank', 'noopener,noreferrer');
   }, []);
 
   // Detail pages emit this when their info icon is clicked, asking the
