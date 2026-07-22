@@ -2,6 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { subscribeNotifications, type NotificationEntry } from '../api';
 import { AppIcon } from '../icons';
 import { useToast } from '../ToastContext';
+import {
+  getDesktopPermission,
+  isDesktopNotificationSupported,
+  requestDesktopPermission,
+  showDesktopNotification,
+  type DesktopPermission,
+} from '../desktopNotify';
 
 const MAX_STORED = 200;
 const SEEN_KEY = 'dockyard.notifications.lastSeenTs';
@@ -43,6 +50,9 @@ export function NotificationBell() {
   const toast = useToast();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const initialized = useRef(false);
+  const [desktopPermission, setDesktopPermission] = useState<DesktopPermission>(() =>
+    getDesktopPermission(),
+  );
 
   useEffect(() => {
     const unsubscribe = subscribeNotifications(
@@ -52,14 +62,24 @@ export function NotificationBell() {
       },
       (entry) => {
         setEntries((list) => [...list, entry].slice(-MAX_STORED));
-        // Only toast entries that arrive live, not the catch-up history.
+        // Only notify entries that arrive live, not the catch-up history.
         if (initialized.current) {
           toast.show(entry.summary, kindFor(entry.summary));
+          // Fire an OS-level desktop notification too, so issue/consumer
+          // activity is visible even when this tab is backgrounded or
+          // unfocused (see desktopNotify.ts). This is the in-browser
+          // replacement for scripts/notify-watcher.mjs.
+          showDesktopNotification(entry.summary, entry.body);
         }
       },
     );
     return unsubscribe;
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const requestPermission = useCallback(async () => {
+    const result = await requestDesktopPermission();
+    setDesktopPermission(result);
   }, []);
 
   useEffect(() => {
@@ -106,6 +126,24 @@ export function NotificationBell() {
         <div className="notif-panel">
           <div className="notif-panel__head">
             <h3>Notifications</h3>
+            {isDesktopNotificationSupported() && desktopPermission === 'default' && (
+              <button
+                type="button"
+                className="btn btn--ghost btn--sm notif-panel__desktop-btn"
+                onClick={requestPermission}
+                title="Get OS-level desktop notifications, even when this tab isn't focused"
+              >
+                Enable desktop alerts
+              </button>
+            )}
+            {isDesktopNotificationSupported() && desktopPermission === 'denied' && (
+              <span className="muted notif-panel__desktop-status">
+                Desktop alerts blocked — enable in browser settings
+              </span>
+            )}
+            {isDesktopNotificationSupported() && desktopPermission === 'granted' && (
+              <span className="muted notif-panel__desktop-status">Desktop alerts on</span>
+            )}
           </div>
           <div className="notif-panel__body">
             {ordered.length === 0 && <p className="muted empty-sm">No notifications yet.</p>}
