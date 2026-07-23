@@ -32,7 +32,13 @@ jobs:
             git reset --hard origin/main
             # Stop everything first so stale containers can't collide on names.
             docker compose down --remove-orphans 2>/dev/null || true
-            docker compose up --build -d --remove-orphans
+            # Build and start everything except the consumer (console, caddy, minio, marketing).
+            # These use normal --build with caching — they only rebuild when source changes.
+            docker compose up --build -d --remove-orphans console caddy minio marketing
+            # Consumer always rebuilds with --no-cache. Docker layer caching doesn't
+            # reliably detect Dockerfile-only changes (e.g. git config, COPY flags).
+            docker compose build --no-cache consumer
+            docker compose up -d consumer
             # Cleanup is best-effort only — stale images shouldn't block a deploy.
             docker image prune -f || true
             # Append success notification for the local notify-watcher
