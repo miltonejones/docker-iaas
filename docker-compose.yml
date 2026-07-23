@@ -57,31 +57,9 @@ services:
   consumer:
     build:
       context: .
-      # FIXME: Restore Dockerfile.consumer once repo is writable by the
-      # consumer agent.  Using the main Dockerfile is heavier (includes
-      # Playwright and the full web build) but gives us Node + git + the
-      # codebase.  Claude Code CLI is installed at startup if missing.
-      # dockerfile: Dockerfile.consumer
+      dockerfile: Dockerfile.consumer
     container_name: dockyard-consumer-ctr
-    command:
-      - sh
-      - -c
-      - |
-        # Belt-and-suspenders: trust the repo dir regardless of UID mismatch
-        # between the container user (1000:1000) and the host's .git owner.
-        # This is also set at build-time in Dockerfile.consumer when that
-        # file is restored (see FIXME above).
-        git config --global --add safe.directory /app
-
-        # Install Claude Code CLI if the image doesn't already bake it in.
-        # The main Dockerfile (used as a fallback while Dockerfile.consumer
-        # is missing) doesn't include it.
-        if [ ! -x /usr/local/bin/claude ]; then
-          echo "consumer: installing Claude Code CLI (one-time per image layer)..."
-          npm install -g @anthropic-ai/claude-code 2>&1 | tail -3
-        fi
-
-        exec node scripts/issue-consumer.mjs
+    command: ["node", "scripts/issue-consumer.mjs"]
     labels:
       iaas.protected: "true"
       iaas.description: "Dockyard issue consumer — Claude Code + DeepSeek v4-pro. Polls API directly, auto-fixes, pushes to GitHub. Managed by docker-compose."
