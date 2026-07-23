@@ -523,7 +523,7 @@ export function App() {
 
         <footer className="app-footer">
           <div className="app-footer__group">
-            <span className="muted">Deploy anything. Ask for the rest.</span>
+            <span className="muted">Ship fast. AI handles the rest.</span>
             <button
               type="button"
               className="app-footer__link app-footer__link--button"
