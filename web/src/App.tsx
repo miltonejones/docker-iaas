@@ -3,7 +3,6 @@ import { BrowserRouter, Link, NavLink, Route, Routes, useLocation } from 'react-
 import type { AssistantSessionSummary, Container, Preset, UsageSnapshot } from './types';
 import { api, subscribeUsage } from './api';
 import { bytes, timeAgo } from './format';
-import { ConfirmProvider } from './components/ConfirmContext';
 import { HomePage } from './pages/Home';
 import { InstancesPage } from './pages/Instances';
 import { FunctionsPage } from './pages/Functions';
@@ -407,7 +406,6 @@ export function App() {
   if (!token) return <LoginPage />;
 
   return (
-    <ConfirmProvider>
     <BrowserRouter>
       <div className="app">
         <ToastViewport />
@@ -660,6 +658,5 @@ export function App() {
         </nav>
       </div>
     </BrowserRouter>
-    </ConfirmProvider>
   );
 }

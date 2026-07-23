@@ -7,7 +7,18 @@ import { AppIcon } from '../icons';
 import { InfoButton } from './InfoButton';
 import { bytes } from '../format';
 import { useToast } from '../ToastContext';
-import { useConfirm } from "./ConfirmContext";
+
+const VIEW_KEY = 'gateway-view';
+type ViewMode = 'table' | 'grid';
+
+function loadView(): ViewMode {
+  try {
+    const saved = localStorage.getItem(VIEW_KEY);
+    return saved === 'grid' ? 'grid' : 'table';
+  } catch {
+    return 'table';
+  }
+}
 
 const TARGET_ICON = {
   bucket: <AppIcon name="bucket" />,
@@ -26,7 +37,16 @@ export function GatewayList() {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+  const [viewMode, setViewMode] = useState<ViewMode>(loadView);
+
+  function changeView(next: ViewMode) {
+    setViewMode(next);
+    try {
+      localStorage.setItem(VIEW_KEY, next);
+    } catch {
+      /* ignore storage errors (e.g. private browsing) */
+    }
+  }
   const toast = useToast();
 
   useEffect(() => {
@@ -98,14 +118,14 @@ export function GatewayList() {
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <button
             className={`btn btn--sm ${viewMode === 'table' ? 'btn--primary' : ''}`}
-            onClick={() => setViewMode('table')}
+            onClick={() => changeView('table')}
             title="Table view"
           >
             ☰
           </button>
           <button
             className={`btn btn--sm ${viewMode === 'grid' ? 'btn--primary' : ''}`}
-            onClick={() => setViewMode('grid')}
+            onClick={() => changeView('grid')}
             title="Grid view"
           >
             ▦
@@ -183,7 +203,7 @@ export function GatewayList() {
                       <span
                         className="gateway-name-cell"
                         title="Click to rename"
-                        onClick={async () => { setEditing(group[0].name); setEditValue(group[0].displayName || group[0].name); }}
+                        onClick={() => { setEditing(group[0].name); setEditValue(group[0].displayName || group[0].name); }}
                       >
                         {group[0].displayName || group[0].name}
                       </span>
@@ -313,7 +333,6 @@ function GatewayCardPreview({ name }: { name: string }) {
 const METHODS = ['ANY', 'GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'];
 
 export function GatewayDetail({ name }: { name: string }) {
-  const { askConfirm } = useConfirm();
   const navigate = useNavigate();
   const [routes, setRoutes] = useState<GatewayRoute[]>([]);
   const [buckets, setBuckets] = useState<Bucket[]>([]);
@@ -453,7 +472,7 @@ export function GatewayDetail({ name }: { name: string }) {
   }
 
   async function removeEndpoint(id: string) {
-    if (!await askConfirm('Delete this endpoint?')) return;
+    if (!confirm('Delete this endpoint?')) return;
     try {
       await api.gatewayDelete(id);
       const remaining = routes.filter((r) => r.id !== id);
@@ -681,7 +700,7 @@ export function GatewayDetail({ name }: { name: string }) {
           <h3 className="detail-section__title">Traffic (last 24 hours)</h3>
           <button
             className="btn btn--sm"
-            onClick={async () => {
+            onClick={() => {
               api.gatewayTrafficSummary(name).then(setTraffic).catch(() => {});
               api.gatewayTrafficRequests(name).then((response) => setRecentRequests(response.requests)).catch(() => {});
             }}

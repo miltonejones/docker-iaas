@@ -4,7 +4,6 @@ import { api } from '../api';
 import { bytes, timeAgo } from '../format';
 import { AppIcon } from '../icons';
 import { InfoButton } from './InfoButton';
-import { useConfirm } from "./ConfirmContext";
 
 function ageLabel(epochOrIso: number | string): string {
   if (!epochOrIso) return '—';
@@ -21,7 +20,6 @@ interface Props {
 }
 
 export function FootprintDetail({ category, onClose }: Props) {
-  const { askConfirm, showAlert } = useConfirm();
   const [images, setImages] = useState<DockerImage[] | null>(null);
   const [containers, setContainers] = useState<Container[] | null>(null);
   const [volumes, setVolumes] = useState<DockerVolume[] | null>(null);
@@ -58,7 +56,7 @@ export function FootprintDetail({ category, onClose }: Props) {
   }, [load]);
 
   async function onRemoveImage(id: string) {
-    if (!await askConfirm('Remove this image?')) return;
+    if (!confirm('Remove this image?')) return;
     setDeleting(id);
     try {
       await api.removeImage(id);
@@ -77,7 +75,7 @@ export function FootprintDetail({ category, onClose }: Props) {
       setBuildCache([]);
       setError(null);
       // Show result briefly
-      showAlert(`Cleared ${result.cachesDeleted} cache entries, reclaimed ${bytes(result.reclaimedBytes)}.`);
+      alert(`Cleared ${result.cachesDeleted} cache entries, reclaimed ${bytes(result.reclaimedBytes)}.`);
     } catch (err) {
       setError((err as Error).message);
     } finally {

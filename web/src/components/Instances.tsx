@@ -4,7 +4,6 @@ import { bytes, timeAgo } from '../format';
 import { api } from '../api';
 import { AppIcon, PresetIcon } from '../icons';
 import { useToast } from '../ToastContext';
-import { useConfirm } from "./ConfirmContext";
 
 interface Props {
   containers: Container[];
@@ -28,7 +27,6 @@ function loadView(): ViewMode {
 }
 
 export function Instances({ containers, busy, onChanged, onSelect, onNewInstance }: Props) {
-  const { askConfirm } = useConfirm();
   const [pending, setPending] = useState<string | null>(null);
   const [logsFor, setLogsFor] = useState<Container | null>(null);
   const [logText, setLogText] = useState<string>('');
@@ -182,8 +180,8 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                     <button
                       className="btn btn--sm btn--danger"
                       disabled={isPending}
-                      onClick={async () => {
-                        if (await askConfirm(`Remove ${c.name || c.id.slice(0, 12)}?`))
+                      onClick={() => {
+                        if (confirm(`Remove ${c.name || c.id.slice(0, 12)}?`))
                           run(c.id, () => api.remove(c.id, true), `Removed ${c.name || c.id.slice(0, 12)}.`);
                       }}
                     >
@@ -279,8 +277,8 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                         <button
                           className="btn btn--sm btn--danger"
                           disabled={isPending}
-                          onClick={async () => {
-                            if (await askConfirm(`Remove ${c.name || c.id.slice(0, 12)}?`))
+                          onClick={() => {
+                            if (confirm(`Remove ${c.name || c.id.slice(0, 12)}?`))
                               run(c.id, () => api.remove(c.id, true), `Removed ${c.name || c.id.slice(0, 12)}.`);
                           }}
                         >
