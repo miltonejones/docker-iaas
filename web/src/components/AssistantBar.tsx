@@ -282,6 +282,26 @@ export function AssistantBar({
   const [sessionsList, setSessionsList] = useState<AssistantSessionSummary[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
 
+  // ── TTS / voice state ───────────────────────────────────────────────
+  const [speakingMessageIndex, setSpeakingMessageIndex] = useState<number | null>(null);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoiceUri, setSelectedVoiceUri] = useState<string | null>(null);
+  const [voiceMenuOpen, setVoiceMenuOpen] = useState(false);
+  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const voiceMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close the voice menu on outside click.
+  useEffect(() => {
+    if (!voiceMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (voiceMenuRef.current && !voiceMenuRef.current.contains(e.target as Node)) {
+        setVoiceMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler, true);
+    return () => document.removeEventListener('mousedown', handler, true);
+  }, [voiceMenuOpen]);
+
   /** Persist the current conversation state to the server. Called explicitly at
    *  key milestones (user prompt, turn completion, action resolution) and also
    *  via the effect below whenever state settles after busy→false.  Falls back
@@ -379,6 +399,7 @@ export function AssistantBar({
   }, [log, rawMessages, pending, resolved, sessionName]);
 
   function resetToNewSession() {
+    stopSpeaking();
     if (sessionStorageKey) localStorage.removeItem(sessionStorageKey);
     localStorage.removeItem(fallbackKey());
     titleGeneratedRef.current = false;
@@ -484,6 +505,101 @@ export function AssistantBar({
       setError((err as Error).message);
     }
   }
+
+  // ── TTS / voice helpers ──────────────────────────────────────────────
+
+  /** Load the list of available synthesis voices, persisting the user's
+   *  last-chosen voice across mounts via localStorage.  Browsers load voices
+   *  asynchronously — the `voiceschanged` event fires when the list is ready. */
+  function loadVoices() {
+    const synth = window.speechSynthesis;
+    const voices = synth.getVoices();
+    if (voices.length === 0) return;
+    setAvailableVoices(voices);
+    const stored = localStorage.getItem('dockyard:tts-voice');
+    if (stored && voices.some((v) => v.voiceURI === stored)) {
+      setSelectedVoiceUri(stored);
+    } else if (!selectedVoiceUri && voices.length > 0) {
+      // Default to the first voice in the user's locale, or the first voice overall.
+      const lang = navigator.language;
+      const match = voices.find((v) => v.lang.startsWith(lang)) ?? voices[0];
+      setSelectedVoiceUri(match.voiceURI);
+    }
+  }
+
+  // Hydrate voices on mount and whenever the browser signals a change.
+  useEffect(() => {
+    loadVoices();
+    const synth = window.speechSynthesis;
+    synth.addEventListener('voiceschanged', loadVoices);
+    return () => synth.removeEventListener('voiceschanged', loadVoices);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Speak the assistant message at the given log index. Strips markdown
+   *  formatting for cleaner TTS output. */
+  function speakMessage(index: number, text: string) {
+    const synth = window.speechSynthesis;
+    // If already speaking this message, toggle off.
+    if (speakingMessageIndex === index) {
+      synth.cancel();
+      setSpeakingMessageIndex(null);
+      utteranceRef.current = null;
+      return;
+    }
+    // Stop any in-progress speech before starting a new one.
+    synth.cancel();
+
+    // Strip common markdown so the voice reads cleanly.
+    const plain = text
+      .replace(/```[\s\S]*?```/g, '')           // fenced code blocks
+      .replace(/`([^`]+)`/g, '$1')              // inline code
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')  // links — keep label
+      .replace(/[*_~]{1,3}/g, '')               // bold / italic / strikethrough
+      .replace(/^#{1,6}\s+/gm, '')              // headings
+      .replace(/^[-*+]\s+/gm, '')               // unordered list bullets
+      .replace(/^\d+\.\s+/gm, '')               // ordered list numbers
+      .replace(/^>\s+/gm, '')                    // blockquotes
+      .replace(/\n{2,}/g, '. ')                  // blank lines → sentence break
+      .replace(/\n/g, ' ')                       // single newlines → space
+      .trim();
+
+    if (!plain) {
+      synth.cancel();
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(plain);
+    if (selectedVoiceUri) {
+      const voice = availableVoices.find((v) => v.voiceURI === selectedVoiceUri);
+      if (voice) utterance.voice = voice;
+    }
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+
+    utterance.onstart = () => setSpeakingMessageIndex(index);
+    utterance.onend = () => {
+      setSpeakingMessageIndex(null);
+      utteranceRef.current = null;
+    };
+    utterance.onerror = () => {
+      setSpeakingMessageIndex(null);
+      utteranceRef.current = null;
+    };
+
+    utteranceRef.current = utterance;
+    synth.speak(utterance);
+  }
+
+  /** Stop any in-progress TTS and reset state. */
+  function stopSpeaking() {
+    window.speechSynthesis.cancel();
+    setSpeakingMessageIndex(null);
+    utteranceRef.current = null;
+  }
+
+  // Clear TTS state when a new session is created or loaded.
+  // (Stop speaking and reset state.)
 
   async function deleteSessionRow(id: string) {
     const session = sessionsList.find((s) => s.id === id);
@@ -1224,6 +1340,45 @@ Ask Dockyard.ai
               placeholder="Untitled session"
             />
             {sessionSaving && <span className="assistant-session-bar__status muted">Saving…</span>}
+            <div className="assistant-voice-select">
+              <button
+                className="btn btn--ghost btn--sm"
+                onClick={() => setVoiceMenuOpen((v) => !v)}
+                title={selectedVoiceUri ? `Voice: ${availableVoices.find((v) => v.voiceURI === selectedVoiceUri)?.name ?? 'Selected'}` : 'Select voice'}
+                aria-label="Select voice"
+              >
+                <AppIcon name={speakingMessageIndex !== null ? 'speak-stop' : 'speak'} />
+              </button>
+              {voiceMenuOpen && (
+                <div className="assistant-voice-menu" ref={voiceMenuRef}>
+                  <div className="assistant-voice-menu__head">Voice</div>
+                  <button
+                    className={`assistant-voice-menu__item${!selectedVoiceUri ? ' assistant-voice-menu__item--active' : ''}`}
+                    onClick={() => {
+                      setSelectedVoiceUri(null);
+                      setVoiceMenuOpen(false);
+                      localStorage.removeItem('dockyard:tts-voice');
+                    }}
+                  >
+                    System default
+                  </button>
+                  {availableVoices.map((v) => (
+                    <button
+                      key={v.voiceURI}
+                      className={`assistant-voice-menu__item${selectedVoiceUri === v.voiceURI ? ' assistant-voice-menu__item--active' : ''}`}
+                      onClick={() => {
+                        setSelectedVoiceUri(v.voiceURI);
+                        setVoiceMenuOpen(false);
+                        localStorage.setItem('dockyard:tts-voice', v.voiceURI);
+                      }}
+                    >
+                      {v.name}
+                      <span className="muted">{v.lang}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="assistant-session-bar__actions">
               <button className="btn btn--ghost btn--sm" onClick={resetToNewSession}>
                 <AppIcon name="plus" /> <span className="btn-label">New</span>
@@ -1302,6 +1457,14 @@ Ask Dockyard.ai
                         >
                           <AppIcon name={copiedMessage === i ? 'check' : 'copy'} />
                           {copiedMessage === i && <span>Copied</span>}
+                        </button>
+                        <button
+                          className={`assistant-log__speak${speakingMessageIndex === i ? ' assistant-log__speak--active' : ''}`}
+                          onClick={() => speakMessage(i, entry.text)}
+                          title={speakingMessageIndex === i ? 'Stop speaking' : 'Read aloud'}
+                          aria-label={speakingMessageIndex === i ? 'Stop speaking' : 'Read aloud'}
+                        >
+                          <AppIcon name={speakingMessageIndex === i ? 'speak-stop' : 'speak'} />
                         </button>
                       </>
                     ) : entry.kind === 'action' ? (

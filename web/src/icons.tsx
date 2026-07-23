@@ -34,6 +34,9 @@ import {
   faTerminal,
   faTriangleExclamation,
   faUser,
+  faVolumeHigh,
+  faVolumeXmark,
+  faStop,
   faWandMagicSparkles,
   faXmark,
 } from '@fortawesome/free-solid-svg-icons';
@@ -69,6 +72,9 @@ const UI_ICONS: Record<string, IconDefinition> = {
   close: faXmark,
   lookup: faMagnifyingGlass,
   github: faGithub,
+  speak: faVolumeHigh,
+  'speak-stop': faStop,
+  mute: faVolumeXmark,
 };
 
 const PRESET_ICONS: Record<string, IconDefinition> = {
