@@ -1083,16 +1083,6 @@ code,
   border-color: var(--danger);
 }
 
-/* Touch targets — minimum 44px for WCAG / mobile usability */
-@media (pointer: coarse) {
-  .btn,
-  .btn--sm,
-  .btn--icon,
-  .info-btn {
-    min-height: 44px;
-  }
-}
-
 /* Modal ---------------------------------------------------------------- */
 .modal-backdrop {
   position: fixed;
@@ -1247,28 +1237,6 @@ textarea:focus {
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
-}
-
-/* Confirm dialog (themed replacement for native confirm/alert) */
-.confirm-dialog {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-lg);
-  padding: 24px;
-  max-width: 400px;
-  width: 100%;
-  box-shadow: var(--shadow-lg);
-}
-.confirm-dialog__message {
-  margin: 0 0 20px;
-  font-size: 0.95rem;
-  line-height: 1.5;
-  color: var(--text);
-}
-.confirm-dialog__actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
 }
 
 /* Instance link (clickable name in table) --------------------------------- */
@@ -3662,7 +3630,7 @@ textarea:focus {
 .tab-bar__item { padding: 5px 12px; border: 1px solid var(--border); border-radius: var(--r-sm); background: transparent; font-size: 12px; cursor: pointer; color: var(--text); transition: background 0.15s var(--ease), border-color 0.15s var(--ease), color 0.15s var(--ease); }
 .tab-bar__item:hover { border-color: var(--border-strong); background: var(--bg-elev-2); }
 .tab-bar__item--active { background: var(--accent); color: #fff; border-color: var(--accent); }
-.badge { display: inline-block; padding: 2px 8px; border-radius: var(--r-sm); font-size: 11px; background: var(--bg-elev-2); text-transform: capitalize; white-space: nowrap; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; background: var(--bg-elev-2); text-transform: capitalize; white-space: nowrap; }
 .badge--open { background: #dbeafe; color: #1e40af; }
 .badge--in_progress { background: #fef3c7; color: #92400e; }
 .badge--resolved { background: #d1fae5; color: #065f46; }

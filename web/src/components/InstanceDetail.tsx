@@ -5,7 +5,6 @@ import { api } from '../api';
 import { AppIcon } from '../icons';
 import { InfoButton } from './InfoButton';
 import { useToast } from '../ToastContext';
-import { useConfirm } from "./ConfirmContext";
 
 interface Props {
   container: Container;
@@ -27,7 +26,6 @@ function guessShell(image: string): string {
 }
 
 export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embedded }: Props) {
-  const { askConfirm } = useConfirm();
   const [detail, setDetail] = useState<ContainerDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pending, setPending] = useState<string | null>(null);
@@ -276,7 +274,7 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
           <code className="cmd-block__text">{execCmd}</code>
           <button
             className="btn btn--sm"
-            onClick={async () => {
+            onClick={() => {
               navigator.clipboard.writeText(execCmd).catch(() => {
                 /* ignore */
               });
@@ -345,7 +343,7 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
             className="btn btn--primary"
             disabled={pending === container.id || !detail || actionsLocked}
             title={locked ? "System-managed — can't be relaunched here" : isProtected ? "Protected — can't be relaunched here" : 'Remove and re-create with new settings (e.g. different ports)'}
-            onClick={async () => {
+            onClick={() => {
               if (detail) onRelaunch(detail);
             }}
           >
@@ -355,9 +353,9 @@ export function InstanceDetail({ container, onClose, onChanged, onRelaunch, embe
             className="btn btn--danger"
             disabled={pending === container.id || actionsLocked}
             title={locked ? "System-managed — can't be removed here" : isProtected ? "Protected — can't be removed here" : undefined}
-            onClick={async () => {
+            onClick={() => {
               const name = detail?.name || container.name || container.id.slice(0, 12);
-              if (await askConfirm(`Remove ${name}?`))
+              if (confirm(`Remove ${name}?`))
                 run(container.id, () => api.remove(container.id, true), `Removed ${name}.`).then(() => onClose());
             }}
           >

@@ -21,7 +21,6 @@ import { api } from "../api";
 import { RuntimeIcon } from "../icons";
 import { InfoButton } from "./InfoButton";
 import { useToast } from "../ToastContext";
-import { useConfirm } from "./ConfirmContext";
 
 const PLACEHOLDERS: Record<string, string> = {
   node: 'console.log("hello from Node.js");',
@@ -50,7 +49,6 @@ export function LambdaPanel({
   onSaved?: (id: string) => void;
   embedded?: boolean;
 }) {
-  const { askConfirm } = useConfirm();
   const [runtimes, setRuntimes] = useState<LambdaRuntime[]>([]);
   const [functions, setFunctions] = useState<LambdaFunction[]>([]);
   const toast = useToast();
@@ -335,7 +333,7 @@ export function LambdaPanel({
   async function deleteActive() {
     if (!isSaved) return;
     const fn = functions.find((f) => f.id === activeId);
-    if (!await askConfirm(`Delete "${fn?.name || activeId}"?`)) return;
+    if (!confirm(`Delete "${fn?.name || activeId}"?`)) return;
     try {
       await api.lambdaDeleteFunction(activeId!);
       setFunctions((prev) => prev.filter((f) => f.id !== activeId));
@@ -636,7 +634,7 @@ export function LambdaPanel({
                   </button>
                   <button
                     className="btn btn--sm"
-                    onClick={async () => {
+                    onClick={() => {
                       setShowHistory(!showHistory);
                       if (!showHistory) loadHistory();
                     }}
