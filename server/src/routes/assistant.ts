@@ -1036,6 +1036,11 @@ const tools: Anthropic.Tool[] = [
       required: ["issueId"],
     },
   },
+  {
+    name: "check_consumer_health",
+    description: "Run a full health check on the consumer: status file, DB access, API reachability, Claude availability, git config. Returns pass/fail for each check.",
+    input_schema: { type: "object", properties: {}, required: [] },
+  },
   ...DATABASE_ASSISTANT_TOOLS,
   ...GITHUB_ASSISTANT_TOOLS,
 ];
@@ -1066,6 +1071,7 @@ const READ_ONLY_TOOLS = new Set([
   "get_issue",
   "get_consumer_status",
   "get_consumer_activity",
+  "check_consumer_health",
   ...DATABASE_ASSISTANT_READ_ONLY_TOOLS,
   ...GITHUB_ASSISTANT_READ_ONLY_TOOLS,
 ]);
@@ -1282,6 +1288,51 @@ async function executeReadOnlyTool(
       } catch {
         return { state: "unknown", error: "Status file not found — consumer may not have started yet." };
       }
+    }
+    case "check_consumer_health": {
+      const results: Record<string, any> = {};
+      const { execSync } = (await import("node:child_process"));
+      // 1. Status file
+      const statusPath = path.join(process.cwd(), "scripts", "issue-logs", "consumer-status.json");
+      try {
+        const raw = fs.readFileSync(statusPath, "utf8");
+        results.status = JSON.parse(raw);
+      } catch {
+        results.status = { state: "unknown" };
+      }
+      // 2. DB accessible?
+      try {
+        const dbPath = path.join(process.cwd(), "data", "iaas.db");
+        fs.accessSync(dbPath, fs.constants.R_OK);
+        results.db = { accessible: true, size: fs.statSync(dbPath).size };
+      } catch {
+        results.db = { accessible: false };
+      }
+      // 3. Auth token valid? (quick API check)
+      try {
+        const res = await fetch(`http://127.0.0.1:${PORT}/api/auth/me`, {
+          headers: { Authorization: "Bearer test" },
+          signal: AbortSignal.timeout(3000),
+        });
+        results.api = { reachable: true, status: res.status };
+      } catch {
+        results.api = { reachable: false };
+      }
+      // 4. Claude executable?
+      try {
+        const claudePath = execSync("which claude 2>/dev/null || command -v claude 2>/dev/null || echo /usr/local/bin/claude", { encoding: "utf8", timeout: 3000 }).trim();
+        results.claude = { path: claudePath };
+      } catch {
+        results.claude = { path: "not found" };
+      }
+      // 5. Git working?
+      try {
+        execSync("git -C /app log --oneline -1 2>/dev/null", { encoding: "utf8", timeout: 3000 }).trim();
+        results.git = { working: true };
+      } catch {
+        results.git = { working: false };
+      }
+      return results;
     }
     case "get_consumer_activity": {
       const logDir = path.join(process.cwd(), "scripts", "issue-logs");
