@@ -61,6 +61,7 @@ const ACTION_LABEL: Record<string, string> = {
   delete_issue: 'Delete issue',
   clear_issues: 'Clear issues',
   update_issue: 'Update issue',
+  retry_issue: 'Retry issue',
 };
 
 const LOOKUP_LABEL: Record<string, string> = {
@@ -1005,6 +1006,13 @@ export function AssistantBar({
           status: str(input.status),
           resolution: str(input.resolution),
           resolvedBy: str(input.resolvedBy),
+        });
+
+      case 'retry_issue':
+        return api.assistantUpdateIssue(String(input.issueId ?? ''), {
+          status: 'open',
+          resolution: null,
+          resolvedBy: null,
         });
 
       case 'clear_issues':

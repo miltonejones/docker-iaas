@@ -1009,6 +1009,33 @@ const tools: Anthropic.Tool[] = [
       required: ["seconds"],
     },
   },
+  {
+    name: "get_consumer_status",
+    description: "Check the current status of the Dockyard issue consumer. Returns idle, processing (with issue details), errored, or no-auth. Use this to see what the consumer is doing right now.",
+    input_schema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "get_consumer_activity",
+    description: "List recent consumer activity — which issues were processed, the outcome (fixed/failed), and links to GitHub commits. Returns up to 10 recent entries.",
+    input_schema: {
+      type: "object",
+      properties: {
+        limit: { type: "number", description: "Max entries to return (1-20, default 10)" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "retry_issue",
+    description: "Re-open an issue so the consumer picks it up again. Use when the consumer failed to process an issue and you want to retry.",
+    input_schema: {
+      type: "object",
+      properties: {
+        issueId: { type: "string", description: "The issue ID to retry" },
+      },
+      required: ["issueId"],
+    },
+  },
   ...DATABASE_ASSISTANT_TOOLS,
   ...GITHUB_ASSISTANT_TOOLS,
 ];
@@ -1037,6 +1064,8 @@ const READ_ONLY_TOOLS = new Set([
   "get_container_exec_output",
   "list_issues",
   "get_issue",
+  "get_consumer_status",
+  "get_consumer_activity",
   ...DATABASE_ASSISTANT_READ_ONLY_TOOLS,
   ...GITHUB_ASSISTANT_READ_ONLY_TOOLS,
 ]);
@@ -1244,6 +1273,40 @@ async function executeReadOnlyTool(
       const row = getAssistantIssue(String(input.issueId ?? ""), userId);
       if (!row) return { error: `Issue "${input.issueId}" not found.` };
       return toIssueSummary(row);
+    }
+    case "get_consumer_status": {
+      const statusPath = path.join(process.cwd(), "scripts", "issue-logs", "consumer-status.json");
+      try {
+        const raw = fs.readFileSync(statusPath, "utf8");
+        return JSON.parse(raw);
+      } catch {
+        return { state: "unknown", error: "Status file not found — consumer may not have started yet." };
+      }
+    }
+    case "get_consumer_activity": {
+      const logDir = path.join(process.cwd(), "scripts", "issue-logs");
+      const limit = Math.min(Math.max(Number(input.limit) || 10, 1), 20);
+      try {
+        const files = fs.readdirSync(logDir)
+          .filter(f => f.endsWith(".md"))
+          .sort()
+          .reverse()
+          .slice(0, limit);
+        return files.map(f => {
+          const content = fs.readFileSync(path.join(logDir, f), "utf8");
+          const exitMatch = content.match(/\*\*Exit code:\*\* (\d+)/);
+          const summaryMatch = content.match(/\*\*Summary:\*\* (.+)/);
+          const idMatch = content.match(/# Issue (.+)/);
+          return {
+            id: idMatch?.[1]?.trim() || f,
+            summary: summaryMatch?.[1]?.trim() || "unknown",
+            exitCode: exitMatch ? parseInt(exitMatch[1]) : null,
+            outcome: exitMatch ? (exitMatch[1] === "0" ? "fixed" : "failed") : "unknown",
+          };
+        });
+      } catch {
+        return [];
+      }
     }
     case "list_container_files":
       return listContainerFiles(
