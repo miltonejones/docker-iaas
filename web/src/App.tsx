@@ -176,10 +176,21 @@ export function App() {
     sessionId?: string;
   } | null>(null);
   const PINNED_KEY = 'dockyard:assistant-pinned';
+  const SESSION_STORAGE_KEY = 'dockyard:assistant-session';
   const [assistantPinned, setAssistantPinned] = useState(() => localStorage.getItem(PINNED_KEY) === '1');
   const [assistantSessionId, setAssistantSessionId] = useState<string | undefined>(undefined);
   const [modalKey, setModalKey] = useState(0);
   const [createIssueOpen, setCreateIssueOpen] = useState(false);
+
+  // On mount, if the assistant was pinned before refresh and a session exists,
+  // restore the pinned panel so the conversation survives the refresh.
+  useEffect(() => {
+    if (!assistantPinned) return;
+    const savedId = localStorage.getItem(SESSION_STORAGE_KEY);
+    if (savedId) setAssistantModal({ sessionId: savedId });
+    // Run once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Persist pinned preference whenever it changes.
   useEffect(() => {
@@ -428,6 +439,7 @@ export function App() {
             key={modalKey}
             initialPrompt={assistantModal.prompt}
             initialSessionId={assistantModal.sessionId}
+            sessionStorageKey={SESSION_STORAGE_KEY}
             onClose={() => { setAssistantModal(null); setAssistantSessionId(undefined); }}
             onPin={() => setAssistantPinned(true)}
             onChanged={() => { refreshContainers(); emitRefresh(); }}
@@ -514,6 +526,7 @@ export function App() {
                 embedded
                 initialPrompt={assistantModal.prompt}
                 initialSessionId={assistantModal.sessionId ?? assistantSessionId}
+                sessionStorageKey={SESSION_STORAGE_KEY}
                 onClose={() => { setAssistantModal(null); setAssistantPinned(false); }}
                 onChanged={() => { refreshContainers(); emitRefresh(); }}
               />

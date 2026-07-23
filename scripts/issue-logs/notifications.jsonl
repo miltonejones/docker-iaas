@@ -13,3 +13,7 @@
 {"ts":"2026-07-23T00:50:01.456Z","level":"info","summary":"🟢 Consumer online","body":"API: http://console:4300\nCodebase: /app\nEC2: false"}
 {"ts":"2026-07-23T00:54:56.971Z","level":"info","summary":"🐛 Update footer slogan text to something cooler","body":"Category: missing_feature\nID: iss-1784768096448-sampbl"}
 {"ts":"2026-07-23T00:55:27.176Z","level":"info","summary":"✅ Fixed: Update footer slogan text to something cooler","body":""}
+{"ts":"2026-07-23T01:03:29Z","level":"info","summary":"✅ Deployed","body":"chore: remove data/previews from git tracking"}
+{"ts":"2026-07-23T01:03:29.264Z","level":"info","summary":"🟢 Consumer online","body":"API: http://console:4300\nCodebase: /app\nEC2: false"}
+{"ts":"2026-07-23T01:04:34.603Z","level":"info","summary":"🐛 Assistant sessions get truncated on page refresh","body":"Category: bug\nID: iss-1784768670253-yq0ylk"}
+{"ts":"2026-07-23T01:08:01.312Z","level":"info","summary":"✅ Fixed: Assistant sessions get truncated on page refresh","body":""}

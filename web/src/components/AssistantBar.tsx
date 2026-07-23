@@ -356,12 +356,18 @@ export function AssistantBar({
 
   // Save to localStorage on page unload so sessions survive refresh.
   // Async saveSession() is cancelled on unload; sync localStorage write completes.
+  // Must match the format expected by restoreFallback(): {id, name, state, at}.
   useEffect(() => {
     const onUnload = () => {
       if (log.length === 0 && rawMessages.length === 0) return;
       const key = fallbackKey();
-      const state = { messages: rawMessages, log, pending, resolved };
-      try { localStorage.setItem(key, JSON.stringify(state)); } catch {}
+      const payload = {
+        id: sessionIdRef.current,
+        name: sessionName || deriveSessionName(log),
+        state: { messages: rawMessages, log, pending, resolved } as AssistantSessionState,
+        at: Date.now(),
+      };
+      try { localStorage.setItem(key, JSON.stringify(payload)); } catch {}
     };
     window.addEventListener('beforeunload', onUnload);
     window.addEventListener('pagehide', onUnload);
@@ -369,7 +375,7 @@ export function AssistantBar({
       window.removeEventListener('beforeunload', onUnload);
       window.removeEventListener('pagehide', onUnload);
     };
-  }, [log, rawMessages, pending, resolved]);
+  }, [log, rawMessages, pending, resolved, sessionName]);
 
   function resetToNewSession() {
     if (sessionStorageKey) localStorage.removeItem(sessionStorageKey);
@@ -413,33 +419,41 @@ export function AssistantBar({
   }
 
   /** Try to restore session state from a localStorage fallback written when
-   *  a server save failed.  Returns true if a fallback was found and applied. */
+   *  a server save failed or on beforeunload.  Returns true if a fallback was found and applied.
+   *  Tries the explicit session-id key first; if that misses, also tries the
+   *  sessionStorageKey-based key (used by beforeunload when a session ref is
+   *  available). */
   function restoreFallback(forId?: string): boolean {
-    const key = forId ? `dockyard:session-fallback:${forId}` : fallbackKey();
-    const raw = localStorage.getItem(key);
-    if (!raw) return false;
-    try {
-      const fb = JSON.parse(raw) as {
-        id: string | null;
-        name: string;
-        state: AssistantSessionState;
-        at: number;
-      };
-      sessionIdRef.current = fb.id;
-      setSessionId(fb.id);
-      setSessionName(fb.name);
-      titleGeneratedRef.current = true;
-      setLog(fb.state.log ?? []);
-      setRawMessages(fb.state.messages ?? []);
-      setPending(fb.state.pending ?? []);
-      setEdits(Object.fromEntries((fb.state.pending ?? []).map((p) => [p.id, { ...p.input }])));
-      setResolved(fb.state.resolved ?? []);
-      if (fb.id && sessionStorageKey) localStorage.setItem(sessionStorageKey, fb.id);
-      return true;
-    } catch {
-      localStorage.removeItem(key);
-      return false;
+    const candidates = forId
+      ? [`dockyard:session-fallback:${forId}`, fallbackKey()]
+      : [fallbackKey()];
+    for (const key of candidates) {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      try {
+        const fb = JSON.parse(raw) as {
+          id: string | null;
+          name: string;
+          state: AssistantSessionState;
+          at: number;
+        };
+        sessionIdRef.current = fb.id;
+        setSessionId(fb.id);
+        setSessionName(fb.name);
+        titleGeneratedRef.current = true;
+        setLog(fb.state.log ?? []);
+        setRawMessages(fb.state.messages ?? []);
+        setPending(fb.state.pending ?? []);
+        setEdits(Object.fromEntries((fb.state.pending ?? []).map((p) => [p.id, { ...p.input }])));
+        setResolved(fb.state.resolved ?? []);
+        if (fb.id && sessionStorageKey) localStorage.setItem(sessionStorageKey, fb.id);
+        return true;
+      } catch {
+        localStorage.removeItem(key);
+        // try next candidate
+      }
     }
+    return false;
   }
 
   async function toggleSessionsList() {
