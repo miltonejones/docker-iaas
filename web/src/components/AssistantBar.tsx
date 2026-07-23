@@ -508,10 +508,14 @@ export function AssistantBar({
 
   // ── TTS / voice helpers ──────────────────────────────────────────────
 
+  // Stable ref so the voiceschanged listener always calls the latest
+  // loadVoices, avoiding a stale closure over selectedVoiceUri.
+  const loadVoicesRef = useRef<() => void>(() => {});
+
   /** Load the list of available synthesis voices, persisting the user's
    *  last-chosen voice across mounts via localStorage.  Browsers load voices
    *  asynchronously — the `voiceschanged` event fires when the list is ready. */
-  function loadVoices() {
+  loadVoicesRef.current = () => {
     const synth = window.speechSynthesis;
     const voices = synth.getVoices();
     if (voices.length === 0) return;
@@ -519,21 +523,26 @@ export function AssistantBar({
     const stored = localStorage.getItem('dockyard:tts-voice');
     if (stored && voices.some((v) => v.voiceURI === stored)) {
       setSelectedVoiceUri(stored);
-    } else if (!selectedVoiceUri && voices.length > 0) {
-      // Default to the first voice in the user's locale, or the first voice overall.
-      const lang = navigator.language;
-      const match = voices.find((v) => v.lang.startsWith(lang)) ?? voices[0];
-      setSelectedVoiceUri(match.voiceURI);
+    } else {
+      // No stored preference — default to the first voice in the user's
+      // locale, or the first voice overall.
+      setSelectedVoiceUri((prev) => {
+        if (prev) return prev; // keep any already-loaded selection
+        const lang = navigator.language;
+        const match = voices.find((v) => v.lang.startsWith(lang)) ?? voices[0];
+        return match.voiceURI;
+      });
     }
-  }
+  };
+
+  const loadVoices = () => loadVoicesRef.current();
 
   // Hydrate voices on mount and whenever the browser signals a change.
   useEffect(() => {
     loadVoices();
-    const synth = window.speechSynthesis;
-    synth.addEventListener('voiceschanged', loadVoices);
-    return () => synth.removeEventListener('voiceschanged', loadVoices);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const handler = () => loadVoicesRef.current();
+    window.speechSynthesis.addEventListener('voiceschanged', handler);
+    return () => window.speechSynthesis.removeEventListener('voiceschanged', handler);
   }, []);
 
   /** Speak the assistant message at the given log index. Strips markdown
@@ -588,6 +597,12 @@ export function AssistantBar({
     };
 
     utteranceRef.current = utterance;
+
+    // Chrome has a long-standing bug where speechSynthesis can be left in a
+    // paused state after cancel(), causing speak() to queue the utterance
+    // silently without ever playing it.  Resuming right before speak()
+    // ensures audio actually reaches the user.
+    synth.resume();
     synth.speak(utterance);
   }
 
