@@ -1,0 +1,27 @@
+FROM node:22-alpine
+
+# Git for commit/push. ca-certificates for HTTPS to GitHub.
+RUN apk add --no-cache git ca-certificates
+
+# Trust the bind-mounted /app/.git directory.
+# --system writes to /etc/gitconfig so all users (including runtime UID 1000) see it.
+# BUILD-FORCE: 2026-07-23T03:26:00Z
+RUN git config --system --add safe.directory /app
+
+# Claude Code CLI (talks to DeepSeek via Anthropic-compatible API)
+RUN npm install -g @anthropic-ai/claude-code
+
+# Use the existing `node` user (UID 1000 in node:22-alpine) — matches host ec2-user.
+# docker-compose.yml sets user: "1000:1000" so the runtime UID matches file ownership.
+
+WORKDIR /app
+
+# Full codebase — owned by UID 1000 to match the host ec2-user.
+COPY --chown=1000:1000 package.json package-lock.json ./
+COPY --chown=1000:1000 scripts/ ./scripts/
+COPY --chown=1000:1000 web/ ./web/
+COPY --chown=1000:1000 server/ ./server/
+COPY --chown=1000:1000 relay/ ./relay/
+COPY --chown=1000:1000 .github/ ./.github/
+COPY --chown=1000:1000 README.md Caddyfile docker-compose.yml Dockerfile ./
+COPY --chown=1000:1000 testing/ ./testing/

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+server/dist/
+web/dist/
+relay/dist/
+data/
+*.log
+.env
+.DS_Store
+scripts/issue-logs/
