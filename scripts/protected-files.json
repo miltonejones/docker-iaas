@@ -1,0 +1,7 @@
+[
+  "Dockerfile.consumer",
+  "docker-compose.yml",
+  ".gitignore",
+  ".github/workflows/deploy.yml",
+  "scripts/issue-consumer.mjs"
+]

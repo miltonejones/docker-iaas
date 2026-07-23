@@ -4,6 +4,10 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 // Point the consumer at fake endpoints and a no-op "CLI" (`true` exits 0
 // immediately) *before* importing the module, since these are read once
@@ -18,9 +22,20 @@ process.env.DEEPSEEK_CMD = "true";
 delete process.env.EC2_API;
 delete process.env.EC2_HOST;
 
+// Point the consumer at a throwaway sandbox repo. consumeOne fires
+// pushToGitHub (fire-and-forget), which runs real git checkout/add/commit/push
+// against CODEBASE_PATH — without this it would mutate the actual repo (and
+// revert protected files) whenever these tests run, including in CI.
+const SANDBOX = fs.mkdtempSync(path.join(os.tmpdir(), "consumer-sandbox-"));
+try { execSync("git init -q", { cwd: SANDBOX }); } catch { /* git may be unavailable */ }
+process.env.CODEBASE_PATH = SANDBOX;
+process.on("exit", () => { try { fs.rmSync(SANDBOX, { recursive: true, force: true }); } catch {} });
+
 const {
   updateIssueOnServer,
   consumeOne,
+  revertAndStageProtected,
+  PROTECTED,
   setAuthHeaderForTest,
 } = await import("./issue-consumer.mjs");
 
@@ -225,4 +240,99 @@ test("updateIssueOnServer catches network errors and still logs the issue id", a
     ),
     "expected the catch block to log the issue id and API base on network failure",
   );
+});
+
+// ---------------------------------------------------------------------------
+// Protected-file enforcement (revertAndStageProtected)
+//
+// The headline safety fix: a model edit to a protected file must never land in
+// a commit. These tests exercise the real production helper against a throwaway
+// git repo, so the safety property is verified end-to-end (revert + staging).
+// ---------------------------------------------------------------------------
+
+/** Create an isolated temp git repo with the given files committed. Returns the
+ *  repo path; the caller is responsible for cleanup via fs.rmSync. */
+function makeTempRepo(files) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "consumer-protect-"));
+  execSync("git init -q", { cwd: dir });
+  execSync("git config user.email test@dockyard.test", { cwd: dir });
+  execSync("git config user.name Test", { cwd: dir });
+  for (const [rel, content] of Object.entries(files)) {
+    const full = path.join(dir, rel);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    fs.writeFileSync(full, content);
+  }
+  execSync("git add -A && git commit -q -m init", { cwd: dir });
+  return dir;
+}
+
+test("revertAndStageProtected keeps a protected-file edit out of the commit", () => {
+  const dir = makeTempRepo({
+    "docker-compose.yml": "orig-compose\n",
+    "app.js": "orig-app\n",
+  });
+  try {
+    // Simulate the model editing BOTH a protected file and a normal file.
+    fs.writeFileSync(path.join(dir, "docker-compose.yml"), "MALICIOUS-EDIT\n");
+    fs.writeFileSync(path.join(dir, "app.js"), "legit-fix\n");
+
+    revertAndStageProtected(dir, ["docker-compose.yml"]);
+
+    const staged = execSync("git diff --cached --name-only", { cwd: dir, encoding: "utf8" }).trim();
+    assert.equal(staged, "app.js", "only the normal file should be staged");
+
+    // The protected file's working-tree edit must be reverted.
+    assert.equal(fs.readFileSync(path.join(dir, "docker-compose.yml"), "utf8"), "orig-compose\n");
+
+    // And after committing, the protected file in the commit must be unchanged.
+    execSync("git commit -q -m fix", { cwd: dir });
+    assert.equal(
+      execSync("git show HEAD:docker-compose.yml", { cwd: dir, encoding: "utf8" }),
+      "orig-compose\n",
+      "the malicious edit must never land in a commit",
+    );
+    assert.equal(execSync("git show HEAD:app.js", { cwd: dir, encoding: "utf8" }), "legit-fix\n");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("revertAndStageProtected excludes even a newly-created protected file", () => {
+  const dir = makeTempRepo({ "app.js": "orig-app\n" });
+  try {
+    // Model creates a brand-new file at a protected path (untracked) plus a
+    // legit change. `git checkout --` can't revert an untracked file, so this
+    // proves the :(exclude) pathspec is the independent safety net.
+    fs.writeFileSync(path.join(dir, "docker-compose.yml"), "SNEAKY-NEW\n");
+    fs.writeFileSync(path.join(dir, "app.js"), "legit-fix\n");
+
+    revertAndStageProtected(dir, ["docker-compose.yml"]);
+
+    const staged = execSync("git diff --cached --name-only", { cwd: dir, encoding: "utf8" }).trim();
+    assert.equal(staged, "app.js", "the untracked protected file must not be staged");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("revertAndStageProtected stages normal changes untouched when no protected file is edited", () => {
+  const dir = makeTempRepo({ "app.js": "orig-app\n", "docker-compose.yml": "orig-compose\n" });
+  try {
+    fs.writeFileSync(path.join(dir, "app.js"), "legit-fix\n");
+
+    revertAndStageProtected(dir, ["docker-compose.yml"]);
+
+    const staged = execSync("git diff --cached --name-only", { cwd: dir, encoding: "utf8" }).trim();
+    assert.equal(staged, "app.js");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the shared PROTECTED list is loaded from protected-files.json", () => {
+  // Guards against the enforcement silently no-opping if the file goes missing.
+  assert.ok(Array.isArray(PROTECTED) && PROTECTED.length > 0, "PROTECTED must be non-empty");
+  for (const expected of ["scripts/issue-consumer.mjs", "docker-compose.yml", ".gitignore"]) {
+    assert.ok(PROTECTED.includes(expected), `PROTECTED should include ${expected}`);
+  }
 });
