@@ -1,0 +1,4 @@
+{"ts":"2026-07-23T00:34:36.009Z","level":"info","summary":"🟢 Consumer online","body":"API: http://console:4300\nCodebase: /app\nEC2: false"}
+{"ts":"2026-07-23T00:41:07.090Z","level":"info","summary":"🟢 Consumer online","body":"API: http://console:4300\nCodebase: /app\nEC2: false"}
+{"ts":"2026-07-23T00:41:07.246Z","level":"info","summary":"🐛 [TEST] Hello World — consumer smoke test","body":"Category: general\nID: iss-1784767171194-phdaat"}
+{"ts":"2026-07-23T00:41:59.841Z","level":"info","summary":"✅ Fixed: [TEST] Hello World — consumer smoke test","body":""}
