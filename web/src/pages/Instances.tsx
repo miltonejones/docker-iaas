@@ -6,6 +6,7 @@ import { Gallery } from '../components/Gallery';
 import { Instances } from '../components/Instances';
 import { InstanceDetail } from '../components/InstanceDetail';
 import { LaunchModal } from '../components/LaunchModal';
+import { useConfirm } from "../components/ConfirmContext";
 
 interface Props {
   containers: Container[];
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export function InstancesPage({ containers, presets, busy, onChanged }: Props) {
+  const { showAlert } = useConfirm();
   const navigate = useNavigate();
   const location = useLocation();
   const { id } = useParams<{ id: string }>();
@@ -75,7 +77,7 @@ export function InstancesPage({ containers, presets, busy, onChanged }: Props) {
                 replaceId: detail.id,
               });
             } else {
-              alert('No matching preset found for this container. Remove and re-launch manually.');
+              showAlert('No matching preset found for this container. Remove and re-launch manually.');
             }
           }}
         />
