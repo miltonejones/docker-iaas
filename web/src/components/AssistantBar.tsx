@@ -802,9 +802,12 @@ export function AssistantBar({
 
   // Load an explicitly selected session or the last saved embedded session.
   // An explicit session takes precedence over the per-function stored session.
+  // When an initialPrompt is provided (e.g. from the toolbar search box), skip
+  // loading from localStorage so a new query doesn't pull in old session state
+  // — that would overwrite the fresh conversation once the async load completes.
   useEffect(() => {
     const savedSessionId = initialSessionId ?? (
-      sessionStorageKey ? localStorage.getItem(sessionStorageKey) : null
+      sessionStorageKey && !initialPrompt ? localStorage.getItem(sessionStorageKey) : null
     );
     if (!savedSessionId) return;
     const sessionToLoad = savedSessionId;
