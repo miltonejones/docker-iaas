@@ -344,11 +344,15 @@ async function pushToGitHub(issue) {
 
   // Commit locally first so copilot's changes are staged, then pull --rebase
   // to integrate any new commits from the remote.
+  // Pass commit message via stdin (-F -) to avoid shell escaping issues
+  // with quotes, em dashes, and other special characters.
   try {
-    execSync(`git add -A && git commit -m "fix: ${issue.summary}"`, {
+    const msg = `fix: ${issue.summary}`;
+    execSync(`git add -A ':!data/github-repos' && git commit -F -`, {
       cwd: CODEBASE_PATH,
       encoding: "utf8",
       timeout: 10_000,
+      input: msg,
     });
   } catch (err) {
     if (err.message.includes("nothing to commit")) {
