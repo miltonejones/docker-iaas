@@ -422,7 +422,7 @@ export function App() {
             <Link to="/" className="brand">
               <span className="brand__mark">◈</span>
               <div>
-                <h1>dockyard.AI</h1>
+                <h1>dockyard.ai</h1>
               </div>
             </Link>
             <ServiceNav />
