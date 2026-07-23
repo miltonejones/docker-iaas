@@ -122,6 +122,7 @@ Rules:
 - Database writes, migrations, grants, backups, restores, and saved-connection create/update/delete/test actions are also confirmed by the user before client execution, so call the appropriate tool directly instead of asking for a second textual confirmation.
 - For GitHub: use list_github_repo_files and read_github_file to browse or read one repo's content (public repos need no token; private repos need a configured GitHub token and fail with a clear error otherwise). When the user wants to pull an ENTIRE repo (not just one file) onto Dockyard, use pull_github_repo_to_bucket (bucket must already exist) or pull_github_repo_to_container (container must be running) — these download the whole repo tree and write every file, preserving folder structure; do not try to read and re-write each file individually for a whole-repo pull. Pass clean: true to delete the destination first, ensuring stale files from a previous pull don't linger. To commit and push changes back to GitHub, use commit_and_push_github_files with the complete new content of every changed file — it clones (or refreshes an existing local clone), commits, and pushes to the given branch (or the repo's default branch); this always requires a configured GitHub token. All four mutating GitHub tools (the two pull tools and commit_and_push_github_files) require user confirmation — call them directly rather than asking a second time in text.
 - When you need to pause between polling operations (e.g. waiting for a container to start, a build to finish, a database backup to complete, or a resource to become available), call wait with the number of seconds to pause (1-60) and an optional short reason describing what you're waiting for. The server will sleep for that duration and show a countdown progress bar to the user. This runs automatically with no confirmation needed. When polling the same resource repeatedly, you MUST call wait between every check. Calling the same read-only tool twice within 10 seconds without an intervening wait is forbidden — never fire rapid back-to-back polls of the same tool.
+	- Dockyard runs an issue consumer: an auto-fix bot that continuously polls the issue store for open issues, applies Claude Code to diagnose and fix them against this codebase, and pushes the resulting commits to GitHub. When you log an issue via report_issue, the consumer picks it up automatically (usually within seconds). After reporting an issue, proactively mention the consumer and offer to check its progress: call get_consumer_status to see whether the consumer is currently idle or actively working on a specific issue, and get_consumer_activity to review recent fix attempts and their outcomes (including GitHub commit links for successful fixes). If the consumer failed to process an issue (e.g. a timeout or an API error), use retry_issue to re-open it so the consumer picks it up on the next poll cycle. The feedback loop closes when an issue transitions to "resolved" with a linked commit. The user may not realize this happened unless you surface it.
 	- When done, give a short (1-2 sentence) confirmation of what was done — no more.`;
 
 const tools: Anthropic.Tool[] = [
@@ -1036,11 +1037,6 @@ const tools: Anthropic.Tool[] = [
       required: ["issueId"],
     },
   },
-  {
-    name: "check_consumer_health",
-    description: "Run a full health check on the consumer: status file, DB access, API reachability, Claude availability, git config. Returns pass/fail for each check.",
-    input_schema: { type: "object", properties: {}, required: [] },
-  },
   ...DATABASE_ASSISTANT_TOOLS,
   ...GITHUB_ASSISTANT_TOOLS,
 ];
@@ -1071,7 +1067,6 @@ const READ_ONLY_TOOLS = new Set([
   "get_issue",
   "get_consumer_status",
   "get_consumer_activity",
-  "check_consumer_health",
   ...DATABASE_ASSISTANT_READ_ONLY_TOOLS,
   ...GITHUB_ASSISTANT_READ_ONLY_TOOLS,
 ]);
@@ -1288,51 +1283,6 @@ async function executeReadOnlyTool(
       } catch {
         return { state: "unknown", error: "Status file not found — consumer may not have started yet." };
       }
-    }
-    case "check_consumer_health": {
-      const results: Record<string, any> = {};
-      const { execSync } = (await import("node:child_process"));
-      // 1. Status file
-      const statusPath = path.join(process.cwd(), "scripts", "issue-logs", "consumer-status.json");
-      try {
-        const raw = fs.readFileSync(statusPath, "utf8");
-        results.status = JSON.parse(raw);
-      } catch {
-        results.status = { state: "unknown" };
-      }
-      // 2. DB accessible?
-      try {
-        const dbPath = path.join(process.cwd(), "data", "iaas.db");
-        fs.accessSync(dbPath, fs.constants.R_OK);
-        results.db = { accessible: true, size: fs.statSync(dbPath).size };
-      } catch {
-        results.db = { accessible: false };
-      }
-      // 3. Auth token valid? (quick API check)
-      try {
-        const res = await fetch(`http://127.0.0.1:${PORT}/api/auth/me`, {
-          headers: { Authorization: "Bearer test" },
-          signal: AbortSignal.timeout(3000),
-        });
-        results.api = { reachable: true, status: res.status };
-      } catch {
-        results.api = { reachable: false };
-      }
-      // 4. Claude executable?
-      try {
-        const claudePath = execSync("which claude 2>/dev/null || command -v claude 2>/dev/null || echo /usr/local/bin/claude", { encoding: "utf8", timeout: 3000 }).trim();
-        results.claude = { path: claudePath };
-      } catch {
-        results.claude = { path: "not found" };
-      }
-      // 5. Git working?
-      try {
-        execSync("git -C /app log --oneline -1 2>/dev/null", { encoding: "utf8", timeout: 3000 }).trim();
-        results.git = { working: true };
-      } catch {
-        results.git = { working: false };
-      }
-      return results;
     }
     case "get_consumer_activity": {
       const logDir = path.join(process.cwd(), "scripts", "issue-logs");

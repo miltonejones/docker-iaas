@@ -472,15 +472,11 @@ async function consumeOne() {
   writeStatus("processing", { id: issue.id, summary: issue.summary });
   notify(`🐛 ${issue.summary}`, `Category: ${issue.category || "general"}\nID: ${issue.id}`);
 
-  // Mark issue as in_progress so the UI shows it's being worked on.
-  updateIssueOnServer(issue, "in_progress").catch(() => {});
-
   const prompt = formatPrompt(issue);
   const file = logFilename(issue.id);
 
   let stdout = "";
   let stderr = "";
-  let killTimer; // declared here so clearTimeout works in the close handler
 
   await new Promise((resolve) => {
     // copilot/claude -p runs non-interactively; no TTY needed.
@@ -547,26 +543,14 @@ async function consumeOne() {
         );
         pushToGitHub(issue); // fire-and-forget — CI handles the deploy
       } else {
-        const wasKilled = code === null;
-        const errMsg = wasKilled
-          ? "Claude timed out after 10 minutes"
-          : (stderr?.slice(0, 200) || `Exit code: ${code}`);
-        log(`Copilot exited with code ${code} for issue ${issue.id}${wasKilled ? " (killed by timeout)" : ""}`);
+        log(`Copilot exited with code ${code} for issue ${issue.id}`);
+        const errMsg = stderr?.slice(0, 200) || `Exit code: ${code}`;
         writeStatus("errored", { id: issue.id, summary: issue.summary }, errMsg);
-        notify(`❌ Failed: ${issue.summary}`, errMsg);
+        notify(`❌ Failed: ${issue.summary}`, `Exit code: ${code}`);
         if (stderr && !stdout) log(`stderr: ${stderr.slice(0, 500)}`);
       }
-      clearTimeout(killTimer);
       resolve();
     });
-
-    // Kill Claude if it runs longer than 10 minutes.
-    killTimer = setTimeout(() => {
-      log(`Claude timeout — killing process for issue ${issue.id}`);
-      child.kill("SIGTERM");
-      // Force kill if still alive after 5 more seconds.
-      setTimeout(() => { try { child.kill("SIGKILL"); } catch {} }, 5000);
-    }, 10 * 60 * 1000);
 
     child.once("error", (err) => {
       log(`Failed to start DeepSeek: ${err.message}`);
