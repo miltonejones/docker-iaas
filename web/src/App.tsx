@@ -113,7 +113,9 @@ function Breadcrumbs() {
   const gatewayName = pathname.match(/^\/gateway\/(.+)$/)?.[1];
   const bucketName = pathname.match(/^\/buckets\/(.+)$/)?.[1];
   const databaseId = pathname.match(/^\/databases\/(.+)$/)?.[1];
+  const issueId = pathname.match(/^\/issues\/(.+)$/)?.[1];
   const [databaseName, setDatabaseName] = useState<string | null>(null);
+  const [issueLabel, setIssueLabel] = useState<string | null>(null);
 
   useEffect(() => {
     if (!databaseId || databaseId === 'new') {
@@ -125,6 +127,17 @@ function Breadcrumbs() {
       .then((list) => setDatabaseName(list.find((connection) => connection.id === databaseId)?.name ?? null))
       .catch(() => setDatabaseName(null));
   }, [databaseId]);
+
+  useEffect(() => {
+    if (!issueId) {
+      setIssueLabel(null);
+      return;
+    }
+    api
+      .assistantGetIssue(issueId)
+      .then((issue) => setIssueLabel(issue.summary ?? issue.id))
+      .catch(() => setIssueLabel(issueId));
+  }, [issueId]);
 
   const detailLabel = functionId
     ? (functionId === 'new' ? 'New function' : functionName ?? 'Function')
@@ -138,7 +151,9 @@ function Breadcrumbs() {
             ? bucketName
             : databaseId
               ? (databaseId === 'new' ? 'New connection' : databaseName ?? 'Connection')
-              : null;
+              : issueId
+                ? (issueLabel ?? issueId)
+                : null;
 
   if (pathname === '/') return null;
 
