@@ -5,6 +5,7 @@ RUN apk add --no-cache git ca-certificates
 
 # Trust the bind-mounted /app/.git directory.
 # --system writes to /etc/gitconfig so all users (including runtime UID 1000) see it.
+# BUILD-FORCE: 2026-07-23T03:26:00Z
 RUN git config --system --add safe.directory /app
 
 # Claude Code CLI (talks to DeepSeek via Anthropic-compatible API)
