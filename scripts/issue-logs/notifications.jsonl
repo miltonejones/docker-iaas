@@ -2,3 +2,7 @@
 {"ts":"2026-07-23T03:20:04Z","level":"info","summary":"✅ Deployed","body":"fix: untrack issue-logs from git to stop stale notification replays"}
 {"ts":"2026-07-23T03:22:24.467Z","level":"info","summary":"🐛 Assistant has no voice/audio output capability","body":"Category: missing_feature\nID: iss-1784776942644-pe1l49"}
 {"ts":"2026-07-23T03:25:49.697Z","level":"info","summary":"✅ Fixed: Assistant has no voice/audio output capability","body":""}
+{"ts":"2026-07-23T03:28:38.240Z","level":"info","summary":"🟢 Consumer online","body":"API: http://console:4300\nCodebase: /app\nEC2: false"}
+{"ts":"2026-07-23T03:28:38Z","level":"info","summary":"✅ Deployed","body":"fix: Assistant has no voice/audio output capability"}
+{"ts":"2026-07-23T03:30:28.619Z","level":"info","summary":"🐛 Assistant has no voice/audio output capability","body":"Category: missing_feature\nID: iss-1784776942644-pe1l49"}
+{"ts":"2026-07-23T03:32:14.342Z","level":"info","summary":"✅ Fixed: Assistant has no voice/audio output capability","body":""}
