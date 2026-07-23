@@ -77,6 +77,10 @@ jobs:
             set -e
             cd /home/ec2-user/docker-iaas
             COMMIT_MSG=$(git log -1 --format=%s)
+            # Fix permissions on data/ — container processes write as root
+            # inside the container which maps to host UIDs that may not be
+            # ec2-user, so git reset --hard can fail with Permission denied.
+            sudo chown -R ec2-user:ec2-user data/ 2>/dev/null || true
             # Fetch and reset hard — the consumer may have local edits
             # that haven't been pushed yet. GitHub is the source of truth.
             git fetch origin main
