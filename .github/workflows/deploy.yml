@@ -31,15 +31,21 @@ jobs:
           FAILED=false
           for f in "${PROTECTED[@]}"; do
             if ! git diff --quiet HEAD~1 HEAD -- "$f"; then
-              echo "❌ PROTECTED FILE CHANGED: $f"
+              echo "❌ PROTECTED FILE CHANGED: $f — recovering from previous commit"
+              git checkout HEAD~1 -- "$f"
               FAILED=true
             fi
           done
           if $FAILED; then
-            echo "::error::Consumer modified protected files — deploy blocked. Revert the commit and push again."
-            exit 1
+            git config user.name "Dockyard Guard"
+            git config user.email "guard@dockyard-ai.com"
+            git add "${PROTECTED[@]}"
+            git commit -m "fix: auto-recover protected files damaged by consumer" || true
+            git push origin main
+            echo "::warning::Protected files were damaged and auto-recovered. Deploy will continue with recovered files."
+          else
+            echo "✅ Protected files intact"
           fi
-          echo "✅ Protected files intact"
 
       - name: Deploy via SSH
         id: deploy
