@@ -63,10 +63,20 @@ that picks up filed issues and fixes them autonomously:
 - **Merge conflict handling** — if a fix can't merge, it's flagged for manual
   review (⚠️) instead of being silently dropped.
 
-The consumer runs as a protected Docker container (`issue-consumer-v2`) inside
+The consumer runs as a protected Docker container (`dockyard-consumer-ctr`) inside
 Dockyard itself: Node 22 Alpine, non-root user, with Claude Code and DeepSeek
-v4-pro. It clones the repo from GitHub as its source of truth and uses a
-personal access token to push fixes back.
+v4-pro. It uses the GitHub repo as its source of truth and pushes fixes back
+via HTTPS with a personal access token.
+
+**Do not manually restart, rebuild, or SSH-tweak the consumer.** If it's broken,
+file an issue and let the pipeline fix it.
+
+**Protected files** — the consumer must *never* edit these; the assistant prompt
+explicitly forbids it:
+- `scripts/issue-consumer.mjs` — the consumer itself
+- `Dockerfile.consumer` — the consumer's container build
+- `docker-compose.yml` — the deployment configuration
+- `.gitignore` — prevents logs and data from being committed
 
 ### Notification system
 
@@ -134,40 +144,20 @@ disk, not the container overlay).
 
 ## Deploying to the Dockyard EC2 host
 
+**Push to `main`. That's it.** GitHub Actions handles the deploy — never SSH
+into EC2 manually.
+
+```bash
+git push origin main   # CI → git pull → docker compose up --build
+```
+
+The workflow file is `.github/workflows/deploy.yml`. It fetches and resets to
+`origin/main`, rebuilds all services, and writes a success/failure notification
+to `scripts/issue-logs/notifications.jsonl`.
+
 The production host is `ec2-user@54.162.111.41`, accessed with
-`~/.ssh/dockyard-key.pem`. Its application directory is
-`/home/ec2-user/docker-iaas`. It is a synchronized source directory, not a
-Git checkout.
-
-From the repository root, deploy committed source while retaining the
-server-only configuration, persistent data, and credentials:
-
-```bash
-git push origin main
-rsync -az --delete \
-  --exclude '.git/' \
-  --exclude 'node_modules/' \
-  --exclude 'data/' \
-  --exclude '.env' \
-  --exclude '.claude/' \
-  -e 'ssh -i ~/.ssh/dockyard-key.pem' \
-  ./ ec2-user@54.162.111.41:/home/ec2-user/docker-iaas/
-ssh -i ~/.ssh/dockyard-key.pem ec2-user@54.162.111.41 \
-  'cd /home/ec2-user/docker-iaas && docker compose up --build -d --remove-orphans && docker image prune -f'
-```
-
-`data/` holds persistent Dockyard/MinIO state; `.env` selects the live
-provider and key-file locations; `.claude/` contains host-local assistant
-state. Do not overwrite any of them during a release. Caddy owns ports 80 and
-443 and proxies `dockyard-ai.com` to the localhost-only `console` service.
-
-Verify the rollout:
-
-```bash
-ssh -i ~/.ssh/dockyard-key.pem ec2-user@54.162.111.41 \
-  'cd /home/ec2-user/docker-iaas && docker compose ps && curl -fsS http://127.0.0.1:4300/api/system/ping'
-curl -fsSI https://dockyard-ai.com/
-```
+`~/.ssh/dockyard-key.pem`. Caddy owns ports 80/443 and proxies
+`dockyard-ai.com` to the `console` service.
 
 ## Configuration
 
