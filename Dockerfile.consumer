@@ -3,8 +3,9 @@ FROM node:22-alpine
 # Git for commit/push. ca-certificates for HTTPS to GitHub.
 RUN apk add --no-cache git ca-certificates
 
-# Trust the bind-mounted /app/.git directory (owned by host ec2-user).
-RUN git config --global --add safe.directory /app
+# Trust the bind-mounted /app/.git directory (required when container UID ≠ host UID).
+# System-level config applies to all users (the container runs as non-root).
+RUN git config --system --add safe.directory /app
 
 # Claude Code CLI (talks to DeepSeek via Anthropic-compatible API)
 RUN npm install -g @anthropic-ai/claude-code
