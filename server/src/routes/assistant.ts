@@ -1037,6 +1037,11 @@ const tools: Anthropic.Tool[] = [
       required: ["issueId"],
     },
   },
+  {
+    name: "check_consumer_health",
+    description: "Run a full health check on the consumer: status file, DB access, API reachability, Claude availability, git config. Returns pass/fail for each.",
+    input_schema: { type: "object", properties: {}, required: [] },
+  },
   ...DATABASE_ASSISTANT_TOOLS,
   ...GITHUB_ASSISTANT_TOOLS,
 ];
@@ -1067,6 +1072,7 @@ const READ_ONLY_TOOLS = new Set([
   "get_issue",
   "get_consumer_status",
   "get_consumer_activity",
+  "check_consumer_health",
   ...DATABASE_ASSISTANT_READ_ONLY_TOOLS,
   ...GITHUB_ASSISTANT_READ_ONLY_TOOLS,
 ]);
@@ -1308,6 +1314,34 @@ async function executeReadOnlyTool(
       } catch {
         return [];
       }
+    }
+    case "check_consumer_health": {
+      const results: Record<string, unknown> = {};
+      const { execSync } = await import("node:child_process");
+      // status file
+      const sp = path.join(process.cwd(), "scripts", "issue-logs", "consumer-status.json");
+      try { results.status = JSON.parse(fs.readFileSync(sp, "utf8")); } catch { results.status = { state: "unknown" }; }
+      // db
+      try {
+        const db = path.join(process.cwd(), "data", "iaas.db");
+        fs.accessSync(db, fs.constants.R_OK);
+        results.db = { ok: true, size: fs.statSync(db).size };
+      } catch { results.db = { ok: false }; }
+      // api
+      try {
+        const r = await fetch(`http://127.0.0.1:${process.env.PORT || 4300}/api/auth/me`, { signal: AbortSignal.timeout(3000) });
+        results.api = { reachable: true, status: r.status };
+      } catch { results.api = { reachable: false }; }
+      // claude
+      try {
+        results.claude = { path: execSync("command -v claude || which claude 2>/dev/null || echo not-found", { encoding: "utf8", timeout: 3000 }).trim() };
+      } catch { results.claude = { path: "not-found" }; }
+      // git
+      try {
+        execSync("git -C . log --oneline -1 2>/dev/null", { encoding: "utf8", timeout: 3000 });
+        results.git = { ok: true };
+      } catch { results.git = { ok: false }; }
+      return results;
     }
     case "list_container_files":
       return listContainerFiles(
