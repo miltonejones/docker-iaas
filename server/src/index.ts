@@ -24,71 +24,83 @@ import { initDb } from './db.js';
 import { connectToRelay } from './relay.js';
 import { ensureMinio } from './minio.js';
 
-// Initialize the SQLite database.
-initDb();
+/** Build the Express application (without starting the listener).  Tests can
+ *  call this directly to mount the app in supertest without binding a port. */
+export function createApp(): express.Express {
+  // Initialize the SQLite database.
+  initDb();
+
+  const app = express();
+  app.use(cors());
+
+  // Gateway data-plane routes and bucket object uploads/downloads are mounted
+  // before the JSON body parser — otherwise a request with
+  // Content-Type: application/json (e.g. uploading a manifest.json) would get
+  // its body consumed by express.json() before the raw-body route handler
+  // ever sees it.
+  app.use('/gw', gatewayProxyRouter);
+  app.use('/api/buckets', requireAuth, bucketsRouter);
+
+  app.use(express.json({ limit: '2mb' }));
+
+  app.use('/api/containers', requireAuth, containersRouter);
+  app.use('/api/images', requireAuth, imagesRouter);
+  app.use('/api/system', systemRouter);
+  app.use('/api/lambda', requireAuth, lambdaRouter);
+  app.use('/api/gateway', requireAuth, gatewayRouter);
+  app.use('/api/volumes', requireAuth, volumesRouter);
+  app.use('/api/host-files', requireAuth, hostFilesRouter);
+  app.use('/api/host-builds', requireAuth, hostBuildsRouter);
+  app.use('/api/databases', requireAuth, databasesRouter);
+  app.use('/api/github', githubRouter);
+  app.use('/api/assistant', requireAuth, assistantRouter);
+  app.use('/api/notifications', optionalAuth, notificationsRouter);
+  app.use('/api/auth', authRouter);
+
+  // Serve the built frontend in production (web/dist), if present.
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const webDist = path.resolve(__dirname, '../../web/dist');
+  if (fs.existsSync(webDist)) {
+    app.use(express.static(webDist));
+    app.use((_req, res) => res.sendFile(path.join(webDist, 'index.html')));
+  }
+
+  return app;
+}
 
 // Parse --connect <url> from command-line args.
 const connectArg = process.argv.find((a) => a.startsWith('--connect='));
 const relayUrl = process.env.RELAY_URL || (connectArg ? connectArg.split('=')[1] : '');
 
-const app = express();
-app.use(cors());
+// Only start the listener when this file is the direct entrypoint — importing
+// it (e.g. from a test) must not bind a port or print startup banners.
+const __filename = fileURLToPath(import.meta.url);
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  const app = createApp();
+  const port = Number(process.env.PORT || 4300);
+  app.listen(port, '0.0.0.0', async () => {
+    await ensureNetwork();
+    const ping = await pingDocker();
+    console.log(`\n  Dockyard.ai server listening on http://0.0.0.0:${port}`);
+    console.log(
+      ping.ok
+        ? `  Docker daemon reachable (Engine v${ping.version}).`
+        : `  ⚠ Docker daemon NOT reachable: ${ping.error}\n    Set DOCKER_HOST / DOCKER_SOCKET as needed.`,
+    );
+    console.log('');
 
-// Gateway data-plane routes and bucket object uploads/downloads are mounted
-// before the JSON body parser — otherwise a request with
-// Content-Type: application/json (e.g. uploading a manifest.json) would get
-// its body consumed by express.json() before the raw-body route handler
-// ever sees it.
-app.use('/gw', gatewayProxyRouter);
-app.use('/api/buckets', requireAuth, bucketsRouter);
-
-app.use(express.json({ limit: '2mb' }));
-
-app.use('/api/containers', requireAuth, containersRouter);
-app.use('/api/images', requireAuth, imagesRouter);
-app.use('/api/system', systemRouter);
-app.use('/api/lambda', requireAuth, lambdaRouter);
-app.use('/api/gateway', requireAuth, gatewayRouter);
-app.use('/api/volumes', requireAuth, volumesRouter);
-app.use('/api/host-files', requireAuth, hostFilesRouter);
-app.use('/api/host-builds', requireAuth, hostBuildsRouter);
-app.use('/api/databases', requireAuth, databasesRouter);
-app.use('/api/github', githubRouter);
-app.use('/api/assistant', requireAuth, assistantRouter);
-app.use('/api/notifications', optionalAuth, notificationsRouter);
-app.use('/api/auth', authRouter);
-
-// Serve the built frontend in production (web/dist), if present.
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const webDist = path.resolve(__dirname, '../../web/dist');
-if (fs.existsSync(webDist)) {
-  app.use(express.static(webDist));
-  app.use((_req, res) => res.sendFile(path.join(webDist, 'index.html')));
-}
-
-const port = Number(process.env.PORT || 4300);
-app.listen(port, '0.0.0.0', async () => {
-  await ensureNetwork();
-  const ping = await pingDocker();
-  console.log(`\n  Dockyard.ai server listening on http://0.0.0.0:${port}`);
-  console.log(
-    ping.ok
-      ? `  Docker daemon reachable (Engine v${ping.version}).`
-      : `  ⚠ Docker daemon NOT reachable: ${ping.error}\n    Set DOCKER_HOST / DOCKER_SOCKET as needed.`,
-  );
-  console.log('');
-
-  if (ping.ok) {
-    try {
-      await ensureMinio();
-      console.log('  MinIO (buckets) ready.\n');
-    } catch (err) {
-      console.log(`  ⚠ MinIO provisioning failed: ${(err as Error).message}\n`);
+    if (ping.ok) {
+      try {
+        await ensureMinio();
+        console.log('  MinIO (buckets) ready.\n');
+      } catch (err) {
+        console.log(`  ⚠ MinIO provisioning failed: ${(err as Error).message}\n`);
+      }
     }
-  }
 
-  // Connect to relay if configured.
-  if (relayUrl) {
-    connectToRelay(relayUrl);
-  }
-});
+    // Connect to relay if configured.
+    if (relayUrl) {
+      connectToRelay(relayUrl);
+    }
+  });
+}

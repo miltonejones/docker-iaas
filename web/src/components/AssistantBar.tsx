@@ -1181,8 +1181,8 @@ export function AssistantBar({
       case 'retry_issue':
         return api.assistantUpdateIssue(String(input.issueId ?? ''), {
           status: 'open',
-          resolution: null,
-          resolvedBy: null,
+          resolution: undefined,
+          resolvedBy: undefined,
         });
 
       case 'clear_issues':

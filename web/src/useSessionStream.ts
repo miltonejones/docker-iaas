@@ -68,24 +68,26 @@ export function useSessionStream(
             }));
             break;
           case "turn": {
-            const logMsg = data.text
-              ? appendEntry(s.log, "assistant", data.text)
-              : s.log;
-            // Add pending actions
-            const actions: AssistantLogEntry[] = (data.pending || []).map(
-              (p: unknown) => ({
-                kind: "action" as const,
-                text: (p as { name: string }).name || "Confirm action",
-              }),
-            );
-            setState((s) => ({
-              ...s,
-              messages: data.messages || s.messages,
-              pending: data.pending || [],
-              resolved: data.resolved || s.resolved,
-              log: [...logMsg, ...actions],
-              busy: !data.done,
-            }));
+            setState((s) => {
+              const logMsg = data.text
+                ? appendEntry(s.log, "assistant", data.text)
+                : s.log;
+              // Add pending actions
+              const actions: AssistantLogEntry[] = (data.pending || []).map(
+                (p: unknown) => ({
+                  kind: "action" as const,
+                  text: (p as { name: string }).name || "Confirm action",
+                }),
+              );
+              return {
+                ...s,
+                messages: data.messages || s.messages,
+                pending: data.pending || [],
+                resolved: data.resolved || s.resolved,
+                log: [...logMsg, ...actions],
+                busy: !data.done,
+              };
+            });
             break;
           }
           case "error":
