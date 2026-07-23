@@ -371,6 +371,38 @@ function logFilename(issueId) {
   return path.join(LOG_DIR, `${safe}-${date}.md`);
 }
 
+/** Enforce protected files mechanically at commit time: revert any edits the
+ *  model made to protected files, then stage everything else.  The prompt tells
+ *  the model not to touch these, but `git add -A` would stage them anyway — this
+ *  is the mechanical backstop.  Exported so the safety property (a protected-file
+ *  edit never lands in a commit) can be unit-tested against a real git tree.
+ *  `protectedList` defaults to the shared list read from protected-files.json. */
+function revertAndStageProtected(cwd, protectedList = PROTECTED) {
+  // Revert protected files BEFORE staging so a model edit to one is discarded.
+  if (protectedList.length) {
+    try {
+      const paths = protectedList.map((p) => `'${p}'`).join(" ");
+      execSync(`git checkout -- ${paths}`, { cwd, timeout: 5_000 });
+    } catch { /* file may not exist in working tree */ }
+  }
+
+  // Stage everything EXCEPT protected files — they were just reverted above, and
+  // the :(exclude) pathspec keeps them out of the index even if the revert was
+  // a no-op (e.g. an untracked file matching a protected path).  The pathspecs
+  // MUST be shell-quoted: execSync runs via the shell and the parentheses in
+  // `:(exclude)` are shell metacharacters — unquoted, they are a syntax error
+  // that would silently stage nothing.
+  const excludeArgs = protectedList.map((p) => `':(exclude)${p}'`).join(" ");
+  const addCmd = protectedList.length ? `git add -A -- . ${excludeArgs}` : "git add -A";
+  try {
+    execSync(addCmd, { cwd, timeout: 10_000 });
+  } catch (err) {
+    // Log rather than swallow — a silent failure here is exactly what hid the
+    // unquoted-pathspec bug.  "nothing to add" is not an error path for git add.
+    log(`git add (excluding protected files) failed: ${err.message}`);
+  }
+}
+
 async function pushToGitHub(issue) {
   const { execSync } = await import("node:child_process");
   const askpass = setupGitAuth(CODEBASE_PATH);
@@ -395,23 +427,9 @@ async function pushToGitHub(issue) {
     }
     log(`Changes detected:\n${diff}`);
 
-    // Revert any edits to protected files BEFORE staging.  The prompt tells
-    // the model not to touch these, but `git add -A` would stage them anyway.
-    // This enforces it mechanically at commit time.
-    if (PROTECTED.length) {
-      try {
-        execSync(`git checkout -- ${PROTECTED.join(" ")}`, { cwd: CODEBASE_PATH, timeout: 5_000 });
-      } catch { /* file may not exist in working tree */ }
-    }
-
-    // Stage everything EXCEPT protected files — they were just reverted above.
-    const excludeArgs = PROTECTED.map((p) => `:(exclude)${p}`).join(" ");
-    const addCmd = PROTECTED.length
-      ? `git add -A -- . ${excludeArgs}`
-      : "git add -A";
-    try {
-      execSync(addCmd, { cwd: CODEBASE_PATH, timeout: 10_000 });
-    } catch { /* fine if nothing to add */ }
+    // Enforce protected files mechanically: revert any model edits to them and
+    // stage everything else.  See revertAndStageProtected (unit-tested).
+    revertAndStageProtected(CODEBASE_PATH);
 
     // Pass commit message via stdin (-F -) to avoid shell escaping issues
     // with quotes, em dashes, and other special characters.
@@ -759,5 +777,7 @@ export {
   extractResolution,
   formatPrompt,
   pushToGitHub,
+  revertAndStageProtected,
+  PROTECTED,
   setAuthHeaderForTest,
 };
