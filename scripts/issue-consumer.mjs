@@ -507,15 +507,33 @@ async function pushToGitHub(issue) {
           notify("📤 PR opened", `#${pr.number}: ${issue.summary}\n${pr.html_url}`);
 
           // Enable auto-merge so the PR lands on main as soon as CI is green.
-          await fetch(`https://api.github.com/repos/miltonejones/docker-iaas/pulls/${pr.number}/auto-merge`, {
-            method: "PUT",
-            headers: {
-              Authorization: `token ${process.env.GITHUB_TOKEN}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ merge_method: "MERGE" }),
-            signal: AbortSignal.timeout(10_000),
-          }).catch(() => log("Auto-merge not available — PR will need manual merge."));
+          // No REST endpoint exists for this — it must go through GraphQL.
+          try {
+            const amRes = await fetch("https://api.github.com/graphql", {
+              method: "POST",
+              headers: {
+                Authorization: `bearer ${process.env.GITHUB_TOKEN}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                query: `mutation($id:ID!,$m:PullRequestMergeMethod!) {
+                  enablePullRequestAutoMerge(input:{pullRequestId:$id,mergeMethod:$m}) {
+                    pullRequest { number }
+                  }
+                }`,
+                variables: { id: pr.node_id, m: "MERGE" },
+              }),
+              signal: AbortSignal.timeout(10_000),
+            });
+            const amBody = await amRes.json().catch(() => ({}));
+            if (amBody.errors?.length) {
+              log(`Auto-merge not enabled: ${amBody.errors.map((e) => e.message).join("; ")}`);
+            } else {
+              log(`Auto-merge enabled on PR #${pr.number}.`);
+            }
+          } catch {
+            log("Auto-merge not available — PR will need manual merge.");
+          }
         } else {
           const errBody = await prRes.text().catch(() => "");
           log(`Failed to create PR: HTTP ${prRes.status} — ${errBody}`);
