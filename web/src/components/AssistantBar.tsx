@@ -1451,7 +1451,7 @@ Ask Dockyard.ai
             </div>
           </div>
 
-        {!embedded && sessionsOpen && (
+        {sessionsOpen && (
           <div className="assistant-sessions-panel">
             {sessionsLoading && <p className="muted empty-sm">Loading…</p>}
             {!sessionsLoading && sessionsList.length === 0 && <p className="muted empty-sm">No saved sessions yet.</p>}

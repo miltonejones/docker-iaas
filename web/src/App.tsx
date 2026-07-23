@@ -590,10 +590,10 @@ export function App() {
                 <span>Ask Dockyard</span>
                 <span>
                   <button className="btn btn--ghost btn--sm" onClick={() => setAssistantPinned(false)} title="Unpin to modal">
-                    <AppIcon name="external" /> Unpin
+                    <AppIcon name="external" /> <span className="btn-label">Unpin</span>
                   </button>
                   <button className="btn btn--ghost btn--sm" onClick={() => { setAssistantModal(null); setAssistantPinned(false); }}>
-                    <AppIcon name="close" /> Close
+                    <AppIcon name="close" /> <span className="btn-label">Close</span>
                   </button>
                 </span>
               </div>
