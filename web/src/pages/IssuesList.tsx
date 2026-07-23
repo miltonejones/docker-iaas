@@ -29,7 +29,7 @@ function timeAgo(ts: string) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-export function IssuesPage({ onCreateIssue: _onCreateIssue }: { onCreateIssue: () => void }) {
+export function IssuesPage({ onCreateIssue }: { onCreateIssue: () => void }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const status = searchParams.get('status') || '';
@@ -55,10 +55,10 @@ export function IssuesPage({ onCreateIssue: _onCreateIssue }: { onCreateIssue: (
   }, []);
 
   return (
-    <div className="issues-page">
-      <div className="issues-page__head">
-        <h2>Issues</h2>
-        <button className="btn btn--primary btn--sm" onClick={() => navigate('/issues/new')}>
+    <section className="panel">
+      <div className="panel__head">
+        <h2>Issues <span className="count">{issues.length}</span></h2>
+        <button className="btn btn--primary btn--sm" onClick={() => onCreateIssue()}>
           + New Issue
         </button>
       </div>
@@ -75,29 +75,37 @@ export function IssuesPage({ onCreateIssue: _onCreateIssue }: { onCreateIssue: (
         ))}
       </div>
 
-      <div className="issues-list">
-        {loading && <p className="muted empty-sm">Loading…</p>}
-        {!loading && issues.length === 0 && (
-          <p className="muted empty-sm">No issues found.</p>
-        )}
-        {issues.map(issue => (
-          <button
-            key={issue.id}
-            className="issues-card"
-            onClick={() => navigate(`/issues/${issue.id}`)}
-          >
-            <div className="issues-card__top">
-              <span className="issues-card__summary">{issue.summary}</span>
-              <span className={`badge badge--${issue.status}`}>{issue.status}</span>
-            </div>
-            <div className="issues-card__meta">
-              <span className="muted">{CATEGORY_LABELS[issue.category] || issue.category}</span>
-              {issue.resolvedBy && <span className="muted">· resolved by {issue.resolvedBy}</span>}
-              {issue.createdAt && <span className="muted">· {timeAgo(issue.createdAt)}</span>}
-            </div>
-          </button>
-        ))}
-      </div>
+      {loading && <p className="muted empty-sm">Loading…</p>}
+      {!loading && issues.length === 0 && (
+        <p className="empty">No issues found.</p>
+      )}
+      {!loading && issues.length > 0 && (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Summary</th>
+                <th>Category</th>
+                <th>Status</th>
+                <th>Reported</th>
+              </tr>
+            </thead>
+            <tbody>
+              {issues.map(issue => (
+                <tr
+                  key={issue.id}
+                  onClick={() => navigate(`/issues/${issue.id}`)}
+                >
+                  <td className="mono">{issue.summary}</td>
+                  <td><span className="chip">{CATEGORY_LABELS[issue.category] || issue.category}</span></td>
+                  <td><span className={`badge badge--${issue.status}`}>{issue.status}</span></td>
+                  <td className="muted">{issue.createdAt ? timeAgo(issue.createdAt) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {consumer && (
         <div className="consumer-bar">
@@ -107,6 +115,6 @@ export function IssuesPage({ onCreateIssue: _onCreateIssue }: { onCreateIssue: (
           <span className="muted">· Auth: OK</span>
         </div>
       )}
-    </div>
+    </section>
   );
 }
