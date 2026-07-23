@@ -354,6 +354,23 @@ export function AssistantBar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busy, pending, resolved, sessionStorageKey]);
 
+  // Save to localStorage on page unload so sessions survive refresh.
+  // Async saveSession() is cancelled on unload; sync localStorage write completes.
+  useEffect(() => {
+    const onUnload = () => {
+      if (log.length === 0 && rawMessages.length === 0) return;
+      const key = fallbackKey();
+      const state = { messages: rawMessages, log, pending, resolved };
+      try { localStorage.setItem(key, JSON.stringify(state)); } catch {}
+    };
+    window.addEventListener('beforeunload', onUnload);
+    window.addEventListener('pagehide', onUnload);
+    return () => {
+      window.removeEventListener('beforeunload', onUnload);
+      window.removeEventListener('pagehide', onUnload);
+    };
+  }, [log, rawMessages, pending, resolved]);
+
   function resetToNewSession() {
     if (sessionStorageKey) localStorage.removeItem(sessionStorageKey);
     localStorage.removeItem(fallbackKey());
