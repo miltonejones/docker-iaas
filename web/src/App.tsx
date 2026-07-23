@@ -634,7 +634,7 @@ export function App() {
 
         {/* Bottom tab bar — visible on mobile (≤640px) */}
         <nav className="bottom-nav" role="navigation" aria-label="Mobile navigation">
-          {SERVICES.map((s) => (
+          {SERVICES.filter((s) => s.path !== '/databases').map((s) => (
             <NavLink
               key={s.path}
               to={s.path}
