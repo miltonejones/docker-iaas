@@ -3018,6 +3018,9 @@ textarea:focus {
 .assistant-pinned-panel .assistant-panel__head {
   display: none;
 }
+.assistant-pinned-panel .btn-label {
+  display: none;
+}
 
 /* Topbar user section */
 .topbar__right {
