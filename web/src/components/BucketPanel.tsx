@@ -7,6 +7,7 @@ import { onRefresh } from '../refresh';
 import { AppIcon } from '../icons';
 import { InfoButton } from './InfoButton';
 import { useToast } from '../ToastContext';
+import { useConfirm } from "./ConfirmContext";
 
 export function BucketList() {
   const navigate = useNavigate();
@@ -107,6 +108,7 @@ export function BucketList() {
 }
 
 export function BucketDetail({ name }: { name: string }) {
+  const { askConfirm } = useConfirm();
   const navigate = useNavigate();
   const [prefix, setPrefix] = useState('');
   const [listing, setListing] = useState<BucketListing | null>(null);
@@ -167,7 +169,7 @@ export function BucketDetail({ name }: { name: string }) {
       toast.error('This bucket is protected — unprotect it before deleting.');
       return;
     }
-    if (!confirm(`Delete bucket "${name}"?`)) return;
+    if (!await askConfirm(`Delete bucket "${name}"?`)) return;
     try {
       await api.bucketDelete(name);
       navigate('/buckets');
@@ -202,7 +204,7 @@ export function BucketDetail({ name }: { name: string }) {
       toast.error('This bucket is protected — unprotect it before deleting objects.');
       return;
     }
-    if (!confirm(`Delete "${key}"?`)) return;
+    if (!await askConfirm(`Delete "${key}"?`)) return;
     try {
       await api.bucketDeleteObject(name, key);
       await loadObjects(prefix);
