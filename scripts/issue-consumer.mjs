@@ -372,7 +372,8 @@ async function pushToGitHub(issue) {
   // with quotes, em dashes, and other special characters.
   try {
     const msg = `fix: ${issue.summary}`;
-    execSync(`git add -A ':!data/github-repos' && git commit -F -`, {
+    execSync("git add -A 2>/dev/null", { cwd: CODEBASE_PATH, timeout: 10_000 });
+    execSync("git commit -F -", {
       cwd: CODEBASE_PATH,
       encoding: "utf8",
       timeout: 10_000,
