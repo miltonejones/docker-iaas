@@ -384,17 +384,27 @@ export const api = {
 
   bucketList: () => fetch('/api/buckets').then((r) => json<Bucket[]>(r)),
 
-  bucketCreate: (name: string) =>
+  bucketCreate: (name: string, protect = false) =>
     fetch('/api/buckets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
-    }).then((r) => json<{ name: string }>(r)),
+      body: JSON.stringify({ name, protected: protect }),
+    }).then((r) => json<{ name: string; protected: boolean }>(r)),
 
   bucketDelete: (name: string) =>
     fetch(`/api/buckets/${encodeURIComponent(name)}`, { method: 'DELETE' }).then((r) =>
       json<{ ok: true }>(r),
     ),
+
+  bucketGet: (name: string) =>
+    fetch(`/api/buckets/${encodeURIComponent(name)}`).then((r) => json<{ name: string; protected: boolean }>(r)),
+
+  bucketUpdateProtected: (name: string, protect: boolean) =>
+    fetch(`/api/buckets/${encodeURIComponent(name)}/protected`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ protected: protect }),
+    }).then((r) => json<{ name: string; protected: boolean }>(r)),
 
   bucketObjects: (name: string, prefix = '') =>
     fetch(`/api/buckets/${encodeURIComponent(name)}/objects?prefix=${encodeURIComponent(prefix)}`).then(

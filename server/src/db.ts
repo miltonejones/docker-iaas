@@ -150,6 +150,9 @@ export function initDb(): void {
     )
   `);
 
+  // Migration: add protected column for bucket-level deletion guard.
+  try { db.exec('ALTER TABLE bucket_owners ADD COLUMN protected INTEGER NOT NULL DEFAULT 0'); } catch { /* ok */ }
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS function_env (
       function_id TEXT NOT NULL,
@@ -1370,15 +1373,24 @@ export function getUserByEmail(email: string): UserRow | undefined {
 // separately.
 // ---------------------------------------------------------------------------
 
-export function setBucketOwner(bucketName: string, userId: string): void {
+export function setBucketOwner(bucketName: string, userId: string, protect = false): void {
   db.prepare(
-    'INSERT OR REPLACE INTO bucket_owners (bucket_name, user_id, created_at) VALUES (?, ?, ?)',
-  ).run(bucketName, userId, new Date().toISOString());
+    'INSERT OR REPLACE INTO bucket_owners (bucket_name, user_id, protected, created_at) VALUES (?, ?, ?, ?)',
+  ).run(bucketName, userId, protect ? 1 : 0, new Date().toISOString());
 }
 
 export function getBucketOwner(bucketName: string): string | null {
   const row = db.prepare('SELECT user_id FROM bucket_owners WHERE bucket_name = ?').get(bucketName) as { user_id: string } | undefined;
   return row?.user_id ?? null;
+}
+
+export function isBucketProtected(bucketName: string): boolean {
+  const row = db.prepare('SELECT protected FROM bucket_owners WHERE bucket_name = ?').get(bucketName) as { protected: number } | undefined;
+  return !!row?.protected;
+}
+
+export function setBucketProtected(bucketName: string, protect: boolean): void {
+  db.prepare('UPDATE bucket_owners SET protected = ? WHERE bucket_name = ?').run(protect ? 1 : 0, bucketName);
 }
 
 export function listUserBuckets(userId: string): string[] {

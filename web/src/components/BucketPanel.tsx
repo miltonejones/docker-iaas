@@ -93,7 +93,7 @@ export function BucketList() {
             <tbody>
               {buckets.map((b) => (
                 <tr key={b.name} onClick={() => navigate(`/buckets/${b.name}`)}>
-                  <td className="mono"><AppIcon name="bucket" /> {b.name}</td>
+                  <td className="mono"><AppIcon name="bucket" /> {b.name}{b.protected && <span className="protected-badge" title="Protected from deletion"> 🔒</span>}</td>
                   <td className="num mono">{bytes(b.size ?? 0)}</td>
                   <td className="muted">{b.creationDate ? new Date(b.creationDate).toLocaleString() : '—'}</td>
                 </tr>
@@ -113,6 +113,8 @@ export function BucketDetail({ name }: { name: string }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [protect, setProtect] = useState(false);
+  const [protecting, setProtecting] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const toast = useToast();
 
@@ -134,6 +136,11 @@ export function BucketDetail({ name }: { name: string }) {
     loadObjects('');
   }, [name, loadObjects]);
 
+  // Load bucket metadata (for protected flag) on mount.
+  useEffect(() => {
+    api.bucketGet(name).then((meta) => setProtect(meta.protected)).catch(() => {});
+  }, [name]);
+
   // Reload the current prefix when the assistant writes/deletes objects here.
   useEffect(() => onRefresh(() => loadObjects(prefix)), [loadObjects, prefix]);
 
@@ -142,7 +149,24 @@ export function BucketDetail({ name }: { name: string }) {
     loadObjects(next);
   }
 
+  async function toggleProtect() {
+    setProtecting(true);
+    try {
+      const res = await api.bucketUpdateProtected(name, !protect);
+      setProtect(res.protected);
+      toast.success(res.protected ? `Bucket "${name}" is now protected from deletion.` : `Bucket "${name}" is no longer protected.`);
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setProtecting(false);
+    }
+  }
+
   async function deleteBucket() {
+    if (protect) {
+      toast.error('This bucket is protected — unprotect it before deleting.');
+      return;
+    }
     if (!confirm(`Delete bucket "${name}"?`)) return;
     try {
       await api.bucketDelete(name);
@@ -174,6 +198,10 @@ export function BucketDetail({ name }: { name: string }) {
   }
 
   async function deleteObject(key: string) {
+    if (protect) {
+      toast.error('This bucket is protected — unprotect it before deleting objects.');
+      return;
+    }
     if (!confirm(`Delete "${key}"?`)) return;
     try {
       await api.bucketDeleteObject(name, key);
@@ -222,6 +250,14 @@ export function BucketDetail({ name }: { name: string }) {
             onClick={() => fileInput.current?.click()}
           >
             {uploading ? 'Uploading…' : 'Upload'}
+          </button>
+          <button
+            className={`btn btn--sm${protect ? ' btn--danger' : ''}`}
+            disabled={protecting}
+            onClick={toggleProtect}
+            title={protect ? 'Unprotect (allow deletion)' : 'Protect from accidental deletion'}
+          >
+            {protecting ? '…' : protect ? '🔒 Unprotect' : '🔓 Protect'}
           </button>
           <button className="btn btn--sm btn--danger" onClick={deleteBucket}>
             Delete bucket

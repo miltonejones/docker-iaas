@@ -35,6 +35,7 @@ const ACTION_LABEL: Record<string, string> = {
   create_bucket: 'Create bucket',
   delete_bucket: 'Delete bucket',
   delete_bucket_object: 'Delete bucket object',
+  update_bucket: 'Update bucket protection',
   write_bucket_object: 'Write bucket file',
   copy_host_file_to_bucket: 'Copy host file to bucket',
   run_host_build_preset: 'Build host project and deploy artifacts',
@@ -1009,13 +1010,16 @@ export function AssistantBar({
         return api.prune();
 
       case 'create_bucket':
-        return api.bucketCreate(String(input.name ?? ''));
+        return api.bucketCreate(String(input.name ?? ''), bool(input.protected));
 
       case 'delete_bucket':
         return api.bucketDelete(String(input.name ?? ''));
 
       case 'delete_bucket_object':
         return api.bucketDeleteObject(String(input.name ?? ''), String(input.key ?? ''));
+
+      case 'update_bucket':
+        return api.bucketUpdateProtected(String(input.name ?? ''), bool(input.protected));
 
       case 'write_bucket_object':
         return api.bucketWriteObject(

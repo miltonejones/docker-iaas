@@ -3658,3 +3658,12 @@ textarea:focus {
 .activity-timeline__dot--failed { background: #ef4444; }
 .activity-timeline__dot--unknown { background: #9ca3af; }
 .activity-timeline__label { font-size: 0.85rem; flex: 1; }
+
+/* Bucket / container protected flag */
+.protected-badge {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 0.85em;
+  opacity: 0.7;
+  vertical-align: middle;
+}

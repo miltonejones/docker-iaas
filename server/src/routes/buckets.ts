@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import express from 'express';
 import { getAuthUser } from '../auth.js';
-import { setBucketOwner, getBucketOwner, listUserBuckets } from '../db.js';
+import { setBucketOwner, getBucketOwner, listUserBuckets, isBucketProtected, setBucketProtected } from '../db.js';
 import {
   ListBucketsCommand,
   CreateBucketCommand,
@@ -47,9 +47,9 @@ bucketsRouter.get('/', async (req: Request, res: Response) => {
       userFiltered.map(async (b) => {
         try {
           const { size, objectCount } = await bucketStats(b.Name!);
-          return { name: b.Name, creationDate: b.CreationDate, size, objectCount };
+          return { name: b.Name, creationDate: b.CreationDate, size, objectCount, protected: isBucketProtected(b.Name!) };
         } catch {
-          return { name: b.Name, creationDate: b.CreationDate, size: 0, objectCount: 0 };
+          return { name: b.Name, creationDate: b.CreationDate, size: 0, objectCount: 0, protected: isBucketProtected(b.Name!) };
         }
       }),
     );
@@ -59,17 +59,30 @@ bucketsRouter.get('/', async (req: Request, res: Response) => {
   }
 });
 
+// Get single-bucket metadata (for the detail page header, including protected flag).
+bucketsRouter.get('/:name', (req: Request, res: Response) => {
+  res.json({ name: req.params.name, protected: isBucketProtected(req.params.name) });
+});
+
+// Toggle the protected flag on a bucket.
+bucketsRouter.post('/:name/protected', express.json(), (req: Request, res: Response) => {
+  const protect = !!req.body?.protected;
+  setBucketProtected(req.params.name, protect);
+  res.json({ name: req.params.name, protected: protect });
+});
+
 bucketsRouter.post('/', express.json(), async (req: Request, res: Response) => {
   const name = (req.body?.name || '').trim();
   const userId = getAuthUser(req)?.userId;
+  const protect = !!req.body?.protected;
   if (!name) {
     res.status(400).json({ error: 'A bucket name is required.' });
     return;
   }
   try {
     await getS3Client().send(new CreateBucketCommand({ Bucket: name }));
-    if (userId) setBucketOwner(name, userId);
-    res.status(201).json({ name });
+    if (userId) setBucketOwner(name, userId, protect);
+    res.status(201).json({ name, protected: protect });
   } catch (err) {
     res.status(502).json({ error: (err as Error).message });
   }
@@ -83,6 +96,10 @@ bucketsRouter.delete('/:name', async (req: Request, res: Response) => {
       res.status(403).json({ error: 'Bucket does not belong to your account.' });
       return;
     }
+  }
+  if (isBucketProtected(req.params.name)) {
+    res.status(403).json({ error: 'This bucket is protected — unprotect it before deleting.' });
+    return;
   }
   try {
     await getS3Client().send(new DeleteBucketCommand({ Bucket: req.params.name }));
@@ -158,6 +175,10 @@ bucketsRouter.get('/:name/objects/:key(.*)', async (req: Request, res: Response)
 
 bucketsRouter.delete('/:name/objects/:key(.*)', async (req: Request, res: Response) => {
   const key = req.params.key;
+  if (isBucketProtected(req.params.name)) {
+    res.status(403).json({ error: 'This bucket is protected — unprotect it before deleting objects.' });
+    return;
+  }
   try {
     await getS3Client().send(new DeleteObjectCommand({ Bucket: req.params.name, Key: key }));
     res.json({ ok: true });

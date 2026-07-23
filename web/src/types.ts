@@ -146,6 +146,7 @@ export interface Bucket {
   creationDate: string;
   size?: number;
   objectCount?: number;
+  protected?: boolean;
 }
 
 export interface BucketObject {
