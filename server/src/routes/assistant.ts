@@ -1306,12 +1306,19 @@ async function executeReadOnlyTool(
           const exitMatch = content.match(/\*\*Exit code:\*\* (\d+)/);
           const summaryMatch = content.match(/\*\*Summary:\*\* (.+)/);
           const idMatch = content.match(/# Issue (.+)/);
-          return {
+          const commitMatch = content.match(/^commit: ([a-f0-9]+)$/m);
+          const outcome = exitMatch ? (exitMatch[1] === "0" ? "fixed" : "failed") : "unknown";
+          const entry: Record<string, unknown> = {
             id: idMatch?.[1]?.trim() || f,
             summary: summaryMatch?.[1]?.trim() || "unknown",
             exitCode: exitMatch ? parseInt(exitMatch[1]) : null,
-            outcome: exitMatch ? (exitMatch[1] === "0" ? "fixed" : "failed") : "unknown",
+            outcome,
           };
+          if (commitMatch) {
+            entry.commitSha = commitMatch[1];
+            entry.commitUrl = `https://github.com/miltonejones/docker-iaas/commit/${commitMatch[1]}`;
+          }
+          return entry;
         });
       } catch {
         return [];

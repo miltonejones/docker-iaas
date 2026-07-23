@@ -399,8 +399,14 @@ async function pushToGitHub(issue) {
 
   try {
     execSync("git push origin main", { cwd: CODEBASE_PATH, timeout: 30_000 });
+    const sha = execSync("git log -1 --format=%H", { cwd: CODEBASE_PATH, encoding: "utf8", timeout: 5_000 }).trim();
     log("Pushed to GitHub — CI will deploy.");
     notify("📤 Pushed fix to GitHub", issue.summary);
+    // Append commit SHA to the session log so get_consumer_activity can link it.
+    try {
+      const logFile = logFilename(issue.id);
+      fs.appendFileSync(logFile, `\ncommit: ${sha}\n`, "utf8");
+    } catch {}
   } catch (err) {
     log(`git push failed: ${err.message}`);
     notify("⚠️ Push failed", `Fix for "${issue.summary}" couldn't push — will retry`);
