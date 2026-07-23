@@ -77,6 +77,10 @@ jobs:
             set -e
             cd /home/ec2-user/docker-iaas
             COMMIT_MSG=$(git log -1 --format=%s)
+            # Container writes to data/ as root — fix ownership so git can
+            # overwrite during reset.  (data/ is gitignored now; this is a
+            # one-time transition for previously tracked previews.)
+            sudo chown -R ec2-user:ec2-user data/ 2>/dev/null || true
             # Fetch and reset hard — the consumer may have local edits
             # that haven't been pushed yet. GitHub is the source of truth.
             git fetch origin main
