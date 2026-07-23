@@ -38,7 +38,7 @@ jobs:
             docker image prune -f || true
             # Append success notification for the local notify-watcher
             mkdir -p scripts/issue-logs
-            echo "{\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"level\":\"info\",\"summary\":\"✅ Deployed\",\"body\":\"$COMMIT_MSG\"}" >> scripts/issue-logs/notifications.jsonl
+            echo "{\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"level\":\"info\",\"summary\":\"✅ Deployed\",\"body\":\"$COMMIT_MSG\"}" >> scripts/issue-logs/notifications.jsonl || true
 
       - name: Notify failure
         if: failure()
