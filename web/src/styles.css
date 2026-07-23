@@ -3611,3 +3611,45 @@ textarea:focus {
     padding: 16px 14px;
   }
 }
+
+/* Issues pages */
+.issues-page__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+.issues-page__head h2 { margin: 0; }
+.tab-bar { display: flex; gap: 0.25rem; margin-bottom: 1rem; flex-wrap: wrap; }
+.tab-bar__item { padding: 0.35rem 0.75rem; border: 1px solid var(--border, #ddd); border-radius: 6px; background: transparent; font-size: 0.85rem; cursor: pointer; }
+.tab-bar__item--active { background: var(--primary, #2563eb); color: #fff; border-color: var(--primary, #2563eb); }
+.issues-card { display: block; width: 100%; text-align: left; padding: 0.75rem 1rem; border: 1px solid var(--border, #ddd); border-radius: 8px; background: transparent; cursor: pointer; margin-bottom: 0.5rem; }
+.issues-card:hover { border-color: var(--primary, #2563eb); }
+.issues-card__top { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; }
+.issues-card__summary { font-weight: 500; flex: 1; }
+.issues-card__meta { display: flex; gap: 0.5rem; margin-top: 0.35rem; font-size: 0.8rem; }
+.badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 999px; font-size: 0.75rem; background: #eee; text-transform: capitalize; white-space: nowrap; }
+.badge--open { background: #dbeafe; color: #1e40af; }
+.badge--in_progress { background: #fef3c7; color: #92400e; }
+.badge--resolved { background: #d1fae5; color: #065f46; }
+.badge--closed { background: #e5e7eb; color: #374151; }
+.consumer-bar { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0; margin-top: 1rem; font-size: 0.8rem; border-top: 1px solid var(--border, #ddd); }
+.consumer-bar__dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.consumer-bar__dot--idle { background: #9ca3af; }
+.consumer-bar__dot--active { background: #10b981; animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* Issue detail */
+.issue-detail { max-width: 720px; margin: 0 auto; }
+.issue-detail__back { margin-bottom: 1rem; }
+.issue-detail__header { margin-bottom: 1.5rem; }
+.issue-detail__id { font-size: 0.8rem; color: var(--muted, #888); display: block; margin-bottom: 0.25rem; }
+.issue-detail__header h2 { margin: 0.25rem 0 0.5rem; }
+.issue-detail__badges { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
+.issue-detail__meta { font-size: 0.85rem; display: flex; gap: 0.25rem; flex-wrap: wrap; }
+.issue-detail__section { margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border, #ddd); }
+.issue-detail__section h3 { margin-bottom: 0.5rem; }
+.issue-detail__section p { margin: 0.25rem 0; }
+.issue-detail__actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
+.activity-timeline { margin-top: 0.5rem; }
+.activity-timeline__row { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0; }
+.activity-timeline__dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.activity-timeline__dot--fixed { background: #10b981; }
+.activity-timeline__dot--failed { background: #ef4444; }
+.activity-timeline__dot--unknown { background: #9ca3af; }
+.activity-timeline__label { font-size: 0.85rem; flex: 1; }

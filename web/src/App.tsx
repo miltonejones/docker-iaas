@@ -9,6 +9,8 @@ import { FunctionsPage } from './pages/Functions';
 import { BucketsPage } from './pages/Buckets';
 import { GatewayPage } from './pages/Gateway';
 import { DatabasesPage } from './pages/Databases';
+import { IssuesPage } from './pages/IssuesList';
+import { IssueDetailPage } from './pages/IssueDetail';
 import { AssistantBar } from './components/AssistantBar';
 import { CreateIssueModal } from './components/CreateIssueModal';
 import { LoginPage } from './components/LoginPage';
@@ -28,6 +30,7 @@ const SERVICES = [
   { path: '/buckets', label: 'Buckets', icon: 'bucket' },
   { path: '/databases', label: 'Databases', icon: 'database' },
   { path: '/gateway', label: 'Gateway', icon: 'gateway' },
+  { path: '/issues', label: 'Issues', icon: 'bug' },
 ] as const;
 
 function ServiceNav() {
@@ -558,6 +561,8 @@ export function App() {
               <Route path="/buckets" element={<BucketsPage />} />
               <Route path="/databases/:id" element={<DatabasesPage />} />
               <Route path="/databases" element={<DatabasesPage />} />
+              <Route path="/issues" element={<IssuesPage />} />
+              <Route path="/issues/:id" element={<IssueDetailPage />} />
               <Route path="/gateway/:name" element={<GatewayPage />} />
               <Route path="/gateway" element={<GatewayPage />} />
             </Routes>

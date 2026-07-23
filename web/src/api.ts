@@ -719,6 +719,14 @@ export const api = {
     fetch(`/api/assistant/issues${category ? `?category=${encodeURIComponent(category)}` : ''}`, {
       method: 'DELETE',
     }).then((r) => json<{ ok: true; deleted: number }>(r)),
+
+  assistantListIssues: (status?: string) =>
+    fetch(`/api/assistant/issues${status ? `?status=${encodeURIComponent(status)}` : ''}`).then((r) =>
+      json(r),
+    ),
+
+  assistantGetIssue: (id: string) =>
+    fetch(`/api/assistant/issues/${encodeURIComponent(id)}`).then((r) => json(r)),
 };
 
 /** A single consumer/issue event surfaced by the notification log. */
