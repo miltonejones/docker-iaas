@@ -93,6 +93,15 @@ jobs:
             # Append success notification for the local notify-watcher
             mkdir -p scripts/issue-logs
             echo "{\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"level\":\"info\",\"summary\":\"✅ Deployed\",\"body\":\"$COMMIT_MSG\"}" >> scripts/issue-logs/notifications.jsonl || true
+            # Mark the consumer issue as resolved now that the fix is live.
+            ISSUE_ID=$(echo "$COMMIT_MSG" | sed -n 's/.*\(iss-[0-9]*\).*/\1/p') || true
+            if [ -n "$ISSUE_ID" ]; then
+              curl -sf -X PATCH "http://localhost:4300/api/assistant/issues/$ISSUE_ID" \
+                -H "Content-Type: application/json" \
+                -H "x-consumer-api-key: $CONSUMER_API_KEY" \
+                -d '{"status":"resolved","resolution":"Deployed via CI","resolvedBy":"deploy"}' \
+                || echo "::warning::Failed to mark issue $ISSUE_ID as resolved"
+            fi
 
       - name: Notify failure
         if: failure()

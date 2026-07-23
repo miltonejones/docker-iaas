@@ -1182,7 +1182,7 @@ export interface AssistantIssueRow {
   resolved_by: string | null;
 }
 
-export const ASSISTANT_ISSUE_STATUSES = ['open', 'in_progress', 'resolved', 'closed', 'wont_fix'] as const;
+export const ASSISTANT_ISSUE_STATUSES = ['open', 'in_progress', 'deploying', 'resolved', 'closed', 'wont_fix'] as const;
 
 export function listAssistantIssues(limit = 50, userId?: string, status?: string): AssistantIssueRow[] {
   const clauses: string[] = [];

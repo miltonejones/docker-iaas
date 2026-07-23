@@ -470,7 +470,7 @@ async function pushToGitHub(issue) {
     // Pass commit message via stdin (-F -) to avoid shell escaping issues
     // with quotes, em dashes, and other special characters.
     try {
-      const msg = `fix: ${issue.summary}`;
+      const msg = `fix(${issue.id}): ${issue.summary}`;
       execSync("git commit -F -", {
         cwd: CODEBASE_PATH,
         encoding: "utf8",
@@ -529,7 +529,7 @@ async function pushToGitHub(issue) {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            title: `fix: ${issue.summary}`,
+            title: `fix(${issue.id}): ${issue.summary}`,
             body: prBody,
             head: branchName,
             base: "main",
@@ -741,12 +741,12 @@ async function consumeOne() {
         const hasChanges = changedFiles.length > 0;
 
         if (hasChanges) {
-          log(`Issue ${issue.id} fixed — ${changedFiles.length} file(s) changed (confidence: ${result.confidence}).`);
-          notify(`✅ Fixed: ${issue.summary}`, changedFiles.join(", "));
+          log(`Issue ${issue.id} fixed — ${changedFiles.length} file(s) changed.  Pushing branch for CI deploy.`);
+          notify(`✅ Fixed: ${issue.summary}`, `Pushed to ${branchName} — CI will deploy.`);
           writeStatus("idle");
           await updateIssueOnServer(
             issue,
-            "resolved",
+            "deploying",
             extractResolution(stdout),
           );
           pushToGitHub(issue);
