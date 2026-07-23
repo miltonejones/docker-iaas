@@ -388,27 +388,87 @@ async function pushToGitHub(issue) {
     return;
   }
 
-  try {
-    execSync("git pull --rebase origin main", { cwd: CODEBASE_PATH, timeout: 30_000 });
-  } catch (err) {
-    log(`Merge conflict: ${err.message}`);
-    notify("⚠️ Merge conflict", `Fix for "${issue.summary}" needs manual review`);
-    try { execSync("git rebase --abort", { cwd: CODEBASE_PATH, timeout: 5_000 }); } catch {}
-    return;
-  }
+  // Push to a consumer branch and open a PR instead of pushing directly to main.
+  // The PR triggers CI verification; auto-merge lands it on main when green.
+  const branchName = `consumer/fix-${issue.id}`;
 
   try {
-    execSync("git push origin main", { cwd: CODEBASE_PATH, timeout: 30_000 });
+    // Rebase onto latest main to keep the branch clean.  If there's a conflict
+    // we continue with the un-rebased commit — the conflict will surface in the
+    // PR's CI check rather than blocking the consumer here.
+    try {
+      execSync("git pull --rebase origin main", { cwd: CODEBASE_PATH, timeout: 30_000 });
+    } catch (err) {
+      log(`Rebase failed (will push un-rebased): ${err.message}`);
+      try { execSync("git rebase --abort", { cwd: CODEBASE_PATH, timeout: 5_000 }); } catch {}
+    }
+
+    execSync(`git push origin HEAD:refs/heads/${branchName} --force`, { cwd: CODEBASE_PATH, timeout: 30_000 });
     const sha = execSync("git log -1 --format=%H", { cwd: CODEBASE_PATH, encoding: "utf8", timeout: 5_000 }).trim();
-    log("Pushed to GitHub — CI will deploy.");
-    notify("📤 Pushed fix to GitHub", issue.summary);
+    log(`Pushed to branch ${branchName} (${sha.slice(0, 7)}).`);
+
     // Append commit SHA to the session log so get_consumer_activity can link it.
     try {
       const logFile = logFilename(issue.id);
       fs.appendFileSync(logFile, `\ncommit: ${sha}\n`, "utf8");
     } catch {}
+
+    // Open a PR via the GitHub API so CI verification runs and auto-merge
+    // lands the fix once typecheck + tests + build are green.
+    if (process.env.GITHUB_TOKEN) {
+      const prBody = [
+        `**Issue:** ${issue.id}`,
+        `**Summary:** ${issue.summary}`,
+        ``,
+        `Automated fix by Dockyard consumer.`,
+      ].join("\n");
+
+      try {
+        const prRes = await fetch("https://api.github.com/repos/miltonejones/docker-iaas/pulls", {
+          method: "POST",
+          headers: {
+            Authorization: `token ${process.env.GITHUB_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            title: `fix: ${issue.summary}`,
+            body: prBody,
+            head: branchName,
+            base: "main",
+          }),
+          signal: AbortSignal.timeout(15_000),
+        });
+
+        if (prRes.ok) {
+          const pr = await prRes.json();
+          log(`PR #${pr.number} opened: ${pr.html_url}`);
+          notify("📤 PR opened", `#${pr.number}: ${issue.summary}\n${pr.html_url}`);
+
+          // Enable auto-merge so the PR lands on main as soon as CI is green.
+          await fetch(`https://api.github.com/repos/miltonejones/docker-iaas/pulls/${pr.number}/auto-merge`, {
+            method: "PUT",
+            headers: {
+              Authorization: `token ${process.env.GITHUB_TOKEN}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ merge_method: "MERGE" }),
+            signal: AbortSignal.timeout(10_000),
+          }).catch(() => log("Auto-merge not available — PR will need manual merge."));
+        } else {
+          const errBody = await prRes.text().catch(() => "");
+          log(`Failed to create PR: HTTP ${prRes.status} — ${errBody}`);
+          notify("⚠️ PR creation failed", `Branch ${branchName} pushed but PR not created.`);
+        }
+      } catch (err) {
+        log(`PR creation error: ${err.message}`);
+        notify("⚠️ PR creation failed", `Branch ${branchName} pushed but PR not created (${err.message}).`);
+      }
+    } else {
+      log("No GITHUB_TOKEN — branch pushed but no PR created.");
+      notify("⚠️ Branch pushed", `Branch ${branchName} created without PR (no GITHUB_TOKEN).`);
+    }
   } catch (err) {
-    log(`git push failed: ${err.message}`);
+    log(`Push failed: ${err.message}`);
     notify("⚠️ Push failed", `Fix for "${issue.summary}" couldn't push — will retry`);
   }
 }

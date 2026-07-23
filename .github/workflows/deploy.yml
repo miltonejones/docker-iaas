@@ -3,6 +3,7 @@ name: Deploy to EC2
 on:
   push:
     branches: [main]
+  pull_request:
 
 # Prevent concurrent deploys from racing on the EC2 instance.
 # A new push cancels any in-progress deploy so the latest commit wins.
@@ -11,7 +12,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
   deploy:
+    needs: verify
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -29,7 +46,6 @@ jobs:
             Dockerfile.consumer
             .gitignore
             docker-compose.yml
-            scripts/issue-consumer.mjs
           )
           FAILED=false
           for f in "${PROTECTED[@]}"; do

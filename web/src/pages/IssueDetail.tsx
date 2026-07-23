@@ -134,7 +134,7 @@ export function IssueDetailPage() {
         {issue.status !== 'open' && (
           <button
             className="btn btn--primary btn--sm"
-            onClick={() => api.assistantUpdateIssue(issue.id, { status: 'open', resolution: null, resolvedBy: null }).then(() => setIssue({ ...issue, status: 'open' }))}
+            onClick={() => api.assistantUpdateIssue(issue.id, { status: 'open', resolution: undefined, resolvedBy: undefined }).then(() => setIssue({ ...issue, status: 'open' }))}
           >
             Re-open Issue
           </button>

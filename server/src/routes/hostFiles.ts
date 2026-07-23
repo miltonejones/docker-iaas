@@ -22,7 +22,7 @@ const SENSITIVE_PATH_SEGMENTS = new Set([
   'secrets',
 ]);
 
-function isSensitiveAssistantPath(sourcePath: unknown): boolean {
+export function isSensitiveAssistantPath(sourcePath: unknown): boolean {
   if (typeof sourcePath !== 'string') return false;
   const segments = sourcePath.split('/').filter(Boolean).map((segment) => segment.toLowerCase());
   const name = segments.at(-1) || '';
@@ -38,7 +38,7 @@ function isSensitiveAssistantPath(sourcePath: unknown): boolean {
   );
 }
 
-function containsLikelySecret(content: string): boolean {
+export function containsLikelySecret(content: string): boolean {
   return (
     /-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(content) ||
     /\b(?:api[_-]?key|password|secret|token)\b\s*[:=]\s*["']?[A-Za-z0-9_-]{20,}/i.test(content)
@@ -137,7 +137,7 @@ export async function readHostTextFile(sourcePath: unknown) {
   };
 }
 
-function validContainerPath(value: unknown): string | undefined {
+export function validContainerPath(value: unknown): string | undefined {
   if (typeof value !== 'string' || !value.startsWith('/')) return undefined;
   const relative = value.slice(1);
   if (!relative || /\.\.(?:\/|$)/.test(relative) || !/^[\w./-]+$/.test(relative)) return undefined;

@@ -16,7 +16,8 @@
     "build": "npm --workspace web run build && npm --workspace server run build && npm --workspace relay run build",
     "start": "npm --workspace server run start",
     "start:relay": "npm --workspace relay run start",
-    "typecheck": "npm --workspace server run typecheck && npm --workspace web run typecheck && npm --workspace relay run typecheck"
+    "typecheck": "npm --workspace server run typecheck && npm --workspace web run typecheck && npm --workspace relay run typecheck",
+    "test": "npm --workspace server run test && npm --workspace web run test && npm --workspace relay run test"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

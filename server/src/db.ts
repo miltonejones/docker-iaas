@@ -8,12 +8,16 @@ const DB_PATH = path.resolve(__dirname, '../../data/iaas.db');
 
 let db: Database.Database;
 
-export function initDb(): void {
-  // Ensure the data directory exists.
-  const dir = path.dirname(DB_PATH);
-  fs.mkdirSync(dir, { recursive: true });
+export function initDb(dbPath?: string): void {
+  const targetPath = dbPath ?? DB_PATH;
 
-  db = new Database(DB_PATH);
+  // Ensure the data directory exists (skip for in-memory databases).
+  if (targetPath !== ':memory:') {
+    const dir = path.dirname(targetPath);
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  db = new Database(targetPath);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
 
@@ -138,8 +142,6 @@ export function initDb(): void {
   // Migration: add user_id columns to existing resource tables.
   try { db.exec('ALTER TABLE functions ADD COLUMN user_id TEXT REFERENCES users(id)'); } catch { /* ok */ }
   try { db.exec('ALTER TABLE routes ADD COLUMN user_id TEXT REFERENCES users(id)'); } catch { /* ok */ }
-  try { db.exec('ALTER TABLE database_connections ADD COLUMN user_id TEXT REFERENCES users(id)'); } catch { /* ok */ }
-  try { db.exec('ALTER TABLE assistant_sessions ADD COLUMN user_id TEXT REFERENCES users(id)'); } catch { /* ok */ }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS bucket_owners (
@@ -195,6 +197,9 @@ export function initDb(): void {
     )
   `);
 
+  // Migration: add user_id — this table is created after the bulk user_id block.
+  try { db.exec('ALTER TABLE assistant_sessions ADD COLUMN user_id TEXT REFERENCES users(id)'); } catch { /* ok */ }
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS database_connections (
       id TEXT PRIMARY KEY,
@@ -209,6 +214,9 @@ export function initDb(): void {
       last_test_error TEXT
     )
   `);
+
+  // Migration: add user_id — this table is created after the bulk user_id block.
+  try { db.exec('ALTER TABLE database_connections ADD COLUMN user_id TEXT REFERENCES users(id)'); } catch { /* ok */ }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS database_operations (
