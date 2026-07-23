@@ -308,6 +308,19 @@ code,
   padding: 0;
   cursor: pointer;
 }
+.footer-slogan {
+  display: inline-block;
+  color: var(--muted);
+  animation: reveal-right 0.5s var(--ease);
+}
+@keyframes reveal-right {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
 .breadcrumbs__current {
   color: var(--text);
   font-weight: 600;

@@ -218,7 +218,7 @@ function FooterSlogan() {
     return () => clearInterval(id);
   }, []);
 
-  return <span className="muted">{slogan}</span>;
+  return <span className="footer-slogan" key={slogan}>{slogan}</span>;
 }
 
 export function App() {
@@ -612,7 +612,6 @@ export function App() {
 
         <footer className="app-footer">
           <div className="app-footer__group">
-            <FooterSlogan />
             <button
               type="button"
               className="app-footer__link app-footer__link--button"
@@ -620,6 +619,7 @@ export function App() {
             >
               Create an issue
             </button>
+            <FooterSlogan />
           </div>
           <a
             href="https://github.com/miltonejones/docker-iaas"
