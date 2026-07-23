@@ -161,6 +161,47 @@ function Breadcrumbs() {
   );
 }
 
+const SLOGANS = [
+  "Your infrastructure just achieved self-awareness.",
+  "Deploy faster than light through a wormhole.",
+  "Docker containers so light they float on quantum foam.",
+  "Your servers now understand world peace.",
+  "Ship code that writes itself while you sleep.",
+  "Infrastructure so smart it files its own taxes.",
+  "Zero-downtime deploys in parallel universes simultaneously.",
+  "Your CI/CD pipeline just got tenure at MIT.",
+  "Containers orchestrated by actual wizards.",
+  "Kubernetes wishes it were this chill.",
+  "Scale to infinity. Literally. We ran the math.",
+  "Your logs contain the secrets to eternal life.",
+  "Ship so fast your commits arrive before you type them.",
+  "AI ops that would make HAL 9000 jealous.",
+  "Load balancers balanced to within a Planck length.",
+  "Your VPS just became a supercluster.",
+  "Deploy globally in the time it takes to blink.",
+  "Cloud infrastructure that pays its own AWS bill.",
+  "Your uptime is now measured in geological epochs.",
+  "Dockerfiles that compile themselves from your vibes.",
+  "Serverless but make it fashion.",
+  "Monitoring so thorough you'll know when a fan wobbles.",
+  "Your database now benchmarks against CERN.",
+  "Autoscaling that predicts Black Friday before retailers do.",
+  "TLS certs that renew before you even bought the domain.",
+];
+
+function FooterSlogan() {
+  const [slogan, setSlogan] = useState(() => SLOGANS[Math.floor(Math.random() * SLOGANS.length)]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setSlogan(SLOGANS[Math.floor(Math.random() * SLOGANS.length)]);
+    }, 8000);
+    return () => clearInterval(id);
+  }, []);
+
+  return <span className="muted">{slogan}</span>;
+}
+
 export function App() {
   const { token, email, logout } = useAuth();
   const toast = useToast();
@@ -536,7 +577,7 @@ export function App() {
 
         <footer className="app-footer">
           <div className="app-footer__group">
-            <span className="muted">Ship fast. AI handles the rest.</span>
+            <FooterSlogan />
             <button
               type="button"
               className="app-footer__link app-footer__link--button"
