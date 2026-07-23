@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import type { AssistantIssue } from '../types';
+import { onRefresh } from '../refresh';
 
 const STATUS_LABELS: Record<string, string> = {
   open: 'Open',
@@ -33,17 +34,27 @@ export function IssueDetailPage() {
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const loadIssue = useCallback(async () => {
     if (!id) return;
     setLoading(true);
-    Promise.all([
-      api.assistantGetIssue(id),
-      fetch('/api/assistant/issues/counts').then(r => r.json()).catch(() => ({})),
-    ]).then(([issueData]) => {
-      setIssue(issueData as AssistantIssue);
-    }).catch(console.error).finally(() => setLoading(false));
+    try {
+      const issueData = await api.assistantGetIssue(id);
+      setIssue(issueData);
+    } catch {
+      setIssue(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
 
-    // Fetch consumer activity for this issue
+  useEffect(() => { loadIssue(); }, [loadIssue]);
+
+  // Reload when the assistant mutates this issue.
+  useEffect(() => onRefresh(loadIssue), [loadIssue]);
+
+  // Fetch consumer activity for this issue
+  useEffect(() => {
+    if (!id) return;
     fetch('/api/assistant/issues/activity').then(r => r.json()).then(data => {
       if (Array.isArray(data)) {
         setActivity(data.filter((a: ActivityEntry) => a.id === id));
@@ -59,7 +70,7 @@ export function IssueDetailPage() {
     : {};
 
   return (
-    <div className="issue-detail">
+    <section className="panel">
       <button className="btn btn--ghost btn--sm issue-detail__back" onClick={() => navigate('/issues')}>
         ← Back to issues
       </button>
@@ -137,6 +148,6 @@ export function IssueDetailPage() {
           </button>
         )}
       </div>
-    </div>
+    </section>
   );
 }

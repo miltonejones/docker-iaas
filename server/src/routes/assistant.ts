@@ -1729,6 +1729,20 @@ assistantRouter.get("/issues", (req: Request, res: Response) => {
   }
 });
 
+assistantRouter.get("/issues/:id", (req: Request, res: Response) => {
+  try {
+    const userId = getAuthUser(req)?.userId;
+    const row = getAssistantIssue(req.params.id, userId);
+    if (!row) {
+      res.status(404).json({ error: "Issue not found." });
+      return;
+    }
+    res.json(toIssueSummary(row));
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 assistantRouter.post("/issues", (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;

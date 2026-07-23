@@ -93,10 +93,10 @@ export function HomePage({ snapshot, live, onPrune, pruning, runningCount }: Pro
           <span className="home-card__num">{routeCount}</span>
           <span className="home-card__label">Gateway routes</span>
         </button>
-        <div className="home-card glow">
+        <button className="home-card glow" onClick={() => navigate('/issues')}>
           <span className="home-card__num">{openIssueCount}</span>
           <span className="home-card__label">Open issues</span>
-        </div>
+        </button>
       </div>
 
       <div className="home-links-grid">

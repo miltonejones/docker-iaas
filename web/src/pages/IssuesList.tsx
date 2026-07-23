@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import type { AssistantIssue } from '../types';
+import { timeAgo } from '../format';
+import { onRefresh } from '../refresh';
 
 const STATUS_TABS = [
   { key: '', label: 'All' },
@@ -13,23 +15,18 @@ const STATUS_TABS = [
 
 const CATEGORY_LABELS: Record<string, string> = {
   bug: 'Bug',
+  error: 'Error',
   missing_feature: 'Missing Feature',
   performance: 'Performance',
   security: 'Security',
   general: 'General',
 };
 
-function timeAgo(ts: string) {
-  const diff = Date.now() - new Date(ts).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
+interface Props {
+  onCreateIssue: () => void;
 }
 
-export function IssuesPage() {
+export function IssuesPage({ onCreateIssue }: Props) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const status = searchParams.get('status') || '';
@@ -37,10 +34,21 @@ export function IssuesPage() {
   const [loading, setLoading] = useState(true);
   const [consumer, setConsumer] = useState<any>(null);
 
-  useEffect(() => {
-    setLoading(true);
-    api.assistantListIssues(status).then(setIssues).catch(console.error).finally(() => setLoading(false));
+  const loadIssues = useCallback(async () => {
+    try {
+      setLoading(true);
+      setIssues(await api.assistantListIssues(status));
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   }, [status]);
+
+  useEffect(() => { loadIssues(); }, [loadIssues]);
+
+  // Reload when the assistant mutates issues (create/resolve/close).
+  useEffect(() => onRefresh(loadIssues), [loadIssues]);
 
   useEffect(() => {
     fetch('/api/assistant/issues/counts').then(r => r.json()).then(d => {
@@ -55,10 +63,10 @@ export function IssuesPage() {
   }, []);
 
   return (
-    <div className="issues-page">
-      <div className="issues-page__head">
-        <h2>Issues</h2>
-        <button className="btn btn--primary btn--sm" onClick={() => navigate('/issues/new')}>
+    <section className="panel">
+      <div className="panel__head">
+        <h2>Issues <span className="count">{issues.length}</span></h2>
+        <button className="btn btn--primary btn--sm" onClick={onCreateIssue}>
           + New Issue
         </button>
       </div>
@@ -75,29 +83,36 @@ export function IssuesPage() {
         ))}
       </div>
 
-      <div className="issues-list">
-        {loading && <p className="muted empty-sm">Loading…</p>}
-        {!loading && issues.length === 0 && (
-          <p className="muted empty-sm">No issues found.</p>
-        )}
-        {issues.map(issue => (
-          <button
-            key={issue.id}
-            className="issues-card"
-            onClick={() => navigate(`/issues/${issue.id}`)}
-          >
-            <div className="issues-card__top">
-              <span className="issues-card__summary">{issue.summary}</span>
-              <span className={`badge badge--${issue.status}`}>{issue.status}</span>
-            </div>
-            <div className="issues-card__meta">
-              <span className="muted">{CATEGORY_LABELS[issue.category] || issue.category}</span>
-              {issue.resolvedBy && <span className="muted">· resolved by {issue.resolvedBy}</span>}
-              {issue.createdAt && <span className="muted">· {timeAgo(issue.createdAt)}</span>}
-            </div>
-          </button>
-        ))}
-      </div>
+      {loading && <p className="muted empty-sm">Loading…</p>}
+      {!loading && issues.length === 0 && (
+        <p className="empty">No issues found.</p>
+      )}
+      {issues.length > 0 && (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Summary</th>
+                <th>Category</th>
+                <th>Status</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              {issues.map(issue => (
+                <tr key={issue.id} onClick={() => navigate(`/issues/${issue.id}`)}>
+                  <td>{issue.summary}</td>
+                  <td className="muted">{CATEGORY_LABELS[issue.category] || issue.category}</td>
+                  <td>
+                    <span className={`badge badge--${issue.status}`}>{issue.status.replace('_', ' ')}</span>
+                  </td>
+                  <td className="muted">{issue.createdAt ? timeAgo(new Date(issue.createdAt).getTime() / 1000) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {consumer && (
         <div className="consumer-bar">
@@ -107,6 +122,6 @@ export function IssuesPage() {
           <span className="muted">· Auth: OK</span>
         </div>
       )}
-    </div>
+    </section>
   );
 }

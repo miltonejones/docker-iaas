@@ -722,11 +722,11 @@ export const api = {
 
   assistantListIssues: (status?: string) =>
     fetch(`/api/assistant/issues${status ? `?status=${encodeURIComponent(status)}` : ''}`).then((r) =>
-      json(r),
+      json<AssistantIssue[]>(r),
     ),
 
   assistantGetIssue: (id: string) =>
-    fetch(`/api/assistant/issues/${encodeURIComponent(id)}`).then((r) => json(r)),
+    fetch(`/api/assistant/issues/${encodeURIComponent(id)}`).then((r) => json<AssistantIssue>(r)),
 };
 
 /** A single consumer/issue event surfaced by the notification log. */

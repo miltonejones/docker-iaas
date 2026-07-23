@@ -563,7 +563,7 @@ export function App() {
               <Route path="/buckets" element={<BucketsPage />} />
               <Route path="/databases/:id" element={<DatabasesPage />} />
               <Route path="/databases" element={<DatabasesPage />} />
-              <Route path="/issues" element={<IssuesPage />} />
+              <Route path="/issues" element={<IssuesPage onCreateIssue={() => setCreateIssueOpen(true)} />} />
               <Route path="/issues/:id" element={<IssueDetailPage />} />
               <Route path="/gateway/:name" element={<GatewayPage />} />
               <Route path="/gateway" element={<GatewayPage />} />
