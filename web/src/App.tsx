@@ -18,6 +18,7 @@ import { onOpenAssistant } from './assistant';
 import { AppIcon } from './icons';
 import { ToastViewport } from './components/ToastViewport';
 import { NotificationBell } from './components/NotificationBell';
+import type { NotificationEntry } from './api';
 import { useToast } from './ToastContext';
 
 const SERVICES = [
@@ -223,6 +224,16 @@ export function App() {
   const [modalKey, setModalKey] = useState(0);
   const [createIssueOpen, setCreateIssueOpen] = useState(false);
 
+  /** Called by NotificationBell when a deploy notification arrives or the SSE
+   *  stream reconnects (possible server redeploy).  Asks the user if they want
+   *  to reload the page to pick up newly deployed client-side assets. */
+  const handleDeployNotification = useCallback((entry?: NotificationEntry) => {
+    const summary = entry?.summary ?? 'New code deployed';
+    if (window.confirm(`${summary}\n\nReload the page to pick up the latest changes?`)) {
+      window.location.reload();
+    }
+  }, []);
+
   // On mount, if the assistant was pinned before refresh and a session exists,
   // restore the pinned panel so the conversation survives the refresh.
   useEffect(() => {
@@ -408,7 +419,10 @@ export function App() {
             </label>
           </div>
           <div className="topbar__right">
-            <NotificationBell />
+            <NotificationBell
+              onDeployNotification={handleDeployNotification}
+              onStreamReconnect={handleDeployNotification}
+            />
             <button
               className="btn btn--ghost btn--sm"
               onClick={() => {

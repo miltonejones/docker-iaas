@@ -29,6 +29,17 @@ function iconFor(summary: string): string {
   return 'info';
 }
 
+/** True when a notification summary signals that new code was deployed or
+ *  pushed — the user should be offered a page reload to pick up the latest
+ *  client-side assets. */
+function isDeployNotification(summary: string): boolean {
+  if (summary.startsWith('🚀')) return true;
+  if (summary.startsWith('📤')) return true;
+  const lower = summary.toLowerCase();
+  if (lower.includes('deploy') || lower.includes('deployed')) return true;
+  return false;
+}
+
 function formatTime(ts: string): string {
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return ts;
@@ -40,10 +51,19 @@ function formatTime(ts: string): string {
   });
 }
 
+/** Props for NotificationBell. */
+export interface NotificationBellProps {
+  /** Called when a deploy-related notification arrives so the parent can
+   *  prompt the user to reload the page for updated client assets. */
+  onDeployNotification?: (entry: NotificationEntry) => void;
+  /** Called when the SSE stream reconnects (possible server redeploy). */
+  onStreamReconnect?: () => void;
+}
+
 /** Bell icon in the topbar that surfaces live consumer/issue events pushed
  *  over SSE from the server's notification log — the same event stream the
  *  desktop notify-watcher.mjs script tails via SSH. */
-export function NotificationBell() {
+export function NotificationBell({ onDeployNotification, onStreamReconnect }: NotificationBellProps) {
   const [entries, setEntries] = useState<NotificationEntry[]>([]);
   const [open, setOpen] = useState(false);
   const [lastSeenTs, setLastSeenTs] = useState<string>(() => localStorage.getItem(SEEN_KEY) || '');
@@ -62,6 +82,10 @@ export function NotificationBell() {
   const [desktopPermission, setDesktopPermission] = useState<DesktopPermission>(() =>
     getDesktopPermission(),
   );
+  // Deduplicate deploy reload prompts within a single page session:
+  // only fire once per deploy cycle.  Resets on reload so the next
+  // deploy triggers a fresh prompt.
+  const reloadPrompted = useRef(false);
 
   const notify = useCallback(
     (entry: NotificationEntry) => {
@@ -71,6 +95,12 @@ export function NotificationBell() {
       // unfocused (see desktopNotify.ts). This is the in-browser
       // replacement for scripts/notify-watcher.mjs.
       showDesktopNotification(entry.summary, entry.body);
+      // When a deploy notification arrives and we haven't prompted yet
+      // this cycle, ask the user if they want to reload.
+      if (isDeployNotification(entry.summary) && !reloadPrompted.current) {
+        reloadPrompted.current = true;
+        onDeployNotification?.(entry);
+      }
     },
     // toast.show is itself a stable useCallback (its only dependency,
     // dismiss, is also stable), so depending on it instead of the whole
@@ -81,7 +111,7 @@ export function NotificationBell() {
     // receive a live "entry" frame — only the initial "history" frame
     // arrives, and lastNotifiedTs filters that out as already-seen.
     // That is why OS desktop notifications never fire.
-    [toast.show],
+    [toast.show, onDeployNotification],
   );
 
   // Fetch initial entries via REST on mount so the panel has data even if the
@@ -116,6 +146,13 @@ export function NotificationBell() {
           for (const entry of sliced) {
             if (entry.ts > lastNotifiedTs.current) notify(entry);
           }
+          // The SSE stream reconnected after being established — the server
+          // may have restarted (new code deployed).  Offer a reload so the
+          // user picks up updated client-side assets.
+          if (!reloadPrompted.current) {
+            reloadPrompted.current = true;
+            onStreamReconnect?.();
+          }
         }
         if (sliced.length > 0) lastNotifiedTs.current = sliced[sliced.length - 1].ts;
         initialized.current = true;
@@ -131,7 +168,7 @@ export function NotificationBell() {
     );
     return unsubscribe;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [notify]);
+  }, [notify, onStreamReconnect]);
 
   const requestPermission = useCallback(async () => {
     const result = await requestDesktopPermission();
