@@ -1,6 +1,7 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faBolt,
+  faBug,
   faArrowUpRightFromSquare,
   faBars,
   faBell,
@@ -50,6 +51,7 @@ const UI_ICONS: Record<string, IconDefinition> = {
   spinner: faSpinner,
   database: faDatabase,
   bucket: faBucket,
+  bug: faBug,
   container: faBoxArchive,
   folder: faFolder,
   function: faBolt,
