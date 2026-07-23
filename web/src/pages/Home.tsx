@@ -12,16 +12,14 @@ interface Props {
   onPrune: () => void;
   pruning: boolean;
   runningCount: number;
-  totalCount: number;
 }
 
-export function HomePage({ snapshot, live, onPrune, pruning, runningCount, totalCount }: Props) {
+export function HomePage({ snapshot, live, onPrune, pruning, runningCount }: Props) {
   const navigate = useNavigate();
   const [fnCount, setFnCount] = useState(0);
   const [bucketCount, setBucketCount] = useState(0);
   const [routeCount, setRouteCount] = useState(0);
   const [openIssueCount, setOpenIssueCount] = useState(0);
-  const [resolvedIssueCount, setResolvedIssueCount] = useState(0);
   const [gatewayLinks, setGatewayLinks] = useState<GatewayRoute[]>([]);
   const [traffic, setTraffic] = useState<GatewayTrafficTimeseries | null>(null);
 
@@ -31,7 +29,6 @@ export function HomePage({ snapshot, live, onPrune, pruning, runningCount, total
     api.gatewayTrafficTimeseries().then(setTraffic).catch(() => {});
     api.assistantIssueCounts().then((counts) => {
       setOpenIssueCount(counts.open);
-      setResolvedIssueCount(counts.resolved);
     }).catch(() => {});
     api.gatewayList().then((list) => {
       setRouteCount(list.length);
@@ -84,10 +81,6 @@ export function HomePage({ snapshot, live, onPrune, pruning, runningCount, total
           <span className="home-card__num">{runningCount}</span>
           <span className="home-card__label">Running containers</span>
         </button>
-        <button className="home-card glow" onClick={() => navigate('/containers')}>
-          <span className="home-card__num">{totalCount}</span>
-          <span className="home-card__label">Total containers</span>
-        </button>
         <button className="home-card glow" onClick={() => navigate('/functions')}>
           <span className="home-card__num">{fnCount}</span>
           <span className="home-card__label">Saved functions</span>
@@ -103,10 +96,6 @@ export function HomePage({ snapshot, live, onPrune, pruning, runningCount, total
         <div className="home-card glow">
           <span className="home-card__num">{openIssueCount}</span>
           <span className="home-card__label">Open issues</span>
-        </div>
-        <div className="home-card glow">
-          <span className="home-card__num">{resolvedIssueCount}</span>
-          <span className="home-card__label">Resolved issues</span>
         </div>
       </div>
 

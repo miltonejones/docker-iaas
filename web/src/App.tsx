@@ -502,7 +502,6 @@ export function App() {
                     onPrune={onPrune}
                     pruning={pruning}
                     runningCount={running}
-                    totalCount={containers.length}
                   />
                 }
               />
