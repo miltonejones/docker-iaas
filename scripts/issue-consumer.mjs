@@ -242,8 +242,36 @@ function notify(summary, body = "") {
   }
 }
 
-/** Extract a concise resolution summary from assistant stdout. */
+/** Parse the structured JSON result the model is instructed to emit at the
+ *  end of its response.  Looks for a line matching the expected shape.
+ *  Returns null if nothing parseable is found (graceful fallback). */
+function parseStructuredResult(stdout) {
+  // Look for a JSON object line containing "changedFiles"
+  const lines = stdout.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim();
+    if (!line.startsWith("{")) continue;
+    try {
+      const parsed = JSON.parse(line);
+      if (Array.isArray(parsed.changedFiles)) {
+        return {
+          changedFiles: parsed.changedFiles.filter((f) => typeof f === "string"),
+          rootCause: typeof parsed.rootCause === "string" ? parsed.rootCause : "",
+          diagnosis: typeof parsed.diagnosis === "string" ? parsed.diagnosis : "",
+          confidence: ["high", "medium", "low"].includes(parsed.confidence) ? parsed.confidence : "medium",
+        };
+      }
+    } catch { /* not valid JSON — keep looking */ }
+  }
+  return null;
+}
+
+/** Extract a concise resolution summary from assistant stdout.
+ *  Prefers the structured result's diagnosis field, falls back to regex. */
 function extractResolution(stdout) {
+  const structured = parseStructuredResult(stdout);
+  if (structured?.diagnosis) return structured.diagnosis.slice(0, 500);
+
   // Try the "## Diagnosis" section first — it explains what was wrong.
   const diag = stdout.match(/## Diagnosis\s*\n+(.+?)(?:\n##|\n\*\*|\n{3,}|$)/s);
   if (diag) return diag[1].trim().slice(0, 500);
@@ -362,6 +390,14 @@ function formatPrompt(issue) {
     `- The issue describes the desired END STATE. Your job is to change files so that end state is achieved. Finding the requested text in an unrelated spot does NOT mean the job is done.`,
     `- Edit files DIRECTLY yourself. Do NOT delegate to parallel agents or search-only sub-processes. Every issue requires actual file changes — read the file, then edit it. If you only search and report without editing, the fix won't be applied.`,
     `- Never edit protected files.  The current list is in scripts/protected-files.json.  Even if you try, the commit step will discard those changes.`,
+    ``,
+    `## Result format`,
+    ``,
+    `At the very end of your response, output a single JSON line (no backticks, no markdown) with this exact shape:`,
+    ``,
+    `{"changedFiles":["path/to/file.ts",...],"rootCause":"why this happened","diagnosis":"what you found","confidence":"high|medium|low"}`,
+    ``,
+    `Include every file you edited in changedFiles (empty array if you only analysed).  The consumer uses this to decide whether to mark the issue resolved — an empty changedFiles means no fix was applied.`,
    ].join("\n");
 }
 
@@ -700,15 +736,30 @@ async function consumeOne() {
       }
 
       if (code === 0) {
-        log(`Issue ${issue.id} processed.`);
-        notify(`✅ Fixed: ${issue.summary}`);
-        writeStatus("idle");
-        await updateIssueOnServer(
-          issue,
-          "resolved",
-          extractResolution(stdout),
-        );
-        pushToGitHub(issue); // fire-and-forget — CI handles the deploy
+        const result = parseStructuredResult(stdout);
+        const changedFiles = result?.changedFiles ?? [];
+        const hasChanges = changedFiles.length > 0;
+
+        if (hasChanges) {
+          log(`Issue ${issue.id} fixed — ${changedFiles.length} file(s) changed (confidence: ${result.confidence}).`);
+          notify(`✅ Fixed: ${issue.summary}`, changedFiles.join(", "));
+          writeStatus("idle");
+          await updateIssueOnServer(
+            issue,
+            "resolved",
+            extractResolution(stdout),
+          );
+          pushToGitHub(issue);
+        } else {
+          log(`Issue ${issue.id} analysed but no files were changed — skipping push.`);
+          notify(`🔍 Analysed: ${issue.summary}`, result?.diagnosis || "No changes made.");
+          writeStatus("idle");
+          await updateIssueOnServer(
+            issue,
+            "in_progress",
+            result?.diagnosis || extractResolution(stdout),
+          );
+        }
       } else {
         log(`Copilot exited with code ${code} for issue ${issue.id}`);
         const errMsg = stderr?.slice(0, 200) || `Exit code: ${code}`;
