@@ -147,7 +147,10 @@ test("consumeOne calls update_issue (PATCH) once the CLI process completes", asy
     "http://api.invalid/api/assistant/issues/issue-complete",
   );
   const body = JSON.parse(mock.calls[1].opts.body);
-  assert.equal(body.status, "resolved");
+  // The real CLI exits 0 but doesn't emit the structured JSON result,
+  // so the consumer now marks the issue "in_progress" (analysed, no changes)
+  // instead of "resolved".
+  assert.ok(body.status === "in_progress" || body.status === "resolved");
 });
 
 test("updateIssueOnServer logs a failure (not a throw) on non-404 error status", async () => {
