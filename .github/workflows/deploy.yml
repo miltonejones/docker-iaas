@@ -15,6 +15,32 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Reject if protected files damaged
+        run: |
+          PROTECTED=(
+            Dockerfile.consumer
+            .gitignore
+            docker-compose.yml
+            scripts/issue-consumer.mjs
+          )
+          FAILED=false
+          for f in "${PROTECTED[@]}"; do
+            if ! git diff --quiet HEAD~1 HEAD -- "$f"; then
+              echo "❌ PROTECTED FILE CHANGED: $f"
+              FAILED=true
+            fi
+          done
+          if $FAILED; then
+            echo "::error::Consumer modified protected files — deploy blocked. Revert the commit and push again."
+            exit 1
+          fi
+          echo "✅ Protected files intact"
+
       - name: Deploy via SSH
         id: deploy
         uses: appleboy/ssh-action@v1
