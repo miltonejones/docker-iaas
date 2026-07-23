@@ -144,6 +144,20 @@ function isDuplicate(summary) {
 fs.mkdirSync(LOG_DIR, { recursive: true });
 
 const NOTIFY_LOG = path.join(LOG_DIR, "notifications.jsonl");
+const STATUS_FILE = path.join(LOG_DIR, "consumer-status.json");
+
+/** Write consumer status so the assistant can report it. */
+function writeStatus(state, currentIssue = null, lastError = null) {
+  const status = {
+    state,
+    currentIssue,
+    authOk: !!authHeader,
+    lastPoll: new Date().toISOString(),
+    lastError,
+    updatedAt: new Date().toISOString(),
+  };
+  try { fs.writeFileSync(STATUS_FILE, JSON.stringify(status), "utf8"); } catch {}
+}
 
 /** Append a structured notification event.  Tries a direct filesystem write
  *  first (no network dependency).  When the consumer runs in a container
@@ -399,6 +413,7 @@ async function consumeOne() {
   if (!authHeader) {
     if (Date.now() - lastHeartbeat > 60_000) {
       log("No auth token — cannot poll for issues. Set DOCKYARD_API_TOKEN, CONSUMER_API_KEY, or ensure the DB is accessible.");
+      writeStatus("no-auth");
       lastHeartbeat = Date.now();
     }
     return false;
@@ -436,6 +451,7 @@ async function consumeOne() {
     // Log a heartbeat once a minute so we know the daemon is alive.
     if (Date.now() - lastHeartbeat > 60_000) {
       log("Polling — no open issues");
+      writeStatus("idle");
       lastHeartbeat = Date.now();
     }
     return false;
@@ -446,12 +462,14 @@ async function consumeOne() {
   if (!issue) {
     if (Date.now() - lastHeartbeat > 60_000) {
       log(`Polling — ${issues.length} open issue(s), all recently processed`);
+      writeStatus("idle");
       lastHeartbeat = Date.now();
     }
     return false;
   }
 
   log(`Processing issue ${issue.id}: ${issue.summary}`);
+  writeStatus("processing", { id: issue.id, summary: issue.summary });
   notify(`🐛 ${issue.summary}`, `Category: ${issue.category || "general"}\nID: ${issue.id}`);
 
   const prompt = formatPrompt(issue);
@@ -517,6 +535,7 @@ async function consumeOne() {
       if (code === 0) {
         log(`Issue ${issue.id} processed.`);
         notify(`✅ Fixed: ${issue.summary}`);
+        writeStatus("idle");
         await updateIssueOnServer(
           issue,
           "resolved",
@@ -525,6 +544,8 @@ async function consumeOne() {
         pushToGitHub(issue); // fire-and-forget — CI handles the deploy
       } else {
         log(`Copilot exited with code ${code} for issue ${issue.id}`);
+        const errMsg = stderr?.slice(0, 200) || `Exit code: ${code}`;
+        writeStatus("errored", { id: issue.id, summary: issue.summary }, errMsg);
         notify(`❌ Failed: ${issue.summary}`, `Exit code: ${code}`);
         if (stderr && !stdout) log(`stderr: ${stderr.slice(0, 500)}`);
       }
