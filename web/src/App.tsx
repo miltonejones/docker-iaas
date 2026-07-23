@@ -273,6 +273,7 @@ export function App() {
   // assistant to open with a prompt explaining the object being viewed.
   useEffect(() => onOpenAssistant((prompt) => {
     setModalKey((k) => k + 1);
+    setAssistantSessionId(undefined);
     setAssistantModal({ prompt });
   }), []);
 
@@ -280,6 +281,7 @@ export function App() {
     const q = assistantQuery.trim();
     if (!q) return;
     setModalKey((k) => k + 1);
+    setAssistantSessionId(undefined);
     setAssistantModal({ prompt: q });
     setAssistantQuery('');
   }
