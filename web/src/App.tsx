@@ -402,7 +402,7 @@ export function App() {
             <Link to="/" className="brand">
               <span className="brand__mark">◈</span>
               <div>
-                <h1>Dockyard.ai</h1>
+                <h1>dockyard.AI</h1>
               </div>
             </Link>
             <ServiceNav />
@@ -414,7 +414,7 @@ export function App() {
                 value={assistantQuery}
                 onChange={(e) => setAssistantQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && submitAssistantQuery()}
-                placeholder="Ask Dockyard.ai to do something..."
+                placeholder="Ask dockyard.AI to do something..."
               />
             </label>
           </div>
@@ -426,7 +426,7 @@ export function App() {
             <button
               className="btn btn--ghost btn--sm"
               onClick={() => {
-                if (confirm('Sign out of Dockyard.ai?')) logout();
+                if (confirm('Sign out of dockyard.AI?')) logout();
               }}
               title={`Sign out (${email})`}
             >
