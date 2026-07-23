@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import { AppIcon } from '../icons';
 import { api } from '../api';
 import { timeAgo } from '../format';
+import { useConfirm } from "./ConfirmContext";
 import type {
   AssistantLogEntry,
   AssistantPendingAction,
@@ -220,6 +221,7 @@ export function AssistantBar({
   sessionStorageKey,
   onSessionId,
 }: Props) {
+  const { askConfirm } = useConfirm();
   const [prompt, setPrompt] = useState('');
   const [log, setLog] = useState<LogEntry[]>([]);
   const [rawMessages, setRawMessages] = useState<unknown[]>([]);
@@ -652,7 +654,7 @@ export function AssistantBar({
   async function deleteSessionRow(id: string) {
     const session = sessionsList.find((s) => s.id === id);
     const label = session?.name ? `"${session.name}"` : 'this session';
-    if (!confirm(`Delete ${label}? This cannot be undone.`)) return;
+    if (!await askConfirm(`Delete ${label}? This cannot be undone.`)) return;
     try {
       await api.assistantDeleteSession(id);
       setSessionsList((list) => list.filter((s) => s.id !== id));
@@ -1397,7 +1399,7 @@ Ask Dockyard.ai
             <div className="assistant-voice-select">
               <button
                 className={`btn btn--ghost btn--sm assistant-tts-toggle${globalSpeakEnabled ? ' assistant-tts-toggle--on' : ''}`}
-                onClick={() => { setGlobalSpeakEnabled((v) => { if (v) stopSpeaking(); return !v; }); }}
+                onClick={async () => { setGlobalSpeakEnabled((v) => { if (v) stopSpeaking(); return !v; }); }}
                 title={globalSpeakEnabled ? 'TTS on — click to mute' : 'TTS off — click to enable'}
                 aria-label={globalSpeakEnabled ? 'Disable text-to-speech' : 'Enable text-to-speech'}
               >
@@ -1416,7 +1418,7 @@ Ask Dockyard.ai
                   <div className="assistant-voice-menu__head">Voice</div>
                   <button
                     className={`assistant-voice-menu__item${!selectedVoiceUri ? ' assistant-voice-menu__item--active' : ''}`}
-                    onClick={() => {
+                    onClick={async () => {
                       setSelectedVoiceUri(null);
                       setVoiceMenuOpen(false);
                       localStorage.removeItem('dockyard:tts-voice');
@@ -1428,7 +1430,7 @@ Ask Dockyard.ai
                     <button
                       key={v.voiceURI}
                       className={`assistant-voice-menu__item${selectedVoiceUri === v.voiceURI ? ' assistant-voice-menu__item--active' : ''}`}
-                      onClick={() => {
+                      onClick={async () => {
                         setSelectedVoiceUri(v.voiceURI);
                         setVoiceMenuOpen(false);
                         localStorage.setItem('dockyard:tts-voice', v.voiceURI);
