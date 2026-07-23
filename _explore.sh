@@ -1,0 +1,27 @@
+#!/bin/sh
+echo "=== scripts/ ==="
+ls -la /workspace/scripts/
+echo ""
+echo "=== web/src/ ==="
+ls -d /workspace/web/src/*/
+echo ""
+echo "--- files in web/src/ ---"
+ls -p /workspace/web/src/ | grep -v /
+echo ""
+echo "=== Search for NotificationPanel/NotificationDropdown/notifications in web/src ==="
+grep -rl "NotificationPanel\|NotificationDropdown\|notifications" /workspace/web/src/ 2>/dev/null || echo "(none found)"
+echo ""
+echo "=== Test file patterns ==="
+echo "--- scripts/test-*.mjs ---"
+ls /workspace/scripts/test-*.mjs 2>/dev/null || echo "(none)"
+echo "--- scripts/*.test.* ---"
+ls /workspace/scripts/*.test.* 2>/dev/null || echo "(none)"
+echo "--- /*.test.* ---"
+ls /workspace/*.test.* 2>/dev/null || echo "(none)"
+echo "--- /workspace/e2e/ ---"
+ls -la /workspace/e2e/ 2>/dev/null || echo "(none or doesn't exist)"
+echo "--- /workspace/test/ ---"
+ls -la /workspace/test/ 2>/dev/null || echo "(none or doesn't exist)"
+echo ""
+echo "=== Search for 'test 9' or 'Test 9' ==="
+grep -ril "test 9" /workspace/ --include="*.mjs" --include="*.ts" --include="*.tsx" --include="*.js" --include="*.jsx" --include="*.json" --include="*.md" --include="*.txt" 2>/dev/null || echo "(none found)"

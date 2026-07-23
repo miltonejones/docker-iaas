@@ -10,3 +10,10 @@
 {"ts":"2026-07-23T03:34:11Z","level":"info","summary":"✅ Deployed","body":"fix: Assistant has no voice/audio output capability"}
 {"ts":"2026-07-23T03:35:46.579Z","level":"info","summary":"🐛 TTS volume icon and voice selector visible but no audio plays","body":"Category: bug\nID: iss-1784777742774-etcn4f"}
 {"ts":"2026-07-23T03:38:46.806Z","level":"info","summary":"✅ Fixed: TTS volume icon and voice selector visible but no audio plays","body":""}
+{"ts":"2026-07-23T03:41:31.111Z","level":"info","summary":"🟢 Consumer online","body":"API: http://console:4300\nCodebase: /app\nEC2: false"}
+{"ts":"2026-07-23T03:41:31Z","level":"info","summary":"✅ Deployed","body":"fix: TTS volume icon and voice selector visible but no audio plays"}
+{"ts":"2026-07-23T03:55:47.164Z","level":"info","summary":"🐛 TTS speakMessage fails silently — no audio and no error callback fires","body":"Category: bug\nID: iss-1784778945819-4b8kvo"}
+{"ts":"2026-07-23T03:58:13.860Z","level":"info","summary":"✅ Fixed: TTS speakMessage fails silently — no audio and no error callback fires","body":""}
+{"ts":"2026-07-23T03:58:16.383Z","level":"info","summary":"⚠️ Push failed","body":"Fix for \"TTS speakMessage fails silently — no audio and no error callback fires\" couldn't push — will retry"}
+{"ts":"2026-07-23T04:00:41.572Z","level":"info","summary":"🐛 Consumer push rejected — GitHub secret scanning flagged iaas.db-wal in commit","body":"Category: bug\nID: iss-1784779238179-jn2m0f"}
+{"ts":"2026-07-23T04:02:33.288Z","level":"info","summary":"✅ Fixed: Consumer push rejected — GitHub secret scanning flagged iaas.db-wal in commit","body":""}
