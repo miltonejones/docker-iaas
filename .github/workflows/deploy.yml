@@ -30,9 +30,8 @@ jobs:
             # that haven't been pushed yet. GitHub is the source of truth.
             git fetch origin main
             git reset --hard origin/main
-            # Don't mask failures with || true — a broken build or
-            # container-start failure must be surfaced so the Notify
-            # failure step below fires.
+            # Stop everything first so stale containers can't collide on names.
+            docker compose down --remove-orphans 2>/dev/null || true
             docker compose up --build -d --remove-orphans
             # Cleanup is best-effort only — stale images shouldn't block a deploy.
             docker image prune -f || true
