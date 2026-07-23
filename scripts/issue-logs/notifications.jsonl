@@ -20,3 +20,8 @@
 {"ts":"2026-07-23T01:29:31.527Z","level":"info","summary":"🐛 Assistant prompt missing consumer awareness — doesn't know about issue auto-fix loop","body":"Category: missing_feature\nID: iss-1784770169490-nj5y3k"}
 {"ts":"2026-07-23T01:29:39Z","level":"error","summary":"❌ Deploy failed","body":"feat: consumer in_progress status, 10min Claude timeout, health check tool"}
 {"ts":"2026-07-23T01:31:38.435Z","level":"info","summary":"✅ Fixed: Assistant prompt missing consumer awareness — doesn't know about issue auto-fix loop","body":""}
+{"ts":"2026-07-23T02:03:23.161Z","level":"info","summary":"🟢 Consumer online","body":"API: http://console:4300\nCodebase: /app\nEC2: false"}
+{"ts":"2026-07-23T02:04:19.872Z","level":"info","summary":"🟢 Consumer online","body":"API: http://console:4300\nCodebase: /app\nEC2: false"}
+{"ts":"2026-07-23T02:05:40.834Z","level":"info","summary":"🟢 Consumer online","body":"API: http://console:4300\nCodebase: /app\nEC2: false"}
+{"ts":"2026-07-23T02:06:36.060Z","level":"info","summary":"🐛 [SMOKE TEST] Verify consumer can push to GitHub after git safe.directory fix","body":"Category: general\nID: iss-1784772392109-4vm682"}
+{"ts":"2026-07-23T02:13:09.563Z","level":"info","summary":"✅ Fixed: [SMOKE TEST] Verify consumer can push to GitHub after git safe.directory fix","body":""}
