@@ -283,12 +283,23 @@ export function AssistantBar({
   const [sessionsLoading, setSessionsLoading] = useState(false);
 
   // ── TTS / voice state ───────────────────────────────────────────────
+  const TTS_GLOBAL_KEY = 'dockyard:tts-global-speak';
+  const [globalSpeakEnabled, setGlobalSpeakEnabled] = useState(() => localStorage.getItem(TTS_GLOBAL_KEY) !== '0');
+  const globalSpeakRef = useRef(globalSpeakEnabled);
+  const lastAutoSpokenIdxRef = useRef(-1);
   const [speakingMessageIndex, setSpeakingMessageIndex] = useState<number | null>(null);
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoiceUri, setSelectedVoiceUri] = useState<string | null>(null);
   const [voiceMenuOpen, setVoiceMenuOpen] = useState(false);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const voiceMenuRef = useRef<HTMLDivElement>(null);
+
+  // Persist global speak preference and keep ref in sync for use inside
+  // async callbacks (consumeTurnStream) that can't read latest state.
+  useEffect(() => {
+    globalSpeakRef.current = globalSpeakEnabled;
+    localStorage.setItem(TTS_GLOBAL_KEY, globalSpeakEnabled ? '1' : '0');
+  }, [globalSpeakEnabled]);
 
   // Close the voice menu on outside click.
   useEffect(() => {
@@ -375,6 +386,24 @@ export function AssistantBar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busy, pending, resolved, sessionStorageKey]);
 
+  // Auto-speak assistant messages when a turn completes (busy→false) and
+  // global TTS is enabled. Only speaks messages that haven't been auto-spoken
+  // yet, using a ref to track the last spoken index across renders.
+  useEffect(() => {
+    if (!globalSpeakEnabled || busy) return;
+    for (let i = log.length - 1; i >= 0; i--) {
+      if (log[i].kind === 'assistant' && log[i].text.trim() && i > lastAutoSpokenIdxRef.current) {
+        lastAutoSpokenIdxRef.current = i;
+        // Defer so React has flushed any pending DOM updates from the turn.
+        const idx = i;
+        const text = log[i].text;
+        requestAnimationFrame(() => speakMessage(idx, text));
+        break;
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy]);
+
   // Save to localStorage on page unload so sessions survive refresh.
   // Async saveSession() is cancelled on unload; sync localStorage write completes.
   // Must match the format expected by restoreFallback(): {id, name, state, at}.
@@ -400,6 +429,7 @@ export function AssistantBar({
 
   function resetToNewSession() {
     stopSpeaking();
+    lastAutoSpokenIdxRef.current = -1;
     if (sessionStorageKey) localStorage.removeItem(sessionStorageKey);
     localStorage.removeItem(fallbackKey());
     titleGeneratedRef.current = false;
@@ -428,6 +458,7 @@ export function AssistantBar({
       onSessionId?.(session.id);
       titleGeneratedRef.current = true; // already has a name
       setLog(session.state.log ?? []);
+      lastAutoSpokenIdxRef.current = (session.state.log ?? []).length; // don't re-speak loaded history
       setRawMessages(session.state.messages ?? []);
       setPending(session.state.pending ?? []);
       setEdits(Object.fromEntries((session.state.pending ?? []).map((p) => [p.id, { ...p.input }])));
@@ -464,6 +495,7 @@ export function AssistantBar({
         setSessionName(fb.name);
         titleGeneratedRef.current = true;
         setLog(fb.state.log ?? []);
+        lastAutoSpokenIdxRef.current = (fb.state.log ?? []).length; // don't re-speak recovered history
         setRawMessages(fb.state.messages ?? []);
         setPending(fb.state.pending ?? []);
         setEdits(Object.fromEntries((fb.state.pending ?? []).map((p) => [p.id, { ...p.input }])));
@@ -1357,12 +1389,20 @@ Ask Dockyard.ai
             {sessionSaving && <span className="assistant-session-bar__status muted">Saving…</span>}
             <div className="assistant-voice-select">
               <button
-                className="btn btn--ghost btn--sm"
+                className={`btn btn--ghost btn--sm assistant-tts-toggle${globalSpeakEnabled ? ' assistant-tts-toggle--on' : ''}`}
+                onClick={() => { setGlobalSpeakEnabled((v) => { if (v) stopSpeaking(); return !v; }); }}
+                title={globalSpeakEnabled ? 'TTS on — click to mute' : 'TTS off — click to enable'}
+                aria-label={globalSpeakEnabled ? 'Disable text-to-speech' : 'Enable text-to-speech'}
+              >
+                <AppIcon name={globalSpeakEnabled ? 'speak' : 'mute'} />
+              </button>
+              <button
+                className="btn btn--ghost btn--sm assistant-voice-select__trigger"
                 onClick={() => setVoiceMenuOpen((v) => !v)}
                 title={selectedVoiceUri ? `Voice: ${availableVoices.find((v) => v.voiceURI === selectedVoiceUri)?.name ?? 'Selected'}` : 'Select voice'}
                 aria-label="Select voice"
               >
-                <AppIcon name={speakingMessageIndex !== null ? 'speak-stop' : 'speak'} />
+                <AppIcon name="chevron-down" />
               </button>
               {voiceMenuOpen && (
                 <div className="assistant-voice-menu" ref={voiceMenuRef}>
