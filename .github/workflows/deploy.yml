@@ -26,7 +26,10 @@ jobs:
             set -e
             cd /home/ec2-user/docker-iaas
             COMMIT_MSG=$(git log -1 --format=%s)
-            git pull origin main
+            # Fetch and reset hard — the consumer may have local edits
+            # that haven't been pushed yet. GitHub is the source of truth.
+            git fetch origin main
+            git reset --hard origin/main
             # Don't mask failures with || true — a broken build or
             # container-start failure must be surfaced so the Notify
             # failure step below fires.
