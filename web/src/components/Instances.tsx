@@ -1,4 +1,4 @@
-import { useState, Fragment } from 'react';
+import { useEffect, useState, Fragment } from 'react';
 import type { Container } from '../types';
 import { bytes, timeAgo } from '../format';
 import { api } from '../api';
@@ -43,6 +43,17 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
       /* ignore storage errors (e.g. private browsing) */
     }
   }
+
+  // ── Pagination (client‑side) ───────────────────────────────────────
+  const PAGE_SIZE = 10;
+  const [page, setPage] = useState(0);
+  const totalPages = Math.max(1, Math.ceil(containers.length / PAGE_SIZE));
+  // Clamp page whenever the underlying list shrinks.
+  const effectivePage = page >= totalPages ? Math.max(0, totalPages - 1) : page;
+  const paginatedContainers = containers.slice(effectivePage * PAGE_SIZE, (effectivePage + 1) * PAGE_SIZE);
+
+  // Reset to page 0 when the list changes (containers added/removed).
+  useEffect(() => { setPage(0); }, [containers.length]);
 
   async function run(id: string, fn: () => Promise<unknown>, successMsg?: string) {
     setPending(id);
@@ -104,7 +115,7 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
         <p className="empty">No instances yet.</p>
       ) : view === 'grid' ? (
         <div className="instance-grid">
-          {containers.map((c) => {
+          {paginatedContainers.map((c) => {
             const running = RUNNING.has(c.state);
             const isPending = pending === c.id || busy;
             const systemLocked = !!c.system;
@@ -210,7 +221,7 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
               </tr>
             </thead>
             <tbody>
-              {containers.map((c) => {
+              {paginatedContainers.map((c) => {
                 const running = RUNNING.has(c.state);
                 const isPending = pending === c.id || busy;
                 const systemLocked = !!c.system;
@@ -302,6 +313,29 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* ── Pagination controls ──────────────────────────────────── */}
+      {totalPages > 1 && (
+        <div className="pagination">
+          <button
+            className="btn btn--sm"
+            disabled={effectivePage === 0}
+            onClick={() => setPage(effectivePage - 1)}
+          >
+            ← Prev
+          </button>
+          <span className="pagination__info">
+            Page {effectivePage + 1} of {totalPages}
+          </span>
+          <button
+            className="btn btn--sm"
+            disabled={effectivePage >= totalPages - 1}
+            onClick={() => setPage(effectivePage + 1)}
+          >
+            Next →
+          </button>
         </div>
       )}
 
