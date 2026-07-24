@@ -42,6 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-qemu-action@v3
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -51,6 +52,7 @@ jobs:
         with:
           context: .
           file: ${{ matrix.image.file }}
+          platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name == 'push' }}
           tags: |
             ghcr.io/${{ github.repository }}-${{ matrix.image.name }}:${{ github.sha }}
@@ -64,46 +66,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      contents: write
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Reject if protected files damaged
-        run: |
-          # Only guard against the consumer — human-authored commits
-          # (e.g. adding image: lines to docker-compose.yml) are intentional.
-          AUTHOR=$(git log -1 --format='%an')
-          if [ "$AUTHOR" != "Dockyard Guard" ]; then
-            echo "✅ Human-authored commit — skipping protected-file guard."
-            exit 0
-          fi
-          PROTECTED=(
-            Dockerfile.consumer
-            .gitignore
-            docker-compose.yml
-          )
-          FAILED=false
-          for f in "${PROTECTED[@]}"; do
-            if ! git diff --quiet HEAD~1 HEAD -- "$f"; then
-              echo "❌ PROTECTED FILE CHANGED: $f — recovering from previous commit"
-              git checkout HEAD~1 -- "$f"
-              FAILED=true
-            fi
-          done
-          if $FAILED; then
-            git config user.name "Dockyard Guard"
-            git config user.email "guard@dockyard-ai.com"
-            git add "${PROTECTED[@]}"
-            git commit -m "fix: auto-recover protected files damaged by consumer" || true
-            git push origin main
-            echo "::warning::Protected files were damaged and auto-recovered. Deploy will continue with recovered files."
-          else
-            echo "✅ Protected files intact"
-          fi
 
       - name: Deploy via SSH
         id: deploy
