@@ -546,8 +546,8 @@ export function App() {
             <aside className="offcanvas offcanvas--left" onClick={(e) => e.stopPropagation()}>
               <div className="offcanvas__head">
                 <h3>Saved sessions</h3>
-                <button className="btn btn--ghost" onClick={() => setSessionsOpen(false)}>
-                  Close
+                <button className="btn btn--ghost" onClick={() => setSessionsOpen(false)} title="Close">
+                  <AppIcon name="close" />
                 </button>
               </div>
               <div className="offcanvas__search">
