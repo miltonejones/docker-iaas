@@ -105,18 +105,30 @@ jobs:
             # Mark the consumer issue as resolved now that the fix is live.
             ISSUE_ID=$(echo "$COMMIT_MSG" | sed -n 's/.*\(iss-[0-9]*-[a-z0-9]*\).*/\1/p') || true
             if [ -n "$ISSUE_ID" ]; then
-              for i in $(seq 1 10); do
-                curl -sf -X PATCH "http://localhost:4300/api/assistant/issues/$ISSUE_ID" \
-                  -H "Content-Type: application/json" \
-                  -H "x-consumer-api-key: $CONSUMER_API_KEY" \
-                  -d '{"status":"resolved","resolution":"Deployed via CI","resolvedBy":"deploy"}' \
-                  && break || sleep 2
+              # Exchange the consumer key for a Bearer JWT.  The console
+              # container may still be starting, so retry a few times.
+              TOKEN=""
+              for i in $(seq 1 5); do
+                TOKEN=$(curl -sf -X POST http://localhost:4300/api/auth/consumer \
+                  -H "x-consumer-api-key: $CONSUMER_API_KEY" | jq -r '.token // empty') || true
+                [ -n "$TOKEN" ] && break || sleep 2
               done
-              # Verify it stuck — the container may still be starting.
-              curl -sf "http://localhost:4300/api/assistant/issues/$ISSUE_ID" \
-                -H "x-consumer-api-key: $CONSUMER_API_KEY" \
-                | jq -e '.status == "resolved"' > /dev/null \
-                || echo "::warning::Failed to mark issue $ISSUE_ID as resolved"
+              if [ -z "$TOKEN" ]; then
+                echo "::warning::Could not obtain consumer JWT — skipping issue resolve for $ISSUE_ID"
+              else
+                for i in $(seq 1 10); do
+                  curl -sf -X PATCH "http://localhost:4300/api/assistant/issues/$ISSUE_ID" \
+                    -H "Content-Type: application/json" \
+                    -H "Authorization: Bearer $TOKEN" \
+                    -d '{"status":"resolved","resolution":"Deployed via CI","resolvedBy":"deploy"}' \
+                    && break || sleep 2
+                done
+                # Verify it stuck.
+                curl -sf "http://localhost:4300/api/assistant/issues/$ISSUE_ID" \
+                  -H "Authorization: Bearer $TOKEN" \
+                  | jq -e '.status == "resolved"' > /dev/null \
+                  || echo "::warning::Failed to mark issue $ISSUE_ID as resolved"
+              fi
             fi
 
       - name: Notify failure
