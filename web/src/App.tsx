@@ -73,6 +73,39 @@ function ServiceNav() {
   );
 }
 
+/** Categorise a date string into a human-readable bucket for sidebar grouping. */
+function dateGroupLabel(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diffDays = Math.round((today.getTime() - target.getTime()) / 86400000);
+
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return 'This Week';
+  return 'Earlier';
+}
+
+/** Group session summaries by relative date, newest-first within each group. */
+function groupSessionsByDate(
+  sessions: AssistantSessionSummary[],
+): { label: string; items: AssistantSessionSummary[] }[] {
+  const order = ['Today', 'Yesterday', 'This Week', 'Earlier'];
+  const groups = new Map<string, AssistantSessionSummary[]>();
+  for (const s of sessions) {
+    const label = dateGroupLabel(s.updatedAt);
+    const bucket = groups.get(label) ?? [];
+    bucket.push(s);
+    groups.set(label, bucket);
+  }
+  // Sort each bucket newest-first.
+  for (const items of groups.values()) {
+    items.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  }
+  return order.filter((l) => groups.has(l)).map((label) => ({ label, items: groups.get(label)! }));
+}
+
 function Breadcrumbs() {
   const location = useLocation();
   const pathname = location.pathname;
@@ -486,24 +519,29 @@ export function App() {
                 {!sessionsLoading && sessionsList.length === 0 && !sessionsQuery.trim() && (
                   <p className="muted empty-sm">No saved sessions yet.</p>
                 )}
-                {sessionsList.map((s) => (
-                  <div key={s.id} className="offcanvas-session-row-wrap">
-                    <button className="offcanvas-session-row" onClick={() => openSessionInAssistant(s.id)}>
-                      <span className="offcanvas-session-row__name">
-                        {s.running && <span className="session-running-dot" title="Active — processing" />}
-                        {s.name}
-                      </span>
-                      <span className="offcanvas-session-row__time muted">
-                        {s.running ? "Active" : timeAgo(new Date(s.updatedAt).getTime() / 1000)}
-                      </span>
-                    </button>
-                    <button
-                      className="btn btn--ghost btn--sm offcanvas-session-row__delete"
-                      title="Delete session"
-                      onClick={() => deleteSavedSession(s.id)}
-                    >
-                      ×
-                    </button>
+                {!sessionsLoading && groupSessionsByDate(sessionsList).map((group) => (
+                  <div key={group.label}>
+                    <div className="offcanvas-session-group-header">{group.label}</div>
+                    {group.items.map((s) => (
+                      <div key={s.id} className="offcanvas-session-row-wrap">
+                        <button className="offcanvas-session-row" onClick={() => openSessionInAssistant(s.id)}>
+                          <span className="offcanvas-session-row__name">
+                            {s.running && <span className="session-running-dot" title="Active — processing" />}
+                            {s.name}
+                          </span>
+                          <span className="offcanvas-session-row__time muted">
+                            {s.running ? "Active" : timeAgo(new Date(s.updatedAt).getTime() / 1000)}
+                          </span>
+                        </button>
+                        <button
+                          className="btn btn--ghost btn--sm offcanvas-session-row__delete"
+                          title="Delete session"
+                          onClick={() => deleteSavedSession(s.id)}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>
