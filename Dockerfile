@@ -21,13 +21,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV NODE_ENV=production
+# Install Chromium BEFORE the COPY-from-build layers.  Chromium only
+# depends on the base image + apt deps above — it shouldn't re-download
+# on every code change.  (Previously it ran after COPY dist, making the
+# most expensive layer essentially uncacheable.)
+RUN npx playwright install chromium --with-deps 2>&1 | tail -3
 COPY --from=build /app/package.json ./
 COPY --from=build /app/server/package.json server/
 COPY --from=build /app/web/package.json web/
 COPY --from=build /app/node_modules node_modules
 COPY --from=build /app/server/dist server/dist
 COPY --from=build /app/web/dist web/dist
-# Install the Chromium binary that Playwright will use at runtime.
-RUN npx playwright install chromium --with-deps 2>&1 | tail -3
 EXPOSE 4300
 CMD ["node", "server/dist/index.js"]

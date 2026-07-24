@@ -24,10 +24,42 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
-      - run: npm run build
+
+  build-images:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        image:
+          - name: console
+            file: Dockerfile
+          - name: consumer
+            file: Dockerfile.consumer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.image.file }}
+          push: ${{ github.event_name == 'push' }}
+          tags: |
+            ghcr.io/${{ github.repository }}-${{ matrix.image.name }}:${{ github.sha }}
+            ghcr.io/${{ github.repository }}-${{ matrix.image.name }}:latest
+          cache-from: type=gha,scope=${{ matrix.image.name }}
+          cache-to: type=gha,scope=${{ matrix.image.name }},mode=max
 
   deploy:
-    needs: verify
+    needs: [verify, build-images]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -73,12 +105,14 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
+          envs: IMAGE_TAG
           script: |
             set -e
             cd /home/ec2-user/docker-iaas
             # SSH runs a non-login shell — source .env so CONSUMER_API_KEY
             # is available for the issue-resolve PATCH below.
             set -a; source .env; set +a
+            export IMAGE_TAG="${IMAGE_TAG:-${{ github.sha }}}"
             COMMIT_MSG=$(git log -1 --format=%s)
             # Container writes to data/ as root — fix ownership so git can
             # overwrite during reset.  (data/ is gitignored now; this is a
@@ -88,15 +122,9 @@ jobs:
             # that haven't been pushed yet. GitHub is the source of truth.
             git fetch origin main
             git reset --hard origin/main
-            # Rebuild console with --no-cache.  Docker layer caching
-            # doesn't reliably invalidate when source files change.
-            docker compose build --no-cache console
-            docker compose up -d --remove-orphans console caddy
-            # Stop, rebuild, and restart the consumer with --no-cache.
-            # Docker layer caching doesn't reliably detect Dockerfile-only changes.
-            docker compose stop consumer 2>/dev/null || true
-            docker compose build --no-cache consumer && docker compose up -d consumer || \
-              docker compose up -d consumer
+            # Pull pre-built images from GHCR instead of building on EC2.
+            docker compose pull console consumer
+            docker compose up -d --remove-orphans console consumer caddy
             # Cleanup is best-effort only — stale images shouldn't block a deploy.
             docker image prune -f || true
             # Append success notification for the local notify-watcher
