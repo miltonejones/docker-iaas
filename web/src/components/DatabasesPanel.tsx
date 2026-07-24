@@ -500,7 +500,7 @@ function SchemaView({ value }: { value: Record<string, unknown> | null }) {
             <tbody>
               {tables.map((table) => (
                 <tr key={String(table.name)}>
-                  <td className="mono">{renderScalar(table.name)}</td>
+                  <td>{renderScalar(table.name)}</td>
                   <td>{renderScalar(table.type)}</td>
                   <td>{renderScalar(table.engine)}</td>
                   <td className="mono">{renderScalar(table.rowCountEstimate)}</td>
@@ -545,7 +545,7 @@ function SchemaView({ value }: { value: Record<string, unknown> | null }) {
           <tbody>
             {collections.map((collection) => (
               <tr key={String(collection.name)}>
-                <td className="mono">{renderScalar(collection.name)}</td>
+                <td>{renderScalar(collection.name)}</td>
                 <td>{renderScalar(collection.type)}</td>
                 <td className="mono">{renderScalar(collection.estimatedDocumentCount)}</td>
                 <td>

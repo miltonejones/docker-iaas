@@ -72,7 +72,7 @@ function FunctionList() {
                   key={fn.id}
                   onClick={() => navigate(`/functions/${fn.id}`)}
                 >
-                  <td className="mono"><AppIcon name="function" /> {fn.name}</td>
+                  <td><AppIcon name="function" /> {fn.name}</td>
                   <td><span className="chip">{fn.runtime}</span></td>
                   <td className="muted">{new Date(fn.updatedAt).toLocaleString()}</td>
                 </tr>
