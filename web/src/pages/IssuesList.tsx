@@ -87,7 +87,7 @@ export function IssuesPage({ onCreateIssue }: { onCreateIssue: () => void }) {
           </label>
           <select
             id="status-filter"
-            className="input"
+            className="input search-input"
             value={status}
             onChange={(e) => setSearchParams(e.target.value ? { status: e.target.value } : {})}
           >

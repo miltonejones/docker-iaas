@@ -553,7 +553,7 @@ export function App() {
               <div className="offcanvas__search">
                 <input
                   type="search"
-                  className="input"
+                  className="input search-input"
                   placeholder="Search sessions…"
                   value={sessionsQuery}
                   onChange={(e) => setSessionsQuery(e.target.value)}
