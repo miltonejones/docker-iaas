@@ -88,15 +88,27 @@ jobs:
             # that haven't been pushed yet. GitHub is the source of truth.
             git fetch origin main
             git reset --hard origin/main
-            # Rebuild console with --no-cache.  Docker layer caching
-            # doesn't reliably invalidate when source files change.
-            docker compose build --no-cache console
+            # Build console and consumer in parallel.  Console uses --build
+            # (content-based cache) since COPY . . correctly busts on file
+            # changes.  Consumer only rebuilds from scratch if its source
+            # or Dockerfile changed — most deploys are web-file-only.
+            docker compose build --build console &
+            CONSOLE_PID=$!
+            NEEDS_CONSUMER=false
+            if git diff --name-only HEAD~1 HEAD | grep -qE '^(scripts/issue-consumer|Dockerfile\.consumer)'; then
+              NEEDS_CONSUMER=true
+              docker compose stop consumer 2>/dev/null || true
+              docker compose build --no-cache consumer &
+              CONSUMER_PID=$!
+            fi
+            wait $CONSOLE_PID
             docker compose up -d --remove-orphans console caddy
-            # Stop, rebuild, and restart the consumer with --no-cache.
-            # Docker layer caching doesn't reliably detect Dockerfile-only changes.
-            docker compose stop consumer 2>/dev/null || true
-            docker compose build --no-cache consumer && docker compose up -d consumer || \
+            if $NEEDS_CONSUMER; then
+              wait ${CONSUMER_PID:-0} 2>/dev/null || true
+              docker compose up -d consumer || docker compose up -d consumer
+            else
               docker compose up -d consumer
+            fi
             # Cleanup is best-effort only — stale images shouldn't block a deploy.
             docker image prune -f || true
             # Append success notification for the local notify-watcher
