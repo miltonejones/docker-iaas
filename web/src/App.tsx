@@ -619,7 +619,7 @@ export function App() {
               className="app-footer__link app-footer__link--button"
               onClick={() => setCreateIssueOpen(true)}
             >
-              Create an issue
+              <AppIcon name="bug" /> Create an issue
             </button>
             <FooterSlogan />
           </div>
