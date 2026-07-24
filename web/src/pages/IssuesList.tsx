@@ -81,25 +81,24 @@ export function IssuesPage({ onCreateIssue }: { onCreateIssue: () => void }) {
     <section className="panel">
       <div className="panel__head">
         <h2>Issues <span className="count">{issues.length}</span></h2>
-        <button className="btn btn--primary btn--sm" onClick={() => onCreateIssue()}>
-          + New Issue
-        </button>
-      </div>
-
-      <div className="filter-bar">
-        <label className="filter-bar__label" htmlFor="status-filter">
-          <AppIcon name="filter" /> Status:
-        </label>
-        <select
-          id="status-filter"
-          className="input"
-          value={status}
-          onChange={(e) => setSearchParams(e.target.value ? { status: e.target.value } : {})}
-        >
-          {STATUS_TABS.map(tab => (
-            <option key={tab.key} value={tab.key}>{tab.label}</option>
-          ))}
-        </select>
+        <div className="panel__head-actions">
+          <label className="filter-bar__label" htmlFor="status-filter">
+            <AppIcon name="filter" /> Status:
+          </label>
+          <select
+            id="status-filter"
+            className="input"
+            value={status}
+            onChange={(e) => setSearchParams(e.target.value ? { status: e.target.value } : {})}
+          >
+            {STATUS_TABS.map(tab => (
+              <option key={tab.key} value={tab.key}>{tab.label}</option>
+            ))}
+          </select>
+          <button className="btn btn--primary btn--sm" onClick={() => onCreateIssue()}>
+            + New Issue
+          </button>
+        </div>
       </div>
 
       {loading && <p className="muted empty-sm">Loading…</p>}
@@ -124,7 +123,7 @@ export function IssuesPage({ onCreateIssue }: { onCreateIssue: () => void }) {
                   key={issue.id}
                   onClick={() => navigate(`/issues/${issue.id}`)}
                 >
-                  <td className="mono"><AppIcon name="bug" /> {issue.summary}</td>
+                  <td><AppIcon name="bug" /> {issue.summary}</td>
                   <td><span className="chip">{CATEGORY_LABELS[issue.category] || issue.category}</span></td>
                   <td><span className={`badge badge--${issue.status}`}>{issue.status}</span></td>
                   <td className="muted">{issue.createdAt ? timeAgo(issue.createdAt) : '—'}</td>
