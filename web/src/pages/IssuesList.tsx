@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../api';
 import { AppIcon } from '../icons';
 import type { AssistantIssue } from '../types';
+
+const PAGE_SIZE = 10;
 
 const STATUS_TABS = [
   { key: '', label: 'All' },
@@ -47,9 +49,11 @@ export function IssuesPage({ onCreateIssue }: { onCreateIssue: () => void }) {
   const [issues, setIssues] = useState<AssistantIssue[]>([]);
   const [loading, setLoading] = useState(true);
   const [consumer, setConsumer] = useState<ConsumerState | null>(null);
+  const [page, setPage] = useState(0);
 
   useEffect(() => {
     setLoading(true);
+    setPage(0);
     api.assistantListIssues(status).then((data) => setIssues(data as AssistantIssue[])).catch(console.error).finally(() => setLoading(false));
   }, [status]);
 
@@ -61,6 +65,17 @@ export function IssuesPage({ onCreateIssue }: { onCreateIssue: () => void }) {
     const interval = setInterval(poll, 10_000);
     return () => clearInterval(interval);
   }, []);
+
+  const totalPages = Math.max(1, Math.ceil(issues.length / PAGE_SIZE));
+  const paginatedIssues = useMemo(
+    () => issues.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE),
+    [issues, page],
+  );
+
+  // Clamp page if the filtered list shrinks (e.g. status filter changed).
+  useEffect(() => {
+    if (page >= totalPages) setPage(Math.max(0, totalPages - 1));
+  }, [page, totalPages]);
 
   return (
     <section className="panel">
@@ -88,6 +103,7 @@ export function IssuesPage({ onCreateIssue }: { onCreateIssue: () => void }) {
         <p className="empty">No issues found.</p>
       )}
       {!loading && issues.length > 0 && (
+        <>
         <div className="table-wrap">
           <table className="table">
             <thead>
@@ -99,7 +115,7 @@ export function IssuesPage({ onCreateIssue }: { onCreateIssue: () => void }) {
               </tr>
             </thead>
             <tbody>
-              {issues.map(issue => (
+              {paginatedIssues.map(issue => (
                 <tr
                   key={issue.id}
                   onClick={() => navigate(`/issues/${issue.id}`)}
@@ -113,6 +129,29 @@ export function IssuesPage({ onCreateIssue }: { onCreateIssue: () => void }) {
             </tbody>
           </table>
         </div>
+
+        {totalPages > 1 && (
+          <div className="pagination">
+            <button
+              className="btn btn--sm"
+              disabled={page === 0}
+              onClick={() => setPage((p) => p - 1)}
+            >
+              ← Previous
+            </button>
+            <span className="pagination__info">
+              Page {page + 1} of {totalPages}
+            </span>
+            <button
+              className="btn btn--sm"
+              disabled={page >= totalPages - 1}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next →
+            </button>
+          </div>
+        )}
+        </>
       )}
 
       {consumer && (
