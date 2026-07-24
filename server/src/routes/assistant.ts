@@ -2079,3 +2079,18 @@ assistantRouter.post("/sessions/:id/abort", (req: Request, res: Response) => {
   if (runner) runner.abort();
   res.json({ ok: true });
 });
+
+// Consumer status — reads the JSON file the consumer writes on every poll cycle.
+assistantRouter.get("/consumer/status", (_req: Request, res: Response) => {
+  try {
+    const statusPath = path.join(process.cwd(), "scripts", "issue-logs", "consumer-status.json");
+    if (!fs.existsSync(statusPath)) {
+      res.json({ state: "unknown", error: "Status file not found." });
+      return;
+    }
+    const raw = fs.readFileSync(statusPath, "utf8");
+    res.json(JSON.parse(raw));
+  } catch (err) {
+    res.status(500).json({ state: "unknown", error: String(err) });
+  }
+});
