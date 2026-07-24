@@ -110,6 +110,17 @@ export function GatewayList() {
     requestsByGateway.set(route.gatewayName, (requestsByGateway.get(route.gatewayName) ?? 0) + route.requestCount);
   }
 
+  // ── Pagination (client‑side over grouped route names) ───────────
+  const PAGE_SIZE = 10;
+  const [page, setPage] = useState(0);
+  const totalPages = Math.max(1, Math.ceil(groups.length / PAGE_SIZE));
+  // Clamp page whenever the underlying list shrinks.
+  const effectivePage = page >= totalPages ? Math.max(0, totalPages - 1) : page;
+  const paginatedGroups = groups.slice(effectivePage * PAGE_SIZE, (effectivePage + 1) * PAGE_SIZE);
+
+  // Reset to page 0 when the list changes (routes added/removed).
+  useEffect(() => { setPage(0); }, [routes.length]);
+
   return (
     <section className="panel">
       <div className="panel__head">
@@ -188,7 +199,7 @@ export function GatewayList() {
               </tr>
             </thead>
             <tbody>
-              {groups.map((group) => (
+              {paginatedGroups.map((group) => (
                 <tr key={group[0].name} onClick={() => navigate(`/gateway/${group[0].name}`)}>
                   <td onClick={(e) => e.stopPropagation()}>
                     <AppIcon name="gateway" />{' '}
@@ -239,7 +250,7 @@ export function GatewayList() {
         </div>
       ) : (
         <div className="gateway-grid">
-          {groups.map((group) => (
+          {paginatedGroups.map((group) => (
             <div
               key={group[0].name}
               className="gateway-card"
@@ -292,6 +303,29 @@ export function GatewayList() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* ── Pagination controls ──────────────────────────────────── */}
+      {totalPages > 1 && (
+        <div className="pagination">
+          <button
+            className="btn btn--sm"
+            disabled={effectivePage === 0}
+            onClick={() => setPage(effectivePage - 1)}
+          >
+            ← Prev
+          </button>
+          <span className="pagination__info">
+            Page {effectivePage + 1} of {totalPages}
+          </span>
+          <button
+            className="btn btn--sm"
+            disabled={effectivePage >= totalPages - 1}
+            onClick={() => setPage(effectivePage + 1)}
+          >
+            Next →
+          </button>
         </div>
       )}
     </section>
