@@ -741,8 +741,9 @@ async function consumeOne() {
         const hasChanges = changedFiles.length > 0;
 
         if (hasChanges) {
-          log(`Issue ${issue.id} fixed — ${changedFiles.length} file(s) changed.  Pushing branch for CI deploy.`);
-          notify(`✅ Fixed: ${issue.summary}`, `Pushed to ${branchName} — CI will deploy.`);
+          const branchName = `consumer/fix-${issue.id}`;
+          log(`Issue ${issue.id} fixed — ${changedFiles.length} file(s) changed.  Pushing ${branchName}.`);
+          notify(`✅ Fixed: ${issue.summary}`, `Pushing ${branchName} — CI will deploy.`);
           writeStatus("idle");
           await updateIssueOnServer(
             issue,
