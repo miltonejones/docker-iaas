@@ -717,7 +717,7 @@ export const api = {
 
   assistantUpdateIssue: (
     issueId: string,
-    fields: { status?: string; resolution?: string; resolvedBy?: string },
+    fields: { status?: string; resolution?: string; resolvedBy?: string; summary?: string; details?: Record<string, unknown> },
   ) =>
     fetch(`/api/assistant/issues/${encodeURIComponent(issueId)}`, {
       method: 'PATCH',

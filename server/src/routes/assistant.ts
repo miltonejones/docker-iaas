@@ -1821,16 +1821,22 @@ assistantRouter.delete("/issues/:id", (req: Request, res: Response) => {
 assistantRouter.patch("/issues/:id", (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
-    const { status, resolution, resolvedBy } = req.body as {
+    const { status, resolution, resolvedBy, summary, details } = req.body as {
       status?: string;
       resolution?: string;
       resolvedBy?: string;
+      summary?: string;
+      details?: Record<string, unknown>;
     };
     if (status !== undefined && !ASSISTANT_ISSUE_STATUSES.includes(status as (typeof ASSISTANT_ISSUE_STATUSES)[number])) {
       res.status(400).json({ error: `Invalid status. Must be one of: ${ASSISTANT_ISSUE_STATUSES.join(", ")}.` });
       return;
     }
-    const row = updateAssistantIssue(req.params.id, { status, resolution, resolvedBy }, userId);
+    const row = updateAssistantIssue(req.params.id, {
+      status, resolution, resolvedBy,
+      summary,
+      details_json: details !== undefined ? JSON.stringify(details) : undefined,
+    }, userId);
     if (!row) {
       res.status(404).json({ error: "Issue not found." });
       return;

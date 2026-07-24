@@ -1284,7 +1284,7 @@ export function deleteAssistantIssue(id: string, userId?: string): boolean {
  *  getAssistantIssue. Returns undefined if the issue isn't found/visible. */
 export function updateAssistantIssue(
   id: string,
-  fields: { status?: string; resolution?: string; resolvedBy?: string },
+  fields: { status?: string; resolution?: string; resolvedBy?: string; summary?: string; details_json?: string },
   userId?: string,
 ): AssistantIssueRow | undefined {
   const row = getAssistantIssue(id, userId);
@@ -1303,6 +1303,14 @@ export function updateAssistantIssue(
   if (fields.resolvedBy !== undefined) {
     sets.push('resolved_by = ?');
     params.push(fields.resolvedBy);
+  }
+  if (fields.summary !== undefined) {
+    sets.push('summary = ?');
+    params.push(fields.summary);
+  }
+  if (fields.details_json !== undefined) {
+    sets.push('details_json = ?');
+    params.push(fields.details_json);
   }
   if (!sets.length) return row;
 
