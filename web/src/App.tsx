@@ -244,15 +244,51 @@ const SLOGANS = [
 
 function FooterSlogan() {
   const [slogan, setSlogan] = useState(() => SLOGANS[Math.floor(Math.random() * SLOGANS.length)]);
+  const [prevSlogan, setPrevSlogan] = useState<string | null>(null);
+  const [enterKey, setEnterKey] = useState(0);
+  const trans = useRef(false);
+  const curRef = useRef(slogan);
+
+  useEffect(() => { curRef.current = slogan; }, [slogan]);
 
   useEffect(() => {
+    let cancelled = false;
     const id = setInterval(() => {
-      setSlogan(SLOGANS[Math.floor(Math.random() * SLOGANS.length)]);
+      if (trans.current) return;
+      trans.current = true;
+      const current = curRef.current;
+      const pool = SLOGANS.filter((s) => s !== current);
+      const next = pool[Math.floor(Math.random() * pool.length)];
+      setPrevSlogan(current);
+      setTimeout(() => {
+        if (cancelled) return;
+        setSlogan(next);
+        setEnterKey((k) => k + 1);
+        setTimeout(() => {
+          if (cancelled) return;
+          setPrevSlogan(null);
+          trans.current = false;
+        }, 550);
+      }, 400);
     }, 8000);
-    return () => clearInterval(id);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, []);
 
-  return <span className="footer-slogan" key={slogan}>{slogan}</span>;
+  return (
+    <span className="footer-slogan-wrap">
+      {prevSlogan && (
+        <span className="footer-slogan footer-slogan--exit" aria-hidden="true">
+          {prevSlogan}
+        </span>
+      )}
+      <span className="footer-slogan footer-slogan--enter" key={enterKey}>
+        {slogan}
+      </span>
+    </span>
+  );
 }
 
 export function App() {

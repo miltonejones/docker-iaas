@@ -308,17 +308,37 @@ code,
   padding: 0;
   cursor: pointer;
 }
-.footer-slogan {
-  display: inline-block;
-  color: var(--muted);
-  animation: reveal-right 0.5s var(--ease);
+.footer-slogan-wrap {
+  display: inline-grid;
+  position: relative;
 }
-@keyframes reveal-right {
+.footer-slogan-wrap > * {
+  grid-area: 1 / 1;
+}
+.footer-slogan {
+  color: var(--muted);
+  white-space: nowrap;
+}
+.footer-slogan--enter {
+  animation: slogan-clip-in 0.55s var(--ease) both;
+}
+.footer-slogan--exit {
+  animation: slogan-clip-out 0.4s var(--ease) forwards;
+}
+@keyframes slogan-clip-in {
   from {
     clip-path: inset(0 100% 0 0);
   }
   to {
     clip-path: inset(0 0 0 0);
+  }
+}
+@keyframes slogan-clip-out {
+  from {
+    clip-path: inset(0 0 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 100%);
   }
 }
 .breadcrumbs__current {
