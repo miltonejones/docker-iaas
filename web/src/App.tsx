@@ -193,21 +193,21 @@ function Breadcrumbs() {
 
   return (
     <nav className="breadcrumbs" aria-label="Breadcrumb">
-      <Link to="/" className="breadcrumbs__link">Home</Link>
+      <Link to="/" className="breadcrumbs__link"><AppIcon name="home" className="breadcrumbs__icon" /> Home</Link>
       {currentLabel && (
         <>
           <span className="breadcrumbs__sep">&gt;</span>
           {detailLabel ? (
-            <Link to={current!.path} className="breadcrumbs__link">{currentLabel}</Link>
+            <Link to={current!.path} className="breadcrumbs__link"><AppIcon name={current!.icon} className="breadcrumbs__icon" /> {currentLabel}</Link>
           ) : (
-            <span className="breadcrumbs__current">{currentLabel}</span>
+            <span className="breadcrumbs__current"><AppIcon name={current!.icon} className="breadcrumbs__icon" /> {currentLabel}</span>
           )}
         </>
       )}
       {detailLabel && (
         <>
           <span className="breadcrumbs__sep">&gt;</span>
-          <span className="breadcrumbs__current">{detailLabel}</span>
+          <span className="breadcrumbs__current"><AppIcon name={current!.icon} className="breadcrumbs__icon" /> {detailLabel}</span>
         </>
       )}
     </nav>
