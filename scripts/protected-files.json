@@ -2,6 +2,7 @@
   "Dockerfile.consumer",
   "docker-compose.yml",
   ".gitignore",
+  ".dockerignore",
   ".github/workflows/deploy.yml",
   "scripts/issue-consumer.mjs"
 ]
