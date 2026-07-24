@@ -1820,7 +1820,11 @@ assistantRouter.delete("/issues/:id", (req: Request, res: Response) => {
 
 assistantRouter.patch("/issues/:id", (req: Request, res: Response) => {
   try {
-    const userId = getAuthUser(req)?.userId;
+    // Accept either a Bearer token OR a valid consumer API key.
+    const userId = getAuthUser(req)?.userId ??
+      (req.headers["x-consumer-api-key"] === process.env.CONSUMER_API_KEY
+        && process.env.CONSUMER_API_KEY
+        ? "deploy" : undefined);
     const { status, resolution, resolvedBy, summary, details } = req.body as {
       status?: string;
       resolution?: string;
