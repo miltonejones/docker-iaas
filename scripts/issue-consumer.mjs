@@ -737,7 +737,26 @@ async function consumeOne() {
 
       if (code === 0) {
         const result = parseStructuredResult(stdout);
-        const changedFiles = result?.changedFiles ?? [];
+        let changedFiles = result?.changedFiles ?? [];
+
+        // Fallback: if the model didn't emit structured JSON, check git
+        // to see if files actually changed.  Claude sometimes edits files
+        // but omits the JSON result we asked for.
+        if (changedFiles.length === 0 && !result) {
+          try {
+            const status = execSync(
+              "git status --porcelain 2>/dev/null",
+              { cwd: CODEBASE_PATH, encoding: "utf8", timeout: 5_000 },
+            ).trim();
+            if (status) {
+              changedFiles = status.split("\n")
+                .map((l) => l.slice(3).trim())
+                .filter(Boolean);
+              log(`No structured result, but git shows ${changedFiles.length} changed file(s).`);
+            }
+          } catch { /* best-effort */ }
+        }
+
         const hasChanges = changedFiles.length > 0;
 
         if (hasChanges) {
