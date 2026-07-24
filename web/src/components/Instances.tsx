@@ -44,16 +44,31 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
     }
   }
 
+  // ── Filter (client‑side) ────────────────────────────────────────
+  const [filter, setFilter] = useState('');
+  const normalizedFilter = filter.trim().toLowerCase();
+  const filteredContainers = normalizedFilter
+    ? containers.filter((c) =>
+        (c.name || '').toLowerCase().includes(normalizedFilter) ||
+        (c.image || '').toLowerCase().includes(normalizedFilter) ||
+        (c.description || '').toLowerCase().includes(normalizedFilter) ||
+        (c.state || '').toLowerCase().includes(normalizedFilter),
+      )
+    : containers;
+
   // ── Pagination (client‑side) ───────────────────────────────────────
-  const PAGE_SIZE = 10;
+  const PAGE_SIZE = 5;
   const [page, setPage] = useState(0);
-  const totalPages = Math.max(1, Math.ceil(containers.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(filteredContainers.length / PAGE_SIZE));
   // Clamp page whenever the underlying list shrinks.
   const effectivePage = page >= totalPages ? Math.max(0, totalPages - 1) : page;
-  const paginatedContainers = containers.slice(effectivePage * PAGE_SIZE, (effectivePage + 1) * PAGE_SIZE);
+  const paginatedContainers = filteredContainers.slice(
+    effectivePage * PAGE_SIZE,
+    (effectivePage + 1) * PAGE_SIZE,
+  );
 
-  // Reset to page 0 when the list changes (containers added/removed).
-  useEffect(() => { setPage(0); }, [containers.length]);
+  // Reset to page 0 when the list changes (containers added/removed) or filter changes.
+  useEffect(() => { setPage(0); }, [containers.length, filter]);
 
   async function run(id: string, fn: () => Promise<unknown>, successMsg?: string) {
     setPending(id);
@@ -82,7 +97,13 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
     <section className="panel">
       <div className="panel__head">
         <h2>
-          Instances <span className="count">{containers.length}</span>
+          Instances{' '}
+          <span className="count">{filteredContainers.length}</span>
+          {normalizedFilter && filteredContainers.length !== containers.length && (
+            <span className="muted" style={{ fontSize: 12, marginLeft: 4 }}>
+              of {containers.length}
+            </span>
+          )}
         </h2>
         <div className="panel__head-actions">
           <div className="view-toggle" role="group" aria-label="View mode">
@@ -111,8 +132,23 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
         </div>
       </div>
 
+      {containers.length > 0 && (
+        <div className="filter-bar">
+          <input
+            type="text"
+            placeholder="Filter by name, image, description…"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            aria-label="Filter instances"
+            style={{ maxWidth: 360 }}
+          />
+        </div>
+      )}
+
       {containers.length === 0 ? (
         <p className="empty">No instances yet.</p>
+      ) : filteredContainers.length === 0 ? (
+        <p className="empty">No instances match filter "{filter.trim()}".</p>
       ) : view === 'grid' ? (
         <div className="instance-grid">
           {paginatedContainers.map((c) => {
