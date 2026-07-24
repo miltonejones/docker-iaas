@@ -116,11 +116,14 @@ jobs:
               if [ -z "$TOKEN" ]; then
                 echo "::warning::Could not obtain consumer JWT — skipping issue resolve for $ISSUE_ID"
               else
+                # The consumer already wrote a per-issue diagnosis into the
+                # issue's resolution when it set status=deploying.  Only flip
+                # the status here — omit "resolution" so we don't clobber it.
                 for i in $(seq 1 10); do
                   curl -sf -X PATCH "http://localhost:4300/api/assistant/issues/$ISSUE_ID" \
                     -H "Content-Type: application/json" \
                     -H "Authorization: Bearer $TOKEN" \
-                    -d '{"status":"resolved","resolution":"Deployed via CI","resolvedBy":"deploy"}' \
+                    -d '{"status":"resolved","resolvedBy":"deploy"}' \
                     && break || sleep 2
                 done
                 # Verify it stuck.
