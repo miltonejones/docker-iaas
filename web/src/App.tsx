@@ -3,7 +3,7 @@ import { BrowserRouter, Link, NavLink, Route, Routes, useLocation } from 'react-
 import type { AssistantSessionSummary, Container, Preset, UsageSnapshot } from './types';
 import { api, subscribeUsage } from './api';
 import { bytes, timeAgo } from './format';
-import { ConfirmProvider } from './components/ConfirmContext';
+import { useConfirm } from './components/ConfirmContext';
 import { HomePage } from './pages/Home';
 import { InstancesPage } from './pages/Instances';
 import { FunctionsPage } from './pages/Functions';
@@ -293,6 +293,7 @@ function FooterSlogan() {
 
 export function App() {
   const { token, email, logout } = useAuth();
+  const { askConfirm } = useConfirm();
   const toast = useToast();
   const [presets, setPresets] = useState<Preset[]>([]);
   const [containers, setContainers] = useState<Container[]>([]);
@@ -490,7 +491,6 @@ export function App() {
   if (!token) return <LoginPage />;
 
   return (
-    <ConfirmProvider>
     <BrowserRouter>
       <div className="app">
         <ToastViewport />
@@ -530,8 +530,8 @@ export function App() {
             />
             <button
               className="btn btn--ghost btn--sm"
-              onClick={() => {
-                if (confirm('Sign out of dockyard.AI?')) logout();
+              onClick={async () => {
+                if (await askConfirm('Sign out of dockyard.AI?')) logout();
               }}
               title={`Sign out (${email})`}
             >
@@ -762,6 +762,5 @@ export function App() {
         </nav>
       </div>
     </BrowserRouter>
-    </ConfirmProvider>
   );
 }
