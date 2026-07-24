@@ -76,6 +76,9 @@ jobs:
           script: |
             set -e
             cd /home/ec2-user/docker-iaas
+            # SSH runs a non-login shell — source .env so CONSUMER_API_KEY
+            # is available for the issue-resolve PATCH below.
+            set -a; source .env; set +a
             COMMIT_MSG=$(git log -1 --format=%s)
             # Container writes to data/ as root — fix ownership so git can
             # overwrite during reset.  (data/ is gitignored now; this is a
