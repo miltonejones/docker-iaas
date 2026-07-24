@@ -2898,6 +2898,7 @@ textarea:focus {
 }
 .offcanvas-session-row__delete {
   flex-shrink: 0;
+  border: none;
 }
 .offcanvas-session-row__name {
   font-size: 13px;
