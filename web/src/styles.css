@@ -273,6 +273,9 @@ code,
   color: var(--accent);
   text-decoration: underline;
 }
+.breadcrumbs__icon {
+  margin-right: 4px;
+}
 .breadcrumbs__sep {
   color: var(--muted-2);
 }
