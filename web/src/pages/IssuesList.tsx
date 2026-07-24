@@ -32,13 +32,21 @@ function timeAgo(ts: string) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+type ConsumerState = {
+  state: string;
+  currentIssue?: { id: string; summary: string };
+  authOk: boolean;
+  lastPoll: string;
+  lastError: string | null;
+};
+
 export function IssuesPage({ onCreateIssue }: { onCreateIssue: () => void }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const status = searchParams.get('status') || '';
   const [issues, setIssues] = useState<AssistantIssue[]>([]);
   const [loading, setLoading] = useState(true);
-  const [consumer, setConsumer] = useState<any>(null);
+  const [consumer, setConsumer] = useState<ConsumerState | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -46,14 +54,11 @@ export function IssuesPage({ onCreateIssue }: { onCreateIssue: () => void }) {
   }, [status]);
 
   useEffect(() => {
-    fetch('/api/assistant/issues/counts').then(r => r.json()).then(d => {
-      setConsumer({ ...d, lastPoll: null });
-    }).catch(() => {});
-    const interval = setInterval(() => {
-      fetch('/api/assistant/issues/counts').then(r => r.json()).then(d => {
-        setConsumer((prev: any) => ({ ...prev, ...d }));
-      }).catch(() => {});
-    }, 15000);
+    const poll = () => {
+      api.consumerStatus().then(setConsumer).catch(() => {});
+    };
+    poll();
+    const interval = setInterval(poll, 10_000);
     return () => clearInterval(interval);
   }, []);
 
@@ -112,10 +117,14 @@ export function IssuesPage({ onCreateIssue }: { onCreateIssue: () => void }) {
 
       {consumer && (
         <div className="consumer-bar">
-          <span className={`consumer-bar__dot consumer-bar__dot--${consumer.open > 0 ? 'active' : 'idle'}`} />
-          <span>Consumer: {consumer.open > 0 ? 'active' : 'idle'}</span>
-          {consumer.open > 0 && <span className="muted">· {consumer.open} open</span>}
-          <span className="muted">· Auth: OK</span>
+          <span className={`consumer-bar__dot consumer-bar__dot--${consumer.state === 'idle' ? 'idle' : consumer.state === 'processing' ? 'active' : 'error'}`} />
+          <span>Consumer: {consumer.state}</span>
+          {consumer.currentIssue && (
+            <span className="muted">· <a href={`/issues/${consumer.currentIssue.id}`} className="link">{consumer.currentIssue.summary}</a></span>
+          )}
+          {consumer.lastPoll && <span className="muted">· polled {timeAgo(consumer.lastPoll)}</span>}
+          {!consumer.authOk && <span className="muted" style={{ color: 'var(--danger)' }}>· Auth: FAIL</span>}
+          {consumer.lastError && <span className="muted" style={{ color: 'var(--danger)' }}>· {consumer.lastError.slice(0, 80)}</span>}
         </div>
       )}
     </section>

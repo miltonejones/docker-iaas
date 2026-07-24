@@ -737,6 +737,15 @@ export const api = {
 
   assistantGetIssue: (id: string) =>
     fetch(`/api/assistant/issues/${encodeURIComponent(id)}`).then((r) => json<AssistantIssue>(r)),
+
+  consumerStatus: () =>
+    fetch('/api/assistant/consumer/status').then((r) => json<{
+      state: string;
+      currentIssue?: { id: string; summary: string };
+      authOk: boolean;
+      lastPoll: string;
+      lastError: string | null;
+    }>(r)),
 };
 
 /** A single consumer/issue event surfaced by the notification log. */

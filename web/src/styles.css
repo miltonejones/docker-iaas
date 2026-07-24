@@ -3656,7 +3656,7 @@ textarea:focus {
 .consumer-bar__dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .consumer-bar__dot--idle { background: var(--down); }
 .consumer-bar__dot--active { background: var(--up); animation: pulse-opacity 1.5s infinite; }
-@keyframes pulse-opacity { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+.consumer-bar__dot--error { background: var(--danger); }
 
 /* Issue detail */
 .issue-detail__back { margin-bottom: 16px; }
