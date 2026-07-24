@@ -9,10 +9,11 @@ interface Props {
 const CATEGORIES = ['bug', 'error', 'missing_feature', 'performance', 'security', 'general'] as const;
 
 const ENGINES = [
-  { value: '', label: 'Auto (default)' },
+  { value: '', label: 'Default' },
   { value: 'copilot', label: 'Copilot' },
   { value: 'claude-sonnet', label: 'Claude + Sonnet' },
   { value: 'claude-deepseek', label: 'Claude + DeepSeek' },
+  { value: 'augmented', label: 'Augmented (plan → implement)' },
 ] as const;
 
 export function CreateIssueModal({ onClose }: Props) {

@@ -1760,15 +1760,8 @@ assistantRouter.get("/issues/:id", (req: Request, res: Response) => {
     const isService = !!(req.headers["x-consumer-api-key"] === process.env.CONSUMER_API_KEY
       && process.env.CONSUMER_API_KEY);
     const userId = getAuthUser(req)?.userId ?? (isService ? "deploy" : undefined);
-    // TEMP: verify scoping layer before fix
-    if (isService || userId) {
-      console.log("[diag:issue-scope] GET", req.params.id,
-        "auth=" + (isService ? "service" : userId ? "user" : "anon"),
-        "keySet=" + !!process.env.CONSUMER_API_KEY);
-    }
     const row = getAssistantIssue(req.params.id, userId);
     if (!row) {
-      console.log("[diag:issue-scope] GET not-found", req.params.id);
       res.status(404).json({ error: "Issue not found." });
       return;
     }
@@ -1788,7 +1781,6 @@ const VALID_USER_ENGINES = new Set([
   "claude-sonnet",
   "claude-deepseek",
   "augmented",
-  "auto",
 ]);
 
 assistantRouter.post("/issues", (req: Request, res: Response) => {
@@ -1852,12 +1844,6 @@ assistantRouter.patch("/issues/:id", (req: Request, res: Response) => {
     const isService = !!(req.headers["x-consumer-api-key"] === process.env.CONSUMER_API_KEY
       && process.env.CONSUMER_API_KEY);
     const userId = getAuthUser(req)?.userId ?? (isService ? "deploy" : undefined);
-    // TEMP: verify scoping layer before fix
-    if (isService || userId) {
-      console.log("[diag:issue-scope] PATCH", req.params.id,
-        "auth=" + (isService ? "service" : userId ? "user" : "anon"),
-        "keySet=" + !!process.env.CONSUMER_API_KEY);
-    }
     const { status, resolution, resolvedBy, summary, details } = req.body as {
       status?: string;
       resolution?: string;
@@ -1875,7 +1861,6 @@ assistantRouter.patch("/issues/:id", (req: Request, res: Response) => {
       details_json: details !== undefined ? JSON.stringify(details) : undefined,
     }, userId);
     if (!row) {
-      console.log("[diag:issue-scope] PATCH not-found", req.params.id);
       res.status(404).json({ error: "Issue not found." });
       return;
     }
