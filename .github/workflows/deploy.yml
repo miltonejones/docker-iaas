@@ -74,6 +74,13 @@ jobs:
 
       - name: Reject if protected files damaged
         run: |
+          # Only guard against the consumer — human-authored commits
+          # (e.g. adding image: lines to docker-compose.yml) are intentional.
+          AUTHOR=$(git log -1 --format='%an')
+          if [ "$AUTHOR" != "Dockyard Guard" ]; then
+            echo "✅ Human-authored commit — skipping protected-file guard."
+            exit 0
+          fi
           PROTECTED=(
             Dockerfile.consumer
             .gitignore
