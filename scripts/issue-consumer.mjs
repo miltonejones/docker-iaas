@@ -386,12 +386,12 @@ function classifyFailure(stderr, code) {
   const s = (stderr || "").toLowerCase();
 
   // Auth / quota (engine itself is unavailable, not just busy)
-  if (/401|403|insufficient_quota|authentication|no tokens\\b|\\bquota\\b/.test(s)) {
+  if (/401|403|insufficient_quota|authentication|no tokens\b|\bquota\b/.test(s)) {
     return "unavailable";
   }
 
   // Rate limit / overload / network (transient — will self-heal)
-  if (/429|rate.?limit|overloaded|\\b503\\b|connection reset|econnrefused|econnreset|etimedout/.test(s)) {
+  if (/429|rate.?limit|overloaded|\b503\b|connection reset|econnrefused|econnreset|etimedout/.test(s)) {
     return "transient";
   }
 

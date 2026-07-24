@@ -37,6 +37,8 @@ const {
   extractResolution,
   parseStructuredResult,
   revertAndStageProtected,
+  classifyFailure,
+  ENGINES,
   PROTECTED,
   setAuthHeaderForTest,
 } = await import("./issue-consumer.mjs");
@@ -420,4 +422,68 @@ test("extractResolution truncates at 500 characters", () => {
   const stdout = '{"changedFiles":["a.ts"],"diagnosis":"' + long + '"}';
   const result = extractResolution(stdout);
   assert.equal(result.length, 500);
+});
+
+// ── classifyFailure (guards fix #1: word boundaries in regexes) ──────
+
+test("classifyFailure: 401/403 → unavailable", () => {
+  assert.equal(classifyFailure("HTTP 401 Unauthorized", 1), "unavailable");
+  assert.equal(classifyFailure("403 Forbidden", 1), "unavailable");
+});
+
+test("classifyFailure: quota / no tokens → unavailable", () => {
+  assert.equal(classifyFailure("insufficient_quota", 1), "unavailable");
+  assert.equal(classifyFailure("Error: no tokens left", 1), "unavailable");
+  assert.equal(classifyFailure("quota exceeded", 1), "unavailable");
+});
+
+test("classifyFailure: 429 / rate limit → transient", () => {
+  assert.equal(classifyFailure("HTTP 429 Too Many Requests", 1), "transient");
+  assert.equal(classifyFailure("rate limit exceeded", 1), "transient");
+});
+
+test("classifyFailure: 503 / overload / network → transient", () => {
+  assert.equal(classifyFailure("HTTP 503 Service Unavailable", 1), "transient");
+  assert.equal(classifyFailure("overloaded", 1), "transient");
+  assert.equal(classifyFailure("ECONNREFUSED", 1), "transient");
+});
+
+test("classifyFailure: null code (spawn error) → unavailable", () => {
+  assert.equal(classifyFailure("spawn ENOENT", null), "unavailable");
+});
+
+test("classifyFailure: clean non-zero exit → issue-failure", () => {
+  assert.equal(classifyFailure("SyntaxError: unexpected token", 1), "issue-failure");
+  assert.equal(classifyFailure("", 1), "issue-failure");
+});
+
+// ── Drift guard: consumer registry is the anchor ─────────────────────
+
+test("consumer registry contains all expected engines", () => {
+  // If any of these are missing, the server allowlist / UI options /
+  // fallback chains referencing them will break.  This test catches
+  // accidental removal before it ships.
+  const expected = ["default", "copilot", "claude-sonnet", "claude-deepseek", "augmented"];
+  for (const name of expected) {
+    assert.ok(ENGINES[name], `ENGINES missing "${name}"`);
+  }
+});
+
+test("consumer registry pipelines reference valid engines", () => {
+  // Every planner / implementer name must exist in the registry,
+  // otherwise runPipeline throws at runtime.
+  for (const [name, entry] of Object.entries(ENGINES)) {
+    if (entry.pipeline) {
+      assert.ok(ENGINES[entry.pipeline.planner],
+        `${name}.planner "${entry.pipeline.planner}" not in registry`);
+      assert.ok(ENGINES[entry.pipeline.implementer],
+        `${name}.implementer "${entry.pipeline.implementer}" not in registry`);
+    }
+    if (entry.fallback) {
+      for (const fb of entry.fallback) {
+        assert.ok(ENGINES[fb],
+          `${name}.fallback "${fb}" not in registry`);
+      }
+    }
+  }
 });
