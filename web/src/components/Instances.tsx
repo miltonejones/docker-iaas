@@ -219,6 +219,7 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
                   <Fragment key={c.id}>
                   <tr>
                     <td>
+                      <PresetIcon id={c.presetId || ''} />
                       <span className={`dot dot--${running ? 'up' : 'down'}`} />
                       <button
                         className="instance-link"

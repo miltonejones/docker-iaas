@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import type { LambdaFunction } from '../types';
 import { api } from '../api';
 import { onRefresh } from '../refresh';
+import { AppIcon } from '../icons';
 import { LambdaPanel } from '../components/LambdaPanel';
 
 export function FunctionsPage() {
@@ -71,7 +72,7 @@ function FunctionList() {
                   key={fn.id}
                   onClick={() => navigate(`/functions/${fn.id}`)}
                 >
-                  <td className="mono">{fn.name}</td>
+                  <td className="mono"><AppIcon name="function" /> {fn.name}</td>
                   <td><span className="chip">{fn.runtime}</span></td>
                   <td className="muted">{new Date(fn.updatedAt).toLocaleString()}</td>
                 </tr>
