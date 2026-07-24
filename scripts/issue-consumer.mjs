@@ -845,6 +845,7 @@ export {
   updateIssueOnServer,
   consumeOne,
   extractResolution,
+  parseStructuredResult,
   formatPrompt,
   pushToGitHub,
   revertAndStageProtected,
