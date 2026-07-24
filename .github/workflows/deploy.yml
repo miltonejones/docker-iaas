@@ -100,10 +100,17 @@ jobs:
             # Mark the consumer issue as resolved now that the fix is live.
             ISSUE_ID=$(echo "$COMMIT_MSG" | sed -n 's/.*\(iss-[0-9]*-[a-z0-9]*\).*/\1/p') || true
             if [ -n "$ISSUE_ID" ]; then
-              curl -sf -X PATCH "http://localhost:4300/api/assistant/issues/$ISSUE_ID" \
-                -H "Content-Type: application/json" \
+              for i in $(seq 1 10); do
+                curl -sf -X PATCH "http://localhost:4300/api/assistant/issues/$ISSUE_ID" \
+                  -H "Content-Type: application/json" \
+                  -H "x-consumer-api-key: $CONSUMER_API_KEY" \
+                  -d '{"status":"resolved","resolution":"Deployed via CI","resolvedBy":"deploy"}' \
+                  && break || sleep 2
+              done
+              # Verify it stuck — the container may still be starting.
+              curl -sf "http://localhost:4300/api/assistant/issues/$ISSUE_ID" \
                 -H "x-consumer-api-key: $CONSUMER_API_KEY" \
-                -d '{"status":"resolved","resolution":"Deployed via CI","resolvedBy":"deploy"}' \
+                | jq -e '.status == "resolved"' > /dev/null \
                 || echo "::warning::Failed to mark issue $ISSUE_ID as resolved"
             fi
 
