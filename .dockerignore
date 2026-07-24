@@ -6,5 +6,4 @@ server/node_modules
 relay/node_modules
 **/dist
 scripts/issue-logs
-*.md
-!.dockerignore
+deploy-optimization.md

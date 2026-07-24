@@ -55,8 +55,8 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}-${{ matrix.image.name }}:${{ github.sha }}
             ghcr.io/${{ github.repository }}-${{ matrix.image.name }}:latest
-          cache-from: type=gha,scope=${{ matrix.image.name }}
-          cache-to: type=gha,scope=${{ matrix.image.name }},mode=max
+          cache-from: type=gha,scope=${{ matrix.image.name }}-v2
+          cache-to: type=gha,scope=${{ matrix.image.name }}-v2,mode=max
 
   deploy:
     needs: [verify, build-images]
