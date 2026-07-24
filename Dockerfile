@@ -8,7 +8,12 @@ COPY server/package.json server/
 COPY web/package.json web/
 RUN npm install
 COPY . .
-RUN npm run build
+# Build server and web in parallel — they're independent and
+# the ARM64 runner has multiple cores.
+RUN npm --workspace web run build & \
+    npm --workspace server run build & \
+    npm --workspace relay run build & \
+    wait
 
 FROM node:20-slim
 # git is used by the Ask Dockyard assistant's GitHub tools (clone/commit/push
