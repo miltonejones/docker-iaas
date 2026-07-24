@@ -120,7 +120,7 @@ jobs:
                   curl -sf -X PATCH "http://localhost:4300/api/assistant/issues/$ISSUE_ID" \
                     -H "Content-Type: application/json" \
                     -H "Authorization: Bearer $TOKEN" \
-                    -d '{"status":"resolved","resolution":"Deployed via CI","resolvedBy":"deploy"}' \
+                    -d '{"status":"resolved","resolvedBy":"deploy"}' \
                     && break || sleep 2
                 done
                 # Verify it stuck.
