@@ -124,7 +124,7 @@ export function IssuesPage({ onCreateIssue }: { onCreateIssue: () => void }) {
                   key={issue.id}
                   onClick={() => navigate(`/issues/${issue.id}`)}
                 >
-                  <td className="mono"><AppIcon name="bug" /> {issue.summary}</td>
+                  <td><AppIcon name="bug" /> {issue.summary}</td>
                   <td><span className="chip">{CATEGORY_LABELS[issue.category] || issue.category}</span></td>
                   <td><span className={`badge badge--${issue.status}`}>{issue.status}</span></td>
                   <td className="muted">{issue.createdAt ? timeAgo(issue.createdAt) : '—'}</td>

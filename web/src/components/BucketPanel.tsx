@@ -94,7 +94,7 @@ export function BucketList() {
             <tbody>
               {buckets.map((b) => (
                 <tr key={b.name} onClick={() => navigate(`/buckets/${b.name}`)}>
-                  <td className="mono"><AppIcon name="bucket" /> {b.name}{b.protected && <span className="protected-badge" title="Protected from deletion"> 🔒</span>}</td>
+                  <td><AppIcon name="bucket" /> {b.name}{b.protected && <span className="protected-badge" title="Protected from deletion"> 🔒</span>}</td>
                   <td className="num mono">{bytes(b.size ?? 0)}</td>
                   <td className="muted">{b.creationDate ? new Date(b.creationDate).toLocaleString() : '—'}</td>
                 </tr>
@@ -304,7 +304,7 @@ export function BucketDetail({ name }: { name: string }) {
                 const objName = o.key.slice(prefix.length);
                 return (
                   <tr key={o.key}>
-                    <td className="mono">{objName}</td>
+                    <td>{objName}</td>
                     <td className="num mono">{bytes(o.size)}</td>
                     <td className="muted">
                       {o.lastModified ? new Date(o.lastModified).toLocaleString() : '—'}
