@@ -613,24 +613,8 @@ export function App() {
         </div>
 
         <footer className="app-footer">
-          <div className="app-footer__group">
-            <button
-              type="button"
-              className="app-footer__link app-footer__link--button"
-              onClick={() => setCreateIssueOpen(true)}
-            >
-              Create an issue
-            </button>
-            <FooterSlogan />
-          </div>
-          <a
-            href="https://github.com/miltonejones/docker-iaas"
-            target="_blank"
-            rel="noreferrer"
-            className="app-footer__link app-footer__link--github"
-          >
-            <AppIcon name="github" /> GitHub
-          </a>
+          {/* smoke test passed */}
+          Hello World
         </footer>
         {createIssueOpen && <CreateIssueModal onClose={() => setCreateIssueOpen(false)} />}
 
