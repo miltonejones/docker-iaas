@@ -752,13 +752,34 @@ async function consumeOne() {
           );
           pushToGitHub(issue);
         } else {
-          log(`Issue ${issue.id} analysed but no files were changed — skipping push.`);
-          notify(`🔍 Analysed: ${issue.summary}`, result?.diagnosis || "No changes made.");
+          // No files changed — Claude says the fix already exists or can't
+          // be applied.  Mark needs_review for a human to verify.
+          const diagnosis = result?.diagnosis || extractResolution(stdout);
+          log(`Issue ${issue.id} analysed but no files changed — marked needs_review.`);
+
+          // Grep the codebase for likely keywords so a human can quickly
+          // verify the diagnosis without pulling code.
+          let evidence = "";
+          try {
+            const terms = [
+              ...issue.summary.split(/\s+/).filter((w) => w.length > 3).slice(0, 3),
+              ...(result?.changedFiles || []),
+            ].slice(0, 5);
+            if (terms.length) {
+              const pattern = terms.map((t) => t.replace(/[^\w]/g, "")).filter(Boolean).join("|");
+              evidence = execSync(
+                `grep -rin --include="*.ts" --include="*.tsx" --include="*.css" -l "${pattern}" . 2>/dev/null | head -10`,
+                { cwd: CODEBASE_PATH, encoding: "utf8", timeout: 5_000 },
+              ).trim();
+            }
+          } catch { /* grep is best-effort */ }
+
+          notify(`🔍 Needs review: ${issue.summary}`, diagnosis.slice(0, 200));
           writeStatus("idle");
           await updateIssueOnServer(
             issue,
-            "in_progress",
-            result?.diagnosis || extractResolution(stdout),
+            "needs_review",
+            `${diagnosis}\n\n--- grep evidence ---\n${evidence || "(none found)"}`,
           );
         }
       } else {

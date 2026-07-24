@@ -3646,8 +3646,11 @@ textarea:focus {
 .badge { display: inline-block; padding: 2px 8px; border-radius: var(--r-sm); font-size: 11px; background: var(--bg-elev-2); text-transform: capitalize; white-space: nowrap; }
 .badge--open { background: #dbeafe; color: #1e40af; }
 .badge--in_progress { background: #fef3c7; color: #92400e; }
+.badge--needs_review { background: #fce7f3; color: #9d174d; }
+.badge--deploying { background: #e0e7ff; color: #3730a3; }
 .badge--resolved { background: #d1fae5; color: #065f46; }
 .badge--closed { background: #e5e7eb; color: #374151; }
+.badge--wont_fix { background: #e5e7eb; color: #6b7280; }
 .consumer-bar { display: flex; align-items: center; gap: 8px; padding: 8px 0; margin-top: 16px; font-size: 12px; border-top: 1px solid var(--border); }
 .consumer-bar__dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .consumer-bar__dot--idle { background: var(--down); }

@@ -7,6 +7,8 @@ const STATUS_TABS = [
   { key: '', label: 'All' },
   { key: 'open', label: 'Open' },
   { key: 'in_progress', label: 'In Progress' },
+  { key: 'needs_review', label: 'Needs Review' },
+  { key: 'deploying', label: 'Deploying' },
   { key: 'resolved', label: 'Resolved' },
   { key: 'closed', label: 'Closed' },
 ];

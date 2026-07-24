@@ -150,9 +150,9 @@ test("consumeOne calls update_issue (PATCH) once the CLI process completes", asy
   );
   const body = JSON.parse(mock.calls[1].opts.body);
   // The real CLI exits 0 but doesn't emit the structured JSON result,
-  // so the consumer now marks the issue "in_progress" (analysed, no changes)
+  // so the consumer now marks the issue "needs_review" (no changes made)
   // instead of "resolved".
-  assert.ok(body.status === "in_progress" || body.status === "resolved");
+  assert.ok(body.status === "needs_review" || body.status === "resolved");
 });
 
 test("updateIssueOnServer logs a failure (not a throw) on non-404 error status", async () => {
