@@ -191,6 +191,7 @@ export function GatewayList() {
               {groups.map((group) => (
                 <tr key={group[0].name} onClick={() => navigate(`/gateway/${group[0].name}`)}>
                   <td onClick={(e) => e.stopPropagation()}>
+                    <AppIcon name="gateway" />{' '}
                     {editing === group[0].name ? (
                       <input
                         className="gateway-name-edit"
