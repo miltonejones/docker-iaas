@@ -1756,7 +1756,10 @@ assistantRouter.get("/issues", (req: Request, res: Response) => {
 
 assistantRouter.get("/issues/:id", (req: Request, res: Response) => {
   try {
-    const userId = getAuthUser(req)?.userId;
+    const userId = getAuthUser(req)?.userId ??
+      (req.headers["x-consumer-api-key"] === process.env.CONSUMER_API_KEY
+        && process.env.CONSUMER_API_KEY
+        ? "deploy" : undefined);
     const row = getAssistantIssue(req.params.id, userId);
     if (!row) {
       res.status(404).json({ error: "Issue not found." });
