@@ -136,6 +136,7 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
         <div className="filter-bar">
           <input
             type="text"
+            className="search-input"
             placeholder="Filter by name, image, description…"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}

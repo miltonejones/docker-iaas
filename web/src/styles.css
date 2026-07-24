@@ -3692,6 +3692,27 @@ textarea:focus {
   }
 }
 
+/* Search/filter inputs — pill-shaped, matching .assistant-search */
+.search-input {
+  border-radius: 999px;
+  background: #eceef3;
+  border: 1px solid #d0d4de;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.06);
+  padding: 7px 14px;
+  transition:
+    border-color 0.15s var(--ease),
+    box-shadow 0.15s var(--ease);
+}
+.search-input:hover {
+  border-color: #bcc1ce;
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.06), 0 1px 4px rgba(0,0,0,0.06);
+}
+.search-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+  background: var(--bg-elev);
+}
+
 /* Pagination */
 .pagination {
   display: flex;
