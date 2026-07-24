@@ -88,8 +88,10 @@ jobs:
             # that haven't been pushed yet. GitHub is the source of truth.
             git fetch origin main
             git reset --hard origin/main
-            # Build and start console + caddy first (cached, no downtime).
-            docker compose up --build -d --remove-orphans console caddy
+            # Rebuild console with --no-cache.  Docker layer caching
+            # doesn't reliably invalidate when source files change.
+            docker compose build --no-cache console
+            docker compose up -d --remove-orphans console caddy
             # Stop, rebuild, and restart the consumer with --no-cache.
             # Docker layer caching doesn't reliably detect Dockerfile-only changes.
             docker compose stop consumer 2>/dev/null || true
