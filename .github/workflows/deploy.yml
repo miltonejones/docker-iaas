@@ -61,7 +61,7 @@ jobs:
           cache-to: type=gha,scope=${{ matrix.image.name }}-v2,mode=max
 
   deploy:
-    needs: [verify, build-images]
+    needs: [build-images]  # build-images already depends on verify
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 15
