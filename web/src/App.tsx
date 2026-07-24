@@ -304,6 +304,11 @@ export function App() {
   const [sessionsList, setSessionsList] = useState<AssistantSessionSummary[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [sessionsQuery, setSessionsQuery] = useState('');
+  /** Groups whose sessions are currently collapsed in the sidebar.
+   *  All groups except Today start collapsed. */
+  const [collapsedSessionGroups, setCollapsedSessionGroups] = useState<Set<string>>(
+    () => new Set(['Yesterday', 'This Week', 'Earlier']),
+  );
   const lastBeat = useRef<number>(0);
 
   // First-ever visit to the console's root path also opens the marketing
@@ -351,6 +356,15 @@ export function App() {
     } catch (err) {
       console.error('delete session', err);
     }
+  }
+
+  function toggleSessionGroup(label: string) {
+    setCollapsedSessionGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label);
+      else next.add(label);
+      return next;
+    });
   }
 
   function toggleSessionsOffcanvas() {
@@ -521,8 +535,22 @@ export function App() {
                 )}
                 {!sessionsLoading && groupSessionsByDate(sessionsList).map((group) => (
                   <div key={group.label}>
-                    <div className="offcanvas-session-group-header">{group.label}</div>
-                    {group.items.map((s) => (
+                    <div
+                      className="offcanvas-session-group-header"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => toggleSessionGroup(group.label)}
+                      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && toggleSessionGroup(group.label)}
+                    >
+                      <span className="offcanvas-session-group-chevron">
+                        {collapsedSessionGroups.has(group.label) ? '▸' : '▾'}
+                      </span>
+                      {group.label}
+                      <span className="offcanvas-session-group-count muted">
+                        ({group.items.length})
+                      </span>
+                    </div>
+                    {!collapsedSessionGroups.has(group.label) && group.items.map((s) => (
                       <div key={s.id} className="offcanvas-session-row-wrap">
                         <button className="offcanvas-session-row" onClick={() => openSessionInAssistant(s.id)}>
                           <span className="offcanvas-session-row__name">
