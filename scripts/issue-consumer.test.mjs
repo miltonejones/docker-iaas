@@ -34,6 +34,8 @@ process.on("exit", () => { try { fs.rmSync(SANDBOX, { recursive: true, force: tr
 const {
   updateIssueOnServer,
   consumeOne,
+  extractResolution,
+  parseStructuredResult,
   revertAndStageProtected,
   PROTECTED,
   setAuthHeaderForTest,
@@ -338,4 +340,84 @@ test("the shared PROTECTED list is loaded from protected-files.json", () => {
   for (const expected of ["scripts/issue-consumer.mjs", "docker-compose.yml", ".gitignore"]) {
     assert.ok(PROTECTED.includes(expected), `PROTECTED should include ${expected}`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// parseStructuredResult — unit tests (no spawning, no network)
+// ---------------------------------------------------------------------------
+
+test("parseStructuredResult extracts a valid JSON line from stdout", () => {
+  const stdout = [
+    "Some analysis text",
+    "",
+    "## Diagnosis",
+    "The button was missing a border.",
+    "",
+    '{"changedFiles":["styles.css"],"rootCause":"missing CSS rule","diagnosis":"border was omitted","confidence":"high"}',
+  ].join("\n");
+
+  const result = parseStructuredResult(stdout);
+  assert.ok(result);
+  assert.deepEqual(result.changedFiles, ["styles.css"]);
+  assert.equal(result.rootCause, "missing CSS rule");
+  assert.equal(result.diagnosis, "border was omitted");
+  assert.equal(result.confidence, "high");
+});
+
+test("parseStructuredResult finds JSON even if not the last line", () => {
+  const stdout = '{"changedFiles":["a.ts","b.ts"],"rootCause":"x","diagnosis":"y","confidence":"medium"}\nsome trailing text';
+  const result = parseStructuredResult(stdout);
+  assert.ok(result);
+  assert.deepEqual(result.changedFiles, ["a.ts", "b.ts"]);
+  assert.equal(result.confidence, "medium");
+});
+
+test("parseStructuredResult returns null for empty stdout", () => {
+  assert.equal(parseStructuredResult(""), null);
+});
+
+test("parseStructuredResult returns null when no JSON with changedFiles", () => {
+  assert.equal(parseStructuredResult("Just some plain text\nno JSON here\n"), null);
+});
+
+test("parseStructuredResult returns null for JSON missing changedFiles", () => {
+  assert.equal(parseStructuredResult('{"notChangedFiles":[],"rootCause":"x"}'), null);
+});
+
+test("parseStructuredResult filters non-string entries from changedFiles", () => {
+  const result = parseStructuredResult('{"changedFiles":["a.ts", 123, null, "b.ts"],"rootCause":"x"}');
+  assert.ok(result);
+  assert.deepEqual(result.changedFiles, ["a.ts", "b.ts"]);
+});
+
+test("parseStructuredResult defaults confidence to medium for invalid", () => {
+  assert.equal(
+    parseStructuredResult('{"changedFiles":["x.ts"],"rootCause":"r","confidence":"unknown"}').confidence,
+    "medium"
+  );
+});
+
+// ---------------------------------------------------------------------------
+// extractResolution — structured + fallback paths
+// ---------------------------------------------------------------------------
+
+test("extractResolution uses structured diagnosis when available", () => {
+  const stdout = '{"changedFiles":["a.ts"],"rootCause":"r","diagnosis":"button missing border","confidence":"high"}';
+  assert.equal(extractResolution(stdout), "button missing border");
+});
+
+test("extractResolution falls back to ## Diagnosis regex without structured result", () => {
+  const stdout = "Some text\n\n## Diagnosis\nThe widget was broken.\n\n## Next Section\nMore text";
+  assert.equal(extractResolution(stdout), "The widget was broken.");
+});
+
+test("extractResolution falls back to last paragraph when no diagnosis", () => {
+  assert.equal(extractResolution("Line one\n\nLast paragraph here."), "Last paragraph here.");
+});
+
+test("extractResolution truncates at 500 characters", () => {
+  const long = "x".repeat(600);
+  const stdout = '{"changedFiles":["a.ts"],"diagnosis":"' + long + '"}';
+  const result = extractResolution(stdout);
+  assert.equal(result.length, 500);
 });
