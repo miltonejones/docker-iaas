@@ -257,6 +257,7 @@ export function initDb(dbPath?: string): void {
   try { db.exec("ALTER TABLE assistant_issues ADD COLUMN status TEXT NOT NULL DEFAULT 'open'"); } catch { /* ok */ }
   try { db.exec('ALTER TABLE assistant_issues ADD COLUMN resolution TEXT'); } catch { /* ok */ }
   try { db.exec('ALTER TABLE assistant_issues ADD COLUMN resolved_by TEXT'); } catch { /* ok */ }
+  try { db.exec('ALTER TABLE assistant_issues ADD COLUMN engine TEXT'); } catch { /* ok */ }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS database_jobs (
@@ -1180,9 +1181,10 @@ export interface AssistantIssueRow {
   status: string;
   resolution: string | null;
   resolved_by: string | null;
+  engine: string | null;
 }
 
-export const ASSISTANT_ISSUE_STATUSES = ['open', 'in_progress', 'needs_review', 'deploying', 'resolved', 'closed', 'wont_fix'] as const;
+export const ASSISTANT_ISSUE_STATUSES = ['open', 'in_progress', 'needs_review', 'deploying', 'resolved', 'closed', 'wont_fix', 'deferred'] as const;
 
 export function listAssistantIssues(limit = 50, userId?: string, status?: string): AssistantIssueRow[] {
   const clauses: string[] = [];
@@ -1251,7 +1253,7 @@ function findRecentDuplicateIssue(
 }
 
 export function createAssistantIssue(
-  details: { summary: string; category?: string; details?: Record<string, unknown> },
+  details: { summary: string; category?: string; details?: Record<string, unknown>; engine?: string | null },
   userId?: string,
 ): { row: AssistantIssueRow; created: boolean } {
   const category = details.category || 'general';
@@ -1264,8 +1266,8 @@ export function createAssistantIssue(
   const id = `iss-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const now = new Date().toISOString();
   db.prepare(
-    'INSERT INTO assistant_issues (id, summary, category, details_json, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-  ).run(id, details.summary, category, JSON.stringify(details.details ?? {}), userId ?? null, now);
+    'INSERT INTO assistant_issues (id, summary, category, details_json, user_id, created_at, engine) VALUES (?, ?, ?, ?, ?, ?, ?)',
+  ).run(id, details.summary, category, JSON.stringify(details.details ?? {}), userId ?? null, now, details.engine ?? null);
   return { row: getAssistantIssue(id)!, created: true };
 }
 
@@ -1284,7 +1286,7 @@ export function deleteAssistantIssue(id: string, userId?: string): boolean {
  *  getAssistantIssue. Returns undefined if the issue isn't found/visible. */
 export function updateAssistantIssue(
   id: string,
-  fields: { status?: string; resolution?: string; resolvedBy?: string; summary?: string; details_json?: string },
+  fields: { status?: string; resolution?: string; resolvedBy?: string; summary?: string; details_json?: string; engine?: string | null },
   userId?: string,
 ): AssistantIssueRow | undefined {
   const row = getAssistantIssue(id, userId);
@@ -1311,6 +1313,10 @@ export function updateAssistantIssue(
   if (fields.details_json !== undefined) {
     sets.push('details_json = ?');
     params.push(fields.details_json);
+  }
+  if (fields.engine !== undefined) {
+    sets.push('engine = ?');
+    params.push(fields.engine);
   }
   if (!sets.length) return row;
 

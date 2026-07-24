@@ -1622,6 +1622,7 @@ function toIssueSummary(r: import("../db.js").AssistantIssueRow) {
     status: r.status,
     resolution: r.resolution,
     resolvedBy: r.resolved_by,
+    engine: r.engine,
   };
 }
 
@@ -1777,20 +1778,38 @@ assistantRouter.get("/issues/:id", (req: Request, res: Response) => {
   }
 });
 
+// Engine names the server allows users to select.  Must be kept in sync with
+// the ENGINES registry in scripts/issue-consumer.mjs.  null/undefined means
+// "use the default" — this list is the explicit choices a user can opt into.
+const VALID_USER_ENGINES = new Set([
+  null, undefined, "", // unset = use consumer default
+  "default",
+  "copilot",
+  "claude-sonnet",
+  "claude-deepseek",
+  "augmented",
+  "auto",
+]);
+
 assistantRouter.post("/issues", (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
-    const { summary, category, details } = req.body as {
+    const { summary, category, details, engine } = req.body as {
       summary?: string;
       category?: string;
       details?: Record<string, unknown>;
+      engine?: string | null;
     };
     if (!summary?.trim()) {
       res.status(400).json({ error: "A summary is required." });
       return;
     }
+    if (engine !== undefined && !VALID_USER_ENGINES.has(engine)) {
+      res.status(400).json({ error: `Unknown engine "${engine}". Valid choices: ${[...VALID_USER_ENGINES].filter(e => typeof e === "string").join(", ")}.` });
+      return;
+    }
     const { row } = createAssistantIssue(
-      { summary: summary.trim(), category, details },
+      { summary: summary.trim(), category, details, engine: engine || null },
       userId,
     );
     const payload = toIssueSummary(row);
