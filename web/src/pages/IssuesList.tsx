@@ -86,16 +86,20 @@ export function IssuesPage({ onCreateIssue }: { onCreateIssue: () => void }) {
         </button>
       </div>
 
-      <div className="tab-bar">
-        {STATUS_TABS.map(tab => (
-          <button
-            key={tab.key}
-            className={`tab-bar__item${status === tab.key ? ' tab-bar__item--active' : ''}`}
-            onClick={() => setSearchParams(tab.key ? { status: tab.key } : {})}
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="filter-bar">
+        <label className="filter-bar__label" htmlFor="status-filter">
+          <AppIcon name="filter" /> Status:
+        </label>
+        <select
+          id="status-filter"
+          className="input"
+          value={status}
+          onChange={(e) => setSearchParams(e.target.value ? { status: e.target.value } : {})}
+        >
+          {STATUS_TABS.map(tab => (
+            <option key={tab.key} value={tab.key}>{tab.label}</option>
+          ))}
+        </select>
       </div>
 
       {loading && <p className="muted empty-sm">Loading…</p>}
