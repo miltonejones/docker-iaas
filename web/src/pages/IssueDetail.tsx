@@ -7,6 +7,8 @@ import { onRefresh } from '../refresh';
 const STATUS_LABELS: Record<string, string> = {
   open: 'Open',
   in_progress: 'In Progress',
+  needs_review: 'Needs Review',
+  deploying: 'Deploying',
   resolved: 'Resolved',
   closed: 'Closed',
 };
@@ -32,6 +34,9 @@ export function IssueDetailPage() {
   const navigate = useNavigate();
   const [issue, setIssue] = useState<AssistantIssue | null>(null);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
+  const [editing, setEditing] = useState(false);
+  const [editSummary, setEditSummary] = useState('');
+  const [editDetails, setEditDetails] = useState('');
   const [loading, setLoading] = useState(true);
 
   const loadIssue = useCallback(async () => {
@@ -87,6 +92,47 @@ export function IssueDetailPage() {
           {issue.resolvedBy && <span> · Resolved by: {issue.resolvedBy}</span>}
         </div>
       </div>
+
+      {editing ? (
+        <section className="issue-detail__section">
+          <label>Summary</label>
+          <input
+            className="input"
+            value={editSummary}
+            onChange={(e) => setEditSummary(e.target.value)}
+            placeholder="Issue summary"
+          />
+          <label style={{ marginTop: 12 }}>Details (JSON)</label>
+          <textarea
+            className="input"
+            rows={4}
+            value={editDetails}
+            onChange={(e) => setEditDetails(e.target.value)}
+            placeholder='{"key": "value"}'
+          />
+          <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+            <button className="btn btn--sm btn--primary" onClick={async () => {
+              let parsed = {};
+              try { parsed = JSON.parse(editDetails || '{}'); } catch { /* invalid */ }
+              const updated = await api.assistantUpdateIssue(issue.id, {
+                summary: editSummary,
+                details: parsed,
+              });
+              setIssue(updated);
+              setEditing(false);
+            }}>Save</button>
+            <button className="btn btn--sm btn--ghost" onClick={() => setEditing(false)}>Cancel</button>
+          </div>
+        </section>
+      ) : (
+        <div className="issue-detail__actions" style={{ marginTop: 0 }}>
+          <button className="btn btn--sm btn--ghost" onClick={() => {
+            setEditSummary(issue.summary);
+            setEditDetails(JSON.stringify(details, null, 2));
+            setEditing(true);
+          }}>Edit Issue</button>
+        </div>
+      )}
 
       {Object.keys(details).length > 0 && (
         <section className="issue-detail__section">
