@@ -1,6 +1,7 @@
 services:
   console:
     build: .
+    image: ghcr.io/miltonejones/docker-iaas-console:${IMAGE_TAG:-latest}
     container_name: dockyard
     ports:
       - '127.0.0.1:4300:4300'
@@ -58,6 +59,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.consumer
+    image: ghcr.io/miltonejones/docker-iaas-consumer:${IMAGE_TAG:-latest}
     container_name: dockyard-consumer-ctr
     command: ["node", "scripts/issue-consumer.mjs"]
     labels:

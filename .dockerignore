@@ -1,0 +1,9 @@
+.git
+data
+node_modules
+web/node_modules
+server/node_modules
+relay/node_modules
+**/dist
+scripts/issue-logs
+deploy-optimization.md
