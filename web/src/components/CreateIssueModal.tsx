@@ -8,9 +8,18 @@ interface Props {
 
 const CATEGORIES = ['bug', 'error', 'missing_feature', 'performance', 'security', 'general'] as const;
 
+const ENGINES = [
+  { value: '', label: 'Default' },
+  { value: 'copilot', label: 'Copilot' },
+  { value: 'claude-sonnet', label: 'Claude + Sonnet' },
+  { value: 'claude-deepseek', label: 'Claude + DeepSeek' },
+  { value: 'augmented', label: 'Augmented (plan → implement)' },
+] as const;
+
 export function CreateIssueModal({ onClose }: Props) {
   const [summary, setSummary] = useState('');
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]>('bug');
+  const [engine, setEngine] = useState<string>('');
   const [details, setDetails] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,6 +37,7 @@ export function CreateIssueModal({ onClose }: Props) {
         summary.trim(),
         category,
         details.trim() ? { description: details.trim() } : undefined,
+        engine || undefined,
       );
       setCreated(true);
     } catch (err) {
@@ -70,6 +80,17 @@ export function CreateIssueModal({ onClose }: Props) {
                 {CATEGORIES.map((c) => (
                   <option key={c} value={c}>
                     {c.replace('_', ' ')}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="field">
+              <span>Model engine</span>
+              <select value={engine} onChange={(e) => setEngine(e.target.value)}>
+                {ENGINES.map((eng) => (
+                  <option key={eng.value} value={eng.value}>
+                    {eng.label}
                   </option>
                 ))}
               </select>

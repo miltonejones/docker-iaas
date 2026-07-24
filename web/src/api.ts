@@ -703,11 +703,11 @@ export const api = {
       json<{ open: number; resolved: number; byStatus: Record<string, number> }>(r),
     ),
 
-  assistantReportIssue: (summary: string, category?: string, details?: Record<string, unknown>) =>
+  assistantReportIssue: (summary: string, category?: string, details?: Record<string, unknown>, engine?: string) =>
     fetch('/api/assistant/issues', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ summary, category, details }),
+      body: JSON.stringify({ summary, category, details, engine }),
     }).then((r) => json<AssistantIssue>(r)),
 
   assistantDeleteIssue: (issueId: string) =>

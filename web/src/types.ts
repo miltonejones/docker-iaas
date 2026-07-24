@@ -419,4 +419,5 @@ export interface AssistantIssue {
   status: string;
   resolution: string | null;
   resolvedBy: string | null;
+  engine: string | null;
 }
