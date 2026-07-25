@@ -55,6 +55,7 @@ services:
       # Optional DeepSeek API key. Set ASSISTANT_PROVIDER=deepseek to use
       # DeepSeek's Anthropic-compatible API instead of Anthropic.
       - deepseek_api_key
+      - jwt_secret
       # Route 53 DNS automation.  Credentials sourced from files outside
       # the repo (the env vars are already removed — plain env would be
       # visible in docker inspect).  Defaults to /dev/null so the service
@@ -82,7 +83,7 @@ services:
     environment:
       DOCKYARD_API: http://console:4300
       DEEPSEEK_CMD: /usr/local/bin/claude
-      JWT_SECRET: "${JWT_SECRET:-dockyard-dev-secret-change-in-production}"
+      JWT_SECRET: dockyard-dev-secret-change-in-production
       ANTHROPIC_AUTH_TOKEN: "${ANTHROPIC_AUTH_TOKEN:-}"
       ANTHROPIC_BASE_URL: "${ANTHROPIC_BASE_URL:-}"
       ANTHROPIC_MODEL: "${ANTHROPIC_MODEL:-}"
@@ -157,6 +158,8 @@ secrets:
     # Keep the key outside the repository. On EC2, set DEEPSEEK_API_KEY_FILE in
     # .env to the EC2 user's owner-only key file before switching providers.
     file: ${DEEPSEEK_API_KEY_FILE:-/dev/null}
+  jwt_secret:
+    file: ${JWT_SECRET_FILE:-/dev/null}
   aws_access_key_id:
     file: ${AWS_ACCESS_KEY_ID_FILE:-/dev/null}
   aws_secret_access_key:

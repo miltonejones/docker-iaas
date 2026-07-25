@@ -1,14 +1,20 @@
 import { type Request, type Response, type NextFunction } from 'express';
+import fs from 'node:fs';
 import jwt from 'jsonwebtoken';
 import { getUserById } from './db.js';
 
-const JWT_SECRET = process.env.JWT_SECRET;
-const JWT_EXPIRES_IN = '7d';
-
+let JWT_SECRET: string;
+const secretFile = '/run/secrets/jwt_secret';
+try {
+  JWT_SECRET = fs.readFileSync(secretFile, 'utf8').trim();
+} catch {
+  JWT_SECRET = process.env.JWT_SECRET || '';
+}
 if (!JWT_SECRET) {
-  console.error('FATAL: JWT_SECRET environment variable is required.');
+  console.error(`FATAL: JWT secret not found at ${secretFile} or in JWT_SECRET env var.`);
   process.exit(1);
 }
+const JWT_EXPIRES_IN = '7d';
 
 export interface AuthUser {
   userId: string;
