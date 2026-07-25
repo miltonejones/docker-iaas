@@ -96,6 +96,28 @@ function sendGatewayJsonError(
   res.status(statusCode).json({ error, ...extra });
 }
 
+// ── Header safety ───────────────────────────────────────────────────────
+
+const STRIPPED_HEADERS = new Set([
+  'authorization',
+  'cookie',
+  'x-forwarded-for',
+  'x-forwarded-proto',
+  'x-forwarded-host',
+  'x-forwarded-port',
+]);
+
+/** Strip sensitive and forwarded headers from a headers object before
+ *  proxying to a backend container/bucket/lambda.  Returns a new object;
+ *  does not mutate the original. */
+function stripSensitiveHeaders(headers: Record<string, string | string[] | undefined>): Record<string, string | string[] | undefined> {
+  const out: Record<string, string | string[] | undefined> = {};
+  for (const [k, v] of Object.entries(headers)) {
+    if (!STRIPPED_HEADERS.has(k.toLowerCase())) out[k] = v;
+  }
+  return out;
+}
+
 // ── Bucket helper ──────────────────────────────────────────────────────────
 
 async function fetchBucketObject(bucket: string, key: string) {
@@ -171,7 +193,7 @@ export async function handleContainer(route: RouteRow, req: Request, res: Respon
     const http = await import('node:http');
     const wsTarget = target.replace(/^http/, 'ws') + req.url;
     const proxyReq = http.request(wsTarget, {
-      headers: { ...req.headers, host: new URL(target).host },
+      headers: { ...stripSensitiveHeaders(req.headers as Record<string,string|string[]|undefined>), host: new URL(target).host },
     });
     proxyReq.on('upgrade', (proxyRes, socket, head) => {
       res.writeHead(proxyRes.statusCode ?? 101, proxyRes.headers);
@@ -208,7 +230,7 @@ export async function handleLambda(route: RouteRow, req: Request, res: Response,
   const event: ProxyEvent = {
     httpMethod: req.method,
     path: req.path,
-    headers: req.headers as Record<string, string | undefined>,
+    headers: stripSensitiveHeaders(req.headers as Record<string,string|string[]|undefined>) as Record<string,string|undefined>,
     queryStringParameters: Object.keys(req.query).length > 0 ? (req.query as Record<string, string>) : null,
     pathParameters: null,
     body: bodyBuf && bodyBuf.length > 0 ? bodyBuf.toString('utf8') : null,
