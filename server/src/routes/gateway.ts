@@ -607,36 +607,6 @@ gatewayRouter.delete('/:id/domain', async (req: Request, res: Response) => {
 
 });
 
-gatewayRouter.get("/dns/zones/:zoneId/records", async (req: Request, res: Response) => {
-  try {
-    const records = await listExistingRecords(req.params.zoneId, req.query.name as string || "");
-    res.json({ records });
-  } catch (err) { sendError(res, 500, (err as Error).message); }
-});
-
-gatewayRouter.post("/dns/zones/:zoneId/records", async (req: Request, res: Response) => {
-  try {
-    const { action, name, value } = req.body as { action: string; name?: string; value?: string };
-    if (action === "create_cname") {
-      if (!name) { sendError(res, 400, "name is required"); return; }
-      const result = await upsertCname(req.params.zoneId, name, true);
-      res.json({ changeId: result.changeId, record: { name, type: "CNAME" } });
-    } else if (action === "create_a") {
-      if (!name || !value) { sendError(res, 400, "name and value are required"); return; }
-      // A record creation is a future feature — for now reject
-      sendError(res, 501, "A record creation not yet implemented");
-    } else {
-      sendError(res, 400, "Unknown action: " + action);
-    }
-  } catch (err) { sendError(res, 500, (err as Error).message); }
-});
-
-gatewayRouter.delete("/dns/zones/:zoneId/records/:name", async (req: Request, res: Response) => {
-  try {
-    await deleteCname(req.params.zoneId, req.params.name);
-    res.json({ ok: true });
-  } catch (err) { sendError(res, 500, (err as Error).message); }
-});
 
 // ── DNS record management (assistant tool) ──────────────────────────────
 
