@@ -97,39 +97,19 @@ function execInCaddy(cmd: string[]): Promise<string> {
 
 let baseConfigCache: string | null = null;
 
-async function getBaseConfig(): Promise<string> {
+function getBaseConfig(): string {
   if (baseConfigCache !== null) return baseConfigCache;
-
-  // Retry loop: Docker exec can return junk during container startup.
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const raw = (await execInCaddy(['cat', '/etc/caddy/Caddyfile'])).trimEnd();
-      if (!raw) {
-        console.error('caddy: base config read returned empty — will retry');
-        await sleep(2000);
-        continue;
-      }
-      // The base config must contain the known base domain — if not,
-      // we got garbage from a race and should retry.
-      if (!raw.includes('dockyard-ai.com')) {
-        console.error('caddy: base config read did not contain expected domain — will retry');
-        await sleep(2000);
-        continue;
-      }
-      baseConfigCache = raw;
-      return raw;
-    } catch (err) {
-      console.error('Failed to read base Caddyfile from Caddy container:', (err as Error).message);
-      await sleep(2000);
-    }
+  // Read the Caddyfile directly from the filesystem (volume-mounted
+  // into the console container).  No Docker exec — avoids the exec
+  // stream multiplex framing bug that contaminated the base config
+  // with `01 00 00 00 00 00 00 31`.
+  try {
+    baseConfigCache = fs.readFileSync('/etc/caddy/Caddyfile', 'utf8').trimEnd();
+    return baseConfigCache;
+  } catch (err) {
+    console.error('Failed to read base Caddyfile:', (err as Error).message);
+    return '';
   }
-  // All retries exhausted — return empty, next reload will try again.
-  console.error('caddy: all base config read attempts failed — will retry on next reload');
-  return '';
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function writeFileInCaddy(path: string, content: string): Promise<void> {
@@ -167,7 +147,7 @@ function writeFileInCaddy(path: string, content: string): Promise<void> {
 export async function reloadCaddy(): Promise<void> {
   if (fs.existsSync('/.dockerenv')) {
     try {
-      const baseConfig = await getBaseConfig();
+      const baseConfig = getBaseConfig();
       const siteBlocks = readSitesFile().trimEnd();
 
       if (!baseConfig) {

@@ -35,6 +35,7 @@ services:
       # Report the host's real disk usage rather than the container's overlay.
       - /:/host:ro
       # Persist the SQLite database (gateway routes, functions, settings).
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ./data:/app/data
       # Expose the consumer's notification log (see scripts/issue-consumer.mjs)
       # so server/src/routes/notifications.ts can read/tail it and the POST
