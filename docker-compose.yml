@@ -21,10 +21,6 @@ services:
       # the consumer side.
       CONSUMER_API_KEY: "${CONSUMER_API_KEY:-}"
       # Route 53 DNS automation for custom-domain gateway routes.
-      # If unset, the SDK falls back to the default credential chain
-      # (env vars, shared config, or EC2 instance role).
-      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-}"
-      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-}"
       AWS_REGION: "${AWS_REGION:-us-east-1}"
       DOCKYARD_EDGE_HOST: "${DOCKYARD_EDGE_HOST:-dockyard-ai.com}"
     labels:
@@ -57,6 +53,12 @@ services:
       # Optional DeepSeek API key. Set ASSISTANT_PROVIDER=deepseek to use
       # DeepSeek's Anthropic-compatible API instead of Anthropic.
       - deepseek_api_key
+      # Route 53 DNS automation.  Credentials sourced from files outside
+      # the repo (plain env would be visible in docker inspect).  Defaults
+      # to /dev/null so the service starts without credentials and the
+      # server falls back to the default AWS credential chain.
+      - aws_access_key_id
+      - aws_secret_access_key
     restart: unless-stopped
     networks:
       # Shares dockyard-net with the containers/functions it manages (including
@@ -151,3 +153,7 @@ secrets:
     # Keep the key outside the repository. On EC2, set DEEPSEEK_API_KEY_FILE in
     # .env to the EC2 user's owner-only key file before switching providers.
     file: ${DEEPSEEK_API_KEY_FILE:-/dev/null}
+  aws_access_key_id:
+    file: ${AWS_ACCESS_KEY_ID_FILE:-/dev/null}
+  aws_secret_access_key:
+    file: ${AWS_SECRET_ACCESS_KEY_FILE:-/dev/null}
