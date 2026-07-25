@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { requireAuth } from '../auth.js';
 import { pingDocker, docker } from '../docker.js';
 import { PRESETS } from '../presets.js';
 import { getUsageSnapshot } from '../usage.js';
@@ -16,14 +17,14 @@ systemRouter.get('/presets', (_req: Request, res: Response) => {
 });
 
 // One-shot usage snapshot.
-systemRouter.get('/usage', async (_req: Request, res: Response) => {
+systemRouter.get('/usage', requireAuth, async (_req: Request, res: Response) => {
   res.json(await getUsageSnapshot());
 });
 
 // Return host ports currently published by running containers, so the launch
 // flow can warn about conflicts before creating a new container.
 // Build-cache detail extracted from docker system df.
-systemRouter.get('/build-cache', async (_req: Request, res: Response) => {
+systemRouter.get('/build-cache', requireAuth, async (_req: Request, res: Response) => {
   try {
     const data: any = await new Promise((resolve, reject) => {
       (docker as any).modem.dial(
@@ -47,7 +48,7 @@ systemRouter.get('/build-cache', async (_req: Request, res: Response) => {
 });
 
 // Prune build cache.
-systemRouter.post('/build-cache/prune', async (_req: Request, res: Response) => {
+systemRouter.post('/build-cache/prune', requireAuth, async (_req: Request, res: Response) => {
   try {
     const data: any = await new Promise((resolve, reject) => {
       (docker as any).modem.dial(
@@ -65,7 +66,7 @@ systemRouter.post('/build-cache/prune', async (_req: Request, res: Response) => 
   }
 });
 
-systemRouter.get('/used-ports', async (_req: Request, res: Response) => {
+systemRouter.get('/used-ports', requireAuth, async (_req: Request, res: Response) => {
   try {
     const list = await docker.listContainers({ all: true });
     const used = new Set<number>();
@@ -83,7 +84,7 @@ systemRouter.get('/used-ports', async (_req: Request, res: Response) => {
 // Continuous usage reporting over Server-Sent Events. The dashboard subscribes
 // once and receives a fresh disk/Docker usage snapshot every POLL_MS, so usage
 // stays live without the client hammering the REST endpoint.
-systemRouter.get('/usage/stream', async (req: Request, res: Response) => {
+systemRouter.get('/usage/stream', requireAuth, async (req: Request, res: Response) => {
   res.set({
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',

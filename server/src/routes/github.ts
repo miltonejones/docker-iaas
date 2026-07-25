@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { requireAuth } from '../auth.js';
 import {
   commitAndPushGithubFiles,
   pullGithubRepoToBucket,
@@ -6,6 +7,8 @@ import {
 } from '../githubAssistantTools.js';
 
 export const githubRouter = Router();
+
+githubRouter.use(requireAuth);
 
 githubRouter.post('/pull-to-bucket', async (req: Request, res: Response) => {
   try {

@@ -1,7 +1,10 @@
 import { Router, type Request, type Response } from 'express';
+import { requireAuth } from '../auth.js';
 import { docker } from '../docker.js';
 
 export const volumesRouter = Router();
+
+volumesRouter.use(requireAuth);
 
 volumesRouter.get('/', async (_req: Request, res: Response) => {
   try {
