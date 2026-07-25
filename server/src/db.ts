@@ -142,6 +142,9 @@ export function initDb(dbPath?: string): void {
   // Migration: add user_id columns to existing resource tables.
   try { db.exec('ALTER TABLE functions ADD COLUMN user_id TEXT REFERENCES users(id)'); } catch { /* ok */ }
   try { db.exec('ALTER TABLE routes ADD COLUMN user_id TEXT REFERENCES users(id)'); } catch { /* ok */ }
+  try { db.exec('ALTER TABLE routes ADD COLUMN domain TEXT'); } catch { /* ok */ }
+  try { db.exec('ALTER TABLE routes ADD COLUMN domain_verified INTEGER DEFAULT 0'); } catch { /* ok */ }
+  try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_routes_domain ON routes(domain) WHERE domain IS NOT NULL'); } catch { /* ok */ }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS bucket_owners (
@@ -313,6 +316,8 @@ export interface RouteRow {
   method: string | null;
   path_pattern: string | null;
   user_id: string | null;
+  domain: string | null;
+  domain_verified: number;
   created_at: string;
   updated_at: string;
 }
@@ -341,6 +346,36 @@ export function getRoutesByName(name: string, userId?: string): RouteRow[] {
     return db.prepare('SELECT * FROM routes WHERE name = ? AND (user_id = ? OR user_id IS NULL) ORDER BY method DESC, path_pattern DESC').all(name, userId) as RouteRow[];
   }
   return db.prepare('SELECT * FROM routes WHERE name = ? ORDER BY method DESC, path_pattern DESC').all(name) as RouteRow[];
+}
+
+/** Look up a route by its custom domain.  Returns undefined if no route
+ *  claims this domain.  Respects user scoping when a userId is given. */
+export function getRouteByDomain(hostname: string, userId?: string): RouteRow | undefined {
+  const row = db.prepare(
+    'SELECT * FROM routes WHERE domain = ? AND domain_verified = 1',
+  ).get(hostname) as RouteRow | undefined;
+  if (row && userId && row.user_id !== userId && row.user_id !== null) return undefined;
+  return row;
+}
+
+/** Set or clear the custom domain on a route.  Returns the updated row or
+ *  undefined if the route was not found.  Caller must validate uniqueness
+ *  before calling (the UNIQUE index on domain enforces it at DB level). */
+export function setRouteDomain(id: string, domain: string | null): RouteRow | undefined {
+  const existing = getRoute(id);
+  if (!existing) return undefined;
+  db.prepare('UPDATE routes SET domain = ?, domain_verified = 0, updated_at = ? WHERE id = ?')
+    .run(domain, new Date().toISOString(), id);
+  return getRoute(id)!;
+}
+
+/** Mark a route's domain as verified (certificate issued + live). */
+export function verifyRouteDomain(id: string): RouteRow | undefined {
+  const existing = getRoute(id);
+  if (!existing) return undefined;
+  db.prepare('UPDATE routes SET domain_verified = 1, updated_at = ? WHERE id = ?')
+    .run(new Date().toISOString(), id);
+  return getRoute(id)!;
 }
 
 export function createRoute(
