@@ -89,7 +89,7 @@ export function GatewayList() {
     // Update all endpoints sharing this route name.
     try {
       for (const r of group) {
-        await api.gatewayUpdate(r.id, displayName);
+        await api.gatewayUpdate(r.id, { displayName });
       }
       loadRoutes();
       setEditing(null);

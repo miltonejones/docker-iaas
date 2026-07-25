@@ -470,11 +470,11 @@ export const api = {
   gatewayDelete: (id: string) =>
     fetch(`/api/gateway/${id}`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r)),
 
-  gatewayUpdate: (id: string, displayName: string | null) =>
+  gatewayUpdate: (id: string, fields: { displayName?: string | null; domain?: string | null; method?: string | null; pathPattern?: string | null }) =>
     fetch(`/api/gateway/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ displayName }),
+      body: JSON.stringify(fields),
     }).then((r) => json<GatewayRoute>(r)),
 
   gatewaySetDomain: (id: string, domain: string | null) =>

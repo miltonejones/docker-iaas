@@ -292,7 +292,7 @@ const tools: Anthropic.Tool[] = [
   {
     name: "manage_gateway_domain",
     description:
-      "Manage the lifecycle of a custom domain on a gateway route. Use action 'set' to set/change the domain, 'enable' to provision TLS (appends Caddy config + reload), 'status' to check verification progress, or 'remove' to tear down the domain. Call this after setting the route domain via update_gateway_route.",
+      "Manage the lifecycle of a custom domain on a gateway route. Use action 'set' to set/change the domain, 'enable' to provision TLS (appends Caddy config + reload), 'status' to check verification progress, or 'remove' to tear down the domain. You can also set the domain via update_gateway_route.",
     input_schema: {
       type: "object",
       properties: {

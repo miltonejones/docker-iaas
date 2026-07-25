@@ -928,7 +928,12 @@ export function AssistantBar({
         return api.gatewayDelete(String(input.id ?? ''));
 
       case 'update_gateway_route':
-        return api.gatewayUpdate(String(input.id ?? ''), str(input.displayName) ?? null);
+        return api.gatewayUpdate(String(input.id ?? ''), {
+          displayName: str(input.displayName) ?? null,
+          domain: str(input.domain) ?? null,
+          method: str(input.method) ?? null,
+          pathPattern: str(input.pathPattern) ?? null,
+        });
 
       case 'manage_gateway_domain': {
         const action = String(input.action ?? '');

@@ -429,11 +429,33 @@ export function deleteRoute(id: string): boolean {
   return result.changes > 0;
 }
 
-export function updateRoute(id: string, fields: { displayName?: string | null }): RouteRow | undefined {
+export function updateRoute(id: string, fields: { displayName?: string | null; method?: string | null; pathPattern?: string | null }): RouteRow | undefined {
   const existing = getRoute(id);
   if (!existing) return undefined;
-  db.prepare('UPDATE routes SET display_name = ?, updated_at = ? WHERE id = ?')
-    .run(fields.displayName !== undefined ? fields.displayName : existing.display_name, new Date().toISOString(), id);
+
+  const sets: string[] = [];
+  const params: unknown[] = [];
+
+  if (fields.displayName !== undefined) {
+    sets.push('display_name = ?');
+    params.push(fields.displayName);
+  }
+  if (fields.method !== undefined) {
+    sets.push('method = ?');
+    params.push(fields.method);
+  }
+  if (fields.pathPattern !== undefined) {
+    sets.push('path_pattern = ?');
+    params.push(fields.pathPattern);
+  }
+
+  if (sets.length === 0) return existing;
+
+  sets.push('updated_at = ?');
+  params.push(new Date().toISOString());
+  params.push(id);
+
+  db.prepare(`UPDATE routes SET ${sets.join(', ')} WHERE id = ?`).run(...params);
   return getRoute(id)!;
 }
 

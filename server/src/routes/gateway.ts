@@ -338,8 +338,45 @@ gatewayRouter.post('/', (req: Request, res: Response) => {
 
 gatewayRouter.put('/:id', (req: Request, res: Response) => {
   try {
-    const { displayName } = req.body as { displayName?: string | null };
-    const row = updateRoute(req.params.id, { displayName });
+    const userId = getAuthUser(req)?.userId;
+    const { displayName, domain, method, pathPattern } = req.body as {
+      displayName?: string | null;
+      domain?: string | null;
+      method?: string | null;
+      pathPattern?: string | null;
+    };
+
+    // Domain: validate and set separately (reuse existing conflict checks + verified reset).
+    if (domain !== undefined) {
+      if (typeof domain === 'string' && !DOMAIN_RE.test(domain)) {
+        sendError(res, 400, 'Invalid domain format.'); return;
+      }
+      if (domain) {
+        const claimant = getRouteByDomainAnyStatus(domain);
+        if (claimant && claimant.id !== req.params.id) {
+          sendError(res, 409, `Domain "${domain}" is already claimed by route "${claimant.name}".`); return;
+        }
+      }
+      setRouteDomain(req.params.id, domain ?? null);
+    }
+
+    // Method: validate.
+    const methodNorm = method?.trim().toUpperCase() || null;
+    if (methodNorm && !VALID_METHODS.has(methodNorm)) {
+      sendError(res, 400, `Invalid method. Must be one of: ${Array.from(VALID_METHODS).join(', ')}.`); return;
+    }
+
+    // Path pattern: validate.
+    const pathNorm = pathPattern?.trim() || null;
+    if (pathNorm && !pathNorm.startsWith('/')) {
+      sendError(res, 400, 'pathPattern must start with "/".'); return;
+    }
+
+    const row = updateRoute(req.params.id, {
+      displayName,
+      method: methodNorm,
+      pathPattern: pathNorm,
+    });
     if (!row) { res.status(404).json({ error: 'Route not found.' }); return; }
     res.json(toJson(row));
   } catch (err) {
