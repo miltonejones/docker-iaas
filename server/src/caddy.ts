@@ -1,14 +1,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { docker } from './docker.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // In the container, Caddy's config is at /etc/caddy/Caddyfile (mounted
 // read-only from the repo root).  Custom-domain site blocks are kept in a
 // separate file so deploy-wipes don't lose them.
 // Outside Docker (local dev), both run on the host and the env var lets tests override.
 const SITES_FILE = process.env.CADDY_SITES_PATH
-  || (fs.existsSync('/.dockerenv') ? 'data/sites.caddy' : 'sites.caddy');
+  || (fs.existsSync('/.dockerenv') ? path.join(__dirname, '..', 'data', 'sites.caddy') : 'sites.caddy');
 
 // The path inside the Caddy container where we push the merged config.
 const CADDY_CONTAINER_CONFIG = '/data/Caddyfile';
@@ -152,15 +155,32 @@ export async function reloadCaddy(): Promise<void> {
     }
   }
 
-  // Non-Docker (local dev): merge base Caddyfile + sites.caddy and reload.
+  // Non-Docker (local dev): merge base Caddyfile + sites.caddy into
+  // Caddyfile.merged and reload from there (never mutate the tracked file).
   const caddyfile = process.env.CADDYFILE_PATH
     || (fs.existsSync('/etc/caddy/Caddyfile') ? '/etc/caddy/Caddyfile' : 'Caddyfile');
   const base = readCaddyfileBase(caddyfile);
   const sitesContent = readSitesFile();
   if (sitesContent.trim()) {
-    fs.writeFileSync(caddyfile, (base + "\n" + sitesContent).trim() + "\n", "utf8");
-    console.log("[caddy] merged " + (sitesContent.trim().split("\n{").length - 1) + " site block(s) into", caddyfile);
+    const merged = path.join(path.dirname(caddyfile), 'Caddyfile.merged');
+    fs.writeFileSync(merged, (base + "\n" + sitesContent).trim() + "\n", "utf8");
+    return new Promise((resolve, reject) => {
+      const child = execFile('caddy', ['reload', '--config', merged], { timeout: 10_000 }, (err) => {
+      if (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+          resolve();
+        } else {
+          reject(err);
+        }
+      } else {
+        resolve();
+      }
+    });
+    child.unref();
+  });
   }
+
+  // No custom-domain blocks — reload base config directly.
   return new Promise((resolve, reject) => {
     const child = execFile('caddy', ['reload', '--config', caddyfile], { timeout: 10_000 }, (err) => {
       if (err) {
@@ -177,9 +197,9 @@ export async function reloadCaddy(): Promise<void> {
   });
 }
 
-function readCaddyfileBase(path: string): string {
-  try { return fs.readFileSync(path, 'utf8'); }
-  catch { return ''; }
+function readCaddyfileBase(filepath: string): string {
+  try { return fs.readFileSync(filepath, "utf8"); }
+  catch { return ""; }
 }
 
 function readSitesFile(): string {

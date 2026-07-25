@@ -185,10 +185,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
     }
 
     // Connect to relay if configured.
-    // Re-apply persisted custom-domain blocks into Caddy.
-    try { await reloadCaddy(); } catch { /* best-effort: Caddy may be unavailable */ }
+        // Re-apply persisted custom-domain blocks into Caddy.
+    try { await reloadCaddy(); } catch { /* best-effort */ }
 
-    // Connect to relay if configured.
     if (relayUrl) {
       connectToRelay(relayUrl);
     }
