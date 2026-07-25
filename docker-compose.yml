@@ -62,6 +62,8 @@ services:
       - aws_access_key_id
       - aws_secret_access_key
     restart: unless-stopped
+    extra_hosts:
+      - "169.254.169.254:127.0.0.1"
     networks:
       # Shares dockyard-net with the containers/functions it manages (including
       # the persistent MinIO instance), so it can reach them by name.
@@ -103,7 +105,7 @@ services:
       - dockyard-net
 
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
     container_name: dockyard-caddy
     # Always start fresh from the Caddyfile — the autosave.json can
     # accumulate stale/corrupted config (e.g. SNI scanners).  Certs are

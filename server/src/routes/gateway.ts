@@ -17,6 +17,7 @@ import {
   setRouteDomain,
   verifyRouteDomain,
   setRouteDomainDnsManaged,
+  recordAuditLog,
 } from '../db.js';
 
 export const gatewayRouter = Router();
@@ -330,6 +331,7 @@ gatewayRouter.post('/', (req: Request, res: Response) => {
       userId,
       displayName?.trim() || null,
     );
+    recordAuditLog('gateway.route.create', 'route', row.id, userId, name);
     res.status(201).json(toJson(row));
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
@@ -354,6 +356,7 @@ gatewayRouter.delete('/:id', (req: Request, res: Response) => {
       res.status(404).json({ error: 'Route not found.' });
       return;
     }
+    recordAuditLog('gateway.route.delete', 'route', req.params.id, null);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
@@ -555,6 +558,7 @@ gatewayRouter.post('/:id/domain/enable', async (req: Request, res: Response) => 
       appendCaddySite(route.domain);
       await reloadCaddy();
       verifyRouteDomain(route.id);
+      recordAuditLog("gateway.domain.enable", "route", route.id, userId, route.domain);
 
       const updated = getRoute(route.id, userId);
       res.json({ ...toJson(updated!), dnsInstructions: null });
@@ -618,6 +622,7 @@ gatewayRouter.delete('/:id/domain', async (req: Request, res: Response) => {
     removeCaddySite(route.domain);
     await reloadCaddy();
     setRouteDomain(route.id, null);
+    recordAuditLog("gateway.domain.delete", "route", route.id, userId, route.domain);
     res.json({ ok: true });
   } catch (err) { sendError(res, 500, (err as Error).message); }
 
