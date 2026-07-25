@@ -7,17 +7,43 @@ import {
   type HostedZone,
 } from "@aws-sdk/client-route-53";
 import { resolveCname } from "node:dns/promises";
+import fs from "node:fs";
 
 let _client: Route53Client | null = null;
 let _clientError: string | null = null;
+
+/** Read an AWS credential — env var first, then a Docker secret file at
+ *  /run/secrets/.  Follows the same pattern as readMasterSecret() in
+ *  databaseManagement.ts and resolveGithubToken() in githubAssistantTools.ts. */
+function readAwsSecret(envName: string, secretFileName: string): string | undefined {
+  const fromEnv = process.env[envName]?.trim();
+  if (fromEnv) return fromEnv;
+  const secretFile =
+    process.env[`${envName}_FILE`] || `/run/secrets/${secretFileName}`;
+  try {
+    const fileSecret = fs.readFileSync(secretFile, "utf8").trim();
+    return fileSecret || undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 function getClient(): Route53Client | null {
   if (_client) return _client;
   if (_clientError) return null;
   try {
+    const accessKeyId = readAwsSecret("AWS_ACCESS_KEY_ID", "aws_access_key_id");
+    const secretAccessKey = readAwsSecret(
+      "AWS_SECRET_ACCESS_KEY",
+      "aws_secret_access_key",
+    );
+
     _client = new Route53Client({
       region: process.env.AWS_REGION || "us-east-1",
       maxAttempts: 2,
+      ...(accessKeyId && secretAccessKey
+        ? { credentials: { accessKeyId, secretAccessKey } }
+        : {}),
     });
     return _client;
   } catch (err) {
