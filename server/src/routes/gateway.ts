@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { getAuthUser } from '../auth.js';
 import { appendCaddySite, removeCaddySite, reloadCaddy } from '../caddy.js';
-import { route53Preflight, upsertCname, deleteCname } from '../route53.js';
+import { route53Preflight, upsertCname, deleteCname, listExistingRecords } from '../route53.js';
 import {
   listRoutes,
   getRoutesByName,
@@ -604,4 +604,40 @@ gatewayRouter.delete('/:id/domain', async (req: Request, res: Response) => {
     setRouteDomain(route.id, null);
     res.json({ ok: true });
   } catch (err) { sendError(res, 500, (err as Error).message); }
+
 });
+
+
+// ── DNS record management (assistant tool) ──────────────────────────────
+
+gatewayRouter.get("/dns/zones", async (_req: Request, res: Response) => {
+  try {
+    const pf = await route53Preflight("example.com");
+    res.json({ available: pf.available, zones: pf.zones, error: pf.error || null });
+  } catch (err) { sendError(res, 500, (err as Error).message); }
+});
+
+gatewayRouter.get("/dns/zones/:zoneId/records", async (req: Request, res: Response) => {
+  try {
+    const name = typeof req.query.name === "string" && req.query.name ? req.query.name : undefined;
+    const records = name ? await listExistingRecords(req.params.zoneId, name) : [];
+    res.json({ records });
+  } catch (err) { sendError(res, 500, (err as Error).message); }
+});
+
+gatewayRouter.post("/dns/zones/:zoneId/records", async (req: Request, res: Response) => {
+  try {
+    const { name } = req.body as { name?: string };
+    if (!name) { sendError(res, 400, "name is required"); return; }
+    const result = await upsertCname(req.params.zoneId, name);
+    res.json({ changeId: result.changeId, record: { name, type: "CNAME" } });
+  } catch (err) { sendError(res, 500, (err as Error).message); }
+});
+
+gatewayRouter.delete("/dns/zones/:zoneId/records/:name", async (req: Request, res: Response) => {
+  try {
+    await deleteCname(req.params.zoneId, req.params.name);
+    res.json({ ok: true });
+  } catch (err) { sendError(res, 500, (err as Error).message); }
+});
+

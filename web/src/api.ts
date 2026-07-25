@@ -493,6 +493,22 @@ export const api = {
   gatewayRemoveDomain: (id: string) =>
     fetch(`/api/gateway/${id}/domain`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r)),
 
+  dnsListZones: () =>
+    fetch('/api/gateway/dns/zones').then((r) => json<{ available: boolean; zones: { id: string; name: string; isPrivate: boolean }[]; error: string | null }>(r)),
+
+  dnsListRecords: (zoneId: string, name?: string) =>
+    fetch(`/api/gateway/dns/zones/${encodeURIComponent(zoneId)}/records${name ? '?name=' + encodeURIComponent(name) : ''}`).then((r) => json<{ records: { name: string; type: string; values: string[] }[] }>(r)),
+
+  dnsCreateRecord: (zoneId: string, action: string, name: string, value?: string) =>
+    fetch(`/api/gateway/dns/zones/${encodeURIComponent(zoneId)}/records`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, name, value }),
+    }).then((r) => json<{ changeId: string; record?: { name: string; type: string } }>(r)),
+
+  dnsDeleteRecord: (zoneId: string, name: string) =>
+    fetch(`/api/gateway/dns/zones/${encodeURIComponent(zoneId)}/records/${encodeURIComponent(name)}`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r)),
+
   gatewayTrafficSummary: (gatewayName?: string) => {
     const query = gatewayName ? `?gatewayName=${encodeURIComponent(gatewayName)}` : '';
     return fetch(`/api/gateway/traffic/summary${query}`).then((r) => json<GatewayTrafficSummary>(r));

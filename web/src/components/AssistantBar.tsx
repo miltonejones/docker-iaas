@@ -23,6 +23,7 @@ const ACTION_LABEL: Record<string, string> = {
   create_gateway_route: 'Create Gateway route',
   update_gateway_route: 'Update Gateway route',
   manage_gateway_domain: 'Manage Gateway domain',
+  manage_dns_records: 'Manage DNS records',
   update_lambda_function: 'Update Lambda function',
   replace_lambda_function_files: 'Update function files',
   delete_lambda_function: 'Delete Lambda function',
@@ -940,6 +941,15 @@ export function AssistantBar({
         if (action === 'status') return api.gatewayDomainStatus(String(input.id ?? ''));
         if (action === 'remove') return api.gatewayRemoveDomain(String(input.id ?? ''));
         throw new Error(`Unknown domain action: ${action}`);
+      }
+
+      case 'manage_dns_records': {
+        const act = String(input.action ?? '');
+        if (act === 'list_zones') return api.dnsListZones();
+        if (act === 'list_records') return api.dnsListRecords(String(input.zoneId ?? ''), str(input.name) ?? undefined);
+        if (act === 'create_cname') return api.dnsCreateRecord(String(input.zoneId ?? ''), act, String(input.name ?? ''));
+        if (act === 'delete_record') return api.dnsDeleteRecord(String(input.zoneId ?? ''), String(input.name ?? ''));
+        throw new Error(`Unknown DNS action: ${act}`);
       }
 
       case 'launch_container':
