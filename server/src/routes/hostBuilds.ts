@@ -2,10 +2,13 @@ import fs from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
 import { Router, type Request, type Response } from 'express';
+import { requireAuth } from '../auth.js';
 import tar from 'tar-stream';
 import { docker } from '../docker.js';
 
 export const hostBuildsRouter = Router();
+
+hostBuildsRouter.use(requireAuth);
 
 const MAX_ARTIFACT_SIZE = 200 * 1024 * 1024;
 const MAX_HELPER_RESPONSE = 128 * 1024;
