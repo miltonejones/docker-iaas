@@ -99,20 +99,37 @@ let baseConfigCache: string | null = null;
 
 async function getBaseConfig(): Promise<string> {
   if (baseConfigCache !== null) return baseConfigCache;
-  try {
-    const raw = (await execInCaddy(['cat', '/etc/caddy/Caddyfile'])).trimEnd();
-    if (!raw) {
-      // Empty read — Caddy container may not be ready yet.  Don't cache
-      // so the next call retries instead of returning empty forever.
-      console.error('caddy: base config read returned empty — will retry on next reload');
-      return '';
+
+  // Retry loop: Docker exec can return junk during container startup.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const raw = (await execInCaddy(['cat', '/etc/caddy/Caddyfile'])).trimEnd();
+      if (!raw) {
+        console.error('caddy: base config read returned empty — will retry');
+        await sleep(2000);
+        continue;
+      }
+      // The base config must contain the known base domain — if not,
+      // we got garbage from a race and should retry.
+      if (!raw.includes('dockyard-ai.com')) {
+        console.error('caddy: base config read did not contain expected domain — will retry');
+        await sleep(2000);
+        continue;
+      }
+      baseConfigCache = raw;
+      return raw;
+    } catch (err) {
+      console.error('Failed to read base Caddyfile from Caddy container:', (err as Error).message);
+      await sleep(2000);
     }
-    baseConfigCache = raw;
-    return raw;
-  } catch (err) {
-    console.error('Failed to read base Caddyfile from Caddy container:', (err as Error).message);
-    return '';  // Don't cache errors either — retry next time
   }
+  // All retries exhausted — return empty, next reload will try again.
+  console.error('caddy: all base config read attempts failed — will retry on next reload');
+  return '';
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function writeFileInCaddy(path: string, content: string): Promise<void> {
@@ -159,6 +176,12 @@ export async function reloadCaddy(): Promise<void> {
       }
 
       const fullConfig = (baseConfig + '\n' + siteBlocks).trim() + '\n';
+
+      // Safety net: refuse to push a config missing the base domain.
+      if (!fullConfig.includes('dockyard-ai.com')) {
+        console.error('caddy: refusing to push config missing base domain');
+        return;
+      }
 
       await writeFileInCaddy(CADDY_CONTAINER_CONFIG, fullConfig);
       await execInCaddy(['caddy', 'reload', '--config', CADDY_CONTAINER_CONFIG]);
