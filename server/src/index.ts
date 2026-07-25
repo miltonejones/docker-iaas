@@ -20,6 +20,16 @@ import { notificationsRouter } from './routes/notifications.js';
 import { authRouter } from './routes/auth.js';
 import { requireAuth, optionalAuth } from './auth.js';
 import { gatewayProxyRouter } from './gatewayProxy.js';
+import {
+  handleBucket,
+  handleContainer,
+  handleLambda,
+  parseContentLength,
+  setGatewayError,
+  setGatewayResolution,
+  type GatewayTelemetryState,
+} from './gatewayHandlers.js';
+import { getRouteByDomain } from './db.js';
 import { initDb } from './db.js';
 import { connectToRelay } from './relay.js';
 import { ensureMinio } from './minio.js';
@@ -32,6 +42,33 @@ export function createApp(): express.Express {
 
   const app = express();
   app.use(cors());
+
+  // ── Custom-domain routing (before /gw so Host-header matches win) ─────
+  app.use(async (req, res, next) => {
+    const hostname = req.hostname || req.headers.host?.split(':')[0] || '';
+    const route = getRouteByDomain(hostname);
+    if (!route) return next();
+
+    const telem: GatewayTelemetryState = {
+      gatewayName: route.name,
+      routeId: route.id,
+      targetType: route.target_type,
+      requestBytes: parseContentLength(req.headers['content-length']),
+      errorClassification: null,
+      entryPoint: 'custom_domain',
+    };
+
+    try {
+      if (route.target_type === 'bucket') await handleBucket(route, req, res, telem);
+      else if (route.target_type === 'container') await handleContainer(route, req, res, telem);
+      else await handleLambda(route, req, res, telem);
+    } catch (err) {
+      if (!res.headersSent) {
+        setGatewayError(telem, 'gateway_internal_error');
+        res.status(502).json({ error: (err as Error).message });
+      }
+    }
+  });
 
   // Gateway data-plane routes and bucket object uploads/downloads are mounted
   // before the JSON body parser — otherwise a request with
