@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { getAuthUser } from '../auth.js';
 import { appendCaddySite, removeCaddySite, reloadCaddy } from '../caddy.js';
+import { route53Preflight, upsertCname, deleteCname } from '../route53.js';
 import {
   listRoutes,
   getRoutesByName,
@@ -15,6 +16,7 @@ import {
   getRouteByDomainAnyStatus,
   setRouteDomain,
   verifyRouteDomain,
+  setRouteDomainDnsManaged,
 } from '../db.js';
 
 export const gatewayRouter = Router();
@@ -70,6 +72,8 @@ function toJson(r: import('../db.js').RouteRow) {
     pathPattern: r.path_pattern || null,
     domain: r.domain || null,
     domainVerified: r.domain_verified === 1,
+    dnsManaged: r.domain_dns_managed === 1,
+    hostedZoneId: r.domain_hosted_zone_id || null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -511,6 +515,25 @@ gatewayRouter.patch('/:id/domain', (req: Request, res: Response) => {
   } catch (err) { sendError(res, 500, (err as Error).message); }
 });
 
+gatewayRouter.get('/:id/domain/preflight', async (req: Request, res: Response) => {
+  try {
+    const userId = getAuthUser(req)?.userId;
+    const route = getRoute(req.params.id, userId);
+    if (!route) { sendError(res, 404, 'Route not found.'); return; }
+    if (!route.domain) { sendError(res, 400, 'Route has no domain set.'); return; }
+
+    const pf = await route53Preflight(route.domain);
+    res.json({
+      available: pf.available,
+      error: pf.error || null,
+      matchedZone: pf.matchedZone ? { id: pf.matchedZone.id, name: pf.matchedZone.name } : null,
+      isApex: pf.isApex,
+      dnsManaged: route.domain_dns_managed === 1,
+      hostedZoneId: route.domain_hosted_zone_id || null,
+    });
+  } catch (err) { sendError(res, 500, (err as Error).message); }
+});
+
 gatewayRouter.post('/:id/domain/enable', async (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
@@ -518,11 +541,30 @@ gatewayRouter.post('/:id/domain/enable', async (req: Request, res: Response) => 
     if (!route) { sendError(res, 404, 'Route not found.'); return; }
     if (!route.domain) { sendError(res, 400, 'Route has no domain set. PATCH /domain first.'); return; }
 
+    // Preflight: check if we can automate DNS.
+    const pf = await route53Preflight(route.domain);
+    if (pf.isApex) {
+      sendError(res, 400, 'Apex (root) domains are not supported yet. Use a subdomain like www.' + route.domain);
+      return;
+    }
+
+    if (pf.matchedZone) {
+      // Automated path: UPSERT CNAME → mark managed immediately (so teardown
+      // can clean up even if Caddy fails) → Caddy → verify.
+      await upsertCname(pf.matchedZone.id, route.domain);
+      setRouteDomainDnsManaged(route.id, pf.matchedZone.id);
+    }
+
     appendCaddySite(route.domain);
     await reloadCaddy();
     verifyRouteDomain(route.id);
+
     const updated = getRoute(route.id, userId);
-    res.json({ ...toJson(updated!), dnsInstructions: null });
+    const dnsInstructions = pf.matchedZone
+      ? null  // automated — no manual step needed
+      : `Create a CNAME record pointing ${route.domain} to dockyard-ai.com. TLS will provision automatically.`;
+
+    res.json({ ...toJson(updated!), dnsInstructions });
   } catch (err) { sendError(res, 500, (err as Error).message); }
 });
 
@@ -535,8 +577,10 @@ gatewayRouter.get('/:id/domain/status', (req: Request, res: Response) => {
       domain: route.domain || null,
       verified: route.domain_verified === 1,
       certStatus: route.domain_verified === 1 ? 'active' : route.domain ? 'pending' : null,
+      dnsManaged: route.domain_dns_managed === 1,
+      hostedZoneId: route.domain_hosted_zone_id || null,
       dnsInstructions: route.domain && route.domain_verified === 0
-        ? `Create a CNAME record pointing ${route.domain} to dockyard.ai. TLS will provision automatically.`
+        ? `Create a CNAME record pointing ${route.domain} to dockyard-ai.com. TLS will provision automatically.`
         : null,
     });
   } catch (err) { sendError(res, 500, (err as Error).message); }
@@ -548,6 +592,13 @@ gatewayRouter.delete('/:id/domain', async (req: Request, res: Response) => {
     const route = getRoute(req.params.id, userId);
     if (!route) { sendError(res, 404, 'Route not found.'); return; }
     if (!route.domain) { sendError(res, 400, 'Route has no domain set.'); return; }
+
+    // If Dockyard created the DNS record, delete it before teardown.
+    if (route.domain_dns_managed === 1 && route.domain_hosted_zone_id) {
+      try { await deleteCname(route.domain_hosted_zone_id, route.domain); }
+      catch { /* best-effort — cleanup continues */ }
+    }
+
     removeCaddySite(route.domain);
     await reloadCaddy();
     setRouteDomain(route.id, null);

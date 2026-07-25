@@ -1,0 +1,158 @@
+<mxfile host="app.diagrams.net" agent="Deep Code">
+  <diagram name="Dockyard Custom Domain Routing" id="custom-domains">
+    <mxGraphModel dx="2953" dy="701" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=20;fontStyle=1" value="Dockyard — Custom Domain Routing Architecture" vertex="1">
+          <mxGeometry height="40" width="600" x="350" y="10" as="geometry" />
+        </mxCell>
+        <mxCell id="req1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12" value="https://dockyard.ai/gw/ktunes/" vertex="1">
+          <mxGeometry height="40" width="200" x="60" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="req2" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12" value="https://start.ktunes.app/" vertex="1">
+          <mxGeometry height="40" width="200" x="60" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="caddy" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=13;fontStyle=1" value="Caddy (TLS + reverse proxy)" vertex="1">
+          <mxGeometry height="80" width="220" x="360" y="90" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="req1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.25;entryDx=0;entryDy=0" target="caddy">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="360" y="100" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="req2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.75;entryDx=0;entryDy=0" target="caddy">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="caddy-note" parent="1" style="text;html=1;strokeColor=none;fillColor=#fff9e6;align=left;verticalAlign=top;whiteSpace=wrap;rounded=1;fontSize=10" value="dockyard-ai.com → localhost:4300&#xa;start.ktunes.app → localhost:4300&#xa;(Phase 5: append/remove via API)" vertex="1">
+          <mxGeometry height="50" width="220" x="590" y="90" as="geometry" />
+        </mxCell>
+        <mxCell id="express" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=14;fontStyle=1" value="Express App (port 4300)" vertex="1">
+          <mxGeometry height="30" width="180" x="410" y="205" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="caddy" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="express">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="host-mw" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;align=center" value="&lt;b&gt;Host-based middleware&lt;/b&gt;&lt;br&gt;getRouteByDomain(req.hostname)&lt;br&gt;entryPoint: &#39;custom_domain&#39;" vertex="1">
+          <mxGeometry height="60" width="260" x="-190" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="gw-mw" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;align=center" value="&lt;b&gt;/gw/:routeName router&lt;/b&gt;&lt;br&gt;getRoutesByName(routeName)&lt;br&gt;entryPoint: &#39;gw_prefix&#39;" vertex="1">
+          <mxGeometry height="60" width="260" x="90" y="300" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="express" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0" target="host-mw">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="host-label" connectable="0" parent="e4" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;fillColor=#d5e8d4;" value="Host matches domain" vertex="1">
+          <mxGeometry relative="1" x="-0.2" y="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e5" edge="1" parent="1" source="express" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0" target="gw-mw">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="gw-label" connectable="0" parent="e5" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;fillColor=#dae8fc;" value="Host doesn&#39;t match → fall through" vertex="1">
+          <mxGeometry relative="1" x="-0.2" y="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="handlers-title" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=13;fontStyle=1" value="Shared Handlers (gatewayHandlers.ts)" vertex="1">
+          <mxGeometry height="30" width="300" x="200" y="390" as="geometry" />
+        </mxCell>
+        <mxCell id="h-bucket" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12" value="handleBucket()" vertex="1">
+          <mxGeometry height="40" width="140" x="-130" y="490" as="geometry" />
+        </mxCell>
+        <mxCell id="h-container" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12" value="handleContainer()" vertex="1">
+          <mxGeometry height="40" width="140" x="50" y="580" as="geometry" />
+        </mxCell>
+        <mxCell id="h-lambda" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12" value="handleLambda()" vertex="1">
+          <mxGeometry height="40" width="140" x="480" y="250" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" edge="1" parent="1" source="host-mw" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="h-bucket">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" edge="1" parent="1" source="host-mw" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="h-container">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="10" y="440" />
+              <mxPoint x="120" y="440" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e8" edge="1" parent="1" source="host-mw" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="h-lambda">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e9" edge="1" parent="1" source="gw-mw" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="h-bucket">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e10" edge="1" parent="1" source="gw-mw" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="h-container">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="190" y="470" />
+              <mxPoint x="170" y="470" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e11" edge="1" parent="1" source="gw-mw" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="h-lambda">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="target-bucket" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11" value="MinIO/S3 Bucket&lt;br&gt;(static site)" vertex="1">
+          <mxGeometry height="50" width="140" x="-130" y="730" as="geometry" />
+        </mxCell>
+        <mxCell id="target-container" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11" value="Docker Container&lt;br&gt;(nginx, app server)" vertex="1">
+          <mxGeometry height="50" width="140" x="280" y="730" as="geometry" />
+        </mxCell>
+        <mxCell id="target-lambda" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=11" value="Lambda Function&lt;br&gt;(subprocess)" vertex="1">
+          <mxGeometry height="50" width="140" x="480" y="720" as="geometry" />
+        </mxCell>
+        <mxCell id="e12" edge="1" parent="1" source="h-bucket" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="target-bucket">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e13" edge="1" parent="1" source="h-container" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="target-container">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e14" edge="1" parent="1" source="h-lambda" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="target-lambda">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="api-box" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;verticalAlign=top;align=left" value="Management API" vertex="1">
+          <mxGeometry height="260" width="280" x="1010" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="api-list" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=10" value="&lt;b&gt;/api/gateway&lt;/b&gt; (requireAuth)&lt;br&gt;&lt;br&gt;CRUD routes + domain:&lt;br&gt;• PATCH /:id/domain — set/change/clear&lt;br&gt;• POST /:id/domain/enable — Caddy + verify&lt;br&gt;• GET /:id/domain/status — verification state&lt;br&gt;• DELETE /:id/domain — teardown&lt;br&gt;&lt;br&gt;&lt;b&gt;/api/assistant&lt;/b&gt; (tools)&lt;br&gt;• update_gateway_route&lt;br&gt;• manage_gateway_domain" vertex="1">
+          <mxGeometry height="230" width="260" x="1020" y="275" as="geometry" />
+        </mxCell>
+        <mxCell id="db" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10" value="SQLite (routes table)&lt;br&gt;domain TEXT UNIQUE&lt;br&gt;domain_verified INTEGER" vertex="1">
+          <mxGeometry height="80" width="180" x="710" y="380" as="geometry" />
+        </mxCell>
+        <mxCell id="e15" edge="1" parent="1" source="api-box" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0" target="db">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="820" y="420" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e16" edge="1" parent="1" source="host-mw" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0" target="db">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="70" y="330" />
+              <mxPoint x="670" y="330" />
+              <mxPoint x="670" y="410" />
+              <mxPoint x="820" y="410" />
+              <mxPoint x="820" y="380" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="caddyfile" parent="1" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;darkOpacity=0.05;fillColor=#fff9e6;strokeColor=#d6b656;fontSize=10" value="Caddyfile&lt;br&gt;(site blocks)" vertex="1">
+          <mxGeometry height="60" width="100" x="1100" y="100" as="geometry" />
+        </mxCell>
+        <mxCell id="e17" edge="1" parent="1" source="api-box" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" target="caddyfile">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e18" edge="1" parent="1" source="caddy" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0" target="caddyfile">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="legend" parent="1" style="text;html=1;strokeColor=#666666;fillColor=#f5f5f5;align=left;verticalAlign=top;whiteSpace=wrap;rounded=1;fontSize=10" value="&lt;b&gt;Legend&lt;/b&gt;&lt;br&gt;🟦 /gw prefix path (existing)&lt;br&gt;🟩 Custom domain path (new)&lt;br&gt;🟨 Caddy (TLS + edge proxy)&lt;br&gt;🟪 API management&amp;nbsp;" vertex="1">
+          <mxGeometry height="80" width="200" x="1080" y="570" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
