@@ -145,6 +145,8 @@ export function initDb(dbPath?: string): void {
   try { db.exec('ALTER TABLE gateway_traffic_events ADD COLUMN entry_point TEXT DEFAULT \'gw_prefix\''); } catch { /* ok */ }
   try { db.exec('ALTER TABLE routes ADD COLUMN domain TEXT'); } catch { /* ok */ }
   try { db.exec('ALTER TABLE routes ADD COLUMN domain_verified INTEGER DEFAULT 0'); } catch { /* ok */ }
+  try { db.exec('ALTER TABLE routes ADD COLUMN domain_dns_managed INTEGER DEFAULT 0'); } catch { /* ok */ }
+  try { db.exec('ALTER TABLE routes ADD COLUMN domain_hosted_zone_id TEXT'); } catch { /* ok */ }
   try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_routes_domain ON routes(domain) WHERE domain IS NOT NULL'); } catch { /* ok */ }
 
   db.exec(`
@@ -319,6 +321,8 @@ export interface RouteRow {
   user_id: string | null;
   domain: string | null;
   domain_verified: number;
+  domain_dns_managed: number;
+  domain_hosted_zone_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -388,6 +392,17 @@ export function verifyRouteDomain(id: string): RouteRow | undefined {
   if (!existing) return undefined;
   db.prepare('UPDATE routes SET domain_verified = 1, updated_at = ? WHERE id = ?')
     .run(new Date().toISOString(), id);
+  return getRoute(id)!;
+}
+
+/** Mark the domain's DNS record as Dockyard-managed (created by us) and
+ *  record which Route 53 hosted zone was used. */
+export function setRouteDomainDnsManaged(id: string, zoneId: string): RouteRow | undefined {
+  const existing = getRoute(id);
+  if (!existing) return undefined;
+  db.prepare(
+    'UPDATE routes SET domain_dns_managed = 1, domain_hosted_zone_id = ?, updated_at = ? WHERE id = ?',
+  ).run(zoneId, new Date().toISOString(), id);
   return getRoute(id)!;
 }
 
