@@ -30,6 +30,7 @@ import {
   finalizeGatewayErrorClassification,
   type GatewayTelemetryState,
 } from './gatewayHandlers.js';
+import { reloadCaddy } from './caddy.js';
 import { getRouteByDomain, recordGatewayTrafficEvent } from './db.js';
 import { initDb } from './db.js';
 import { connectToRelay } from './relay.js';
@@ -182,6 +183,10 @@ if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
         console.log(`  ⚠ MinIO provisioning failed: ${(err as Error).message}\n`);
       }
     }
+
+    // Connect to relay if configured.
+    // Re-apply persisted custom-domain blocks into Caddy.
+    try { await reloadCaddy(); } catch { /* best-effort: Caddy may be unavailable */ }
 
     // Connect to relay if configured.
     if (relayUrl) {

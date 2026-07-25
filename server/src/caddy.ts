@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { docker } from './docker.js';
 
@@ -151,10 +152,15 @@ export async function reloadCaddy(): Promise<void> {
     }
   }
 
-  // Non-Docker: reload Caddy via host CLI.  The Caddyfile should import
-  // sites.caddy, so blocks are picked up automatically.
+  // Non-Docker (local dev): merge base Caddyfile + sites.caddy and reload.
   const caddyfile = process.env.CADDYFILE_PATH
     || (fs.existsSync('/etc/caddy/Caddyfile') ? '/etc/caddy/Caddyfile' : 'Caddyfile');
+  const base = readCaddyfileBase(caddyfile);
+  const sitesContent = readSitesFile();
+  if (sitesContent.trim()) {
+    fs.writeFileSync(caddyfile, (base + "\n" + sitesContent).trim() + "\n", "utf8");
+    console.log("[caddy] merged " + (sitesContent.trim().split("\n{").length - 1) + " site block(s) into", caddyfile);
+  }
   return new Promise((resolve, reject) => {
     const child = execFile('caddy', ['reload', '--config', caddyfile], { timeout: 10_000 }, (err) => {
       if (err) {
@@ -169,6 +175,11 @@ export async function reloadCaddy(): Promise<void> {
     });
     child.unref();
   });
+}
+
+function readCaddyfileBase(path: string): string {
+  try { return fs.readFileSync(path, 'utf8'); }
+  catch { return ''; }
 }
 
 function readSitesFile(): string {

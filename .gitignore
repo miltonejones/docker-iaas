@@ -9,4 +9,3 @@ data/
 .DS_Store
 scripts/issue-logs/
 sites.caddy
-data/sites.caddy
