@@ -142,6 +142,8 @@ export function initDb(dbPath?: string): void {
   // Migration: add user_id columns to existing resource tables.
   try { db.exec('ALTER TABLE functions ADD COLUMN user_id TEXT REFERENCES users(id)'); } catch { /* ok */ }
   try { db.exec('ALTER TABLE routes ADD COLUMN user_id TEXT REFERENCES users(id)'); } catch { /* ok */ }
+  try { db.exec("CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT NOT NULL, resource_type TEXT NOT NULL, resource_id TEXT, user_id TEXT, detail TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')))"); } catch { /* ok */ }
+
   try { db.exec('ALTER TABLE gateway_traffic_events ADD COLUMN entry_point TEXT DEFAULT \'gw_prefix\''); } catch { /* ok */ }
   try { db.exec('ALTER TABLE routes ADD COLUMN domain TEXT'); } catch { /* ok */ }
   try { db.exec('ALTER TABLE routes ADD COLUMN domain_verified INTEGER DEFAULT 0'); } catch { /* ok */ }
@@ -397,6 +399,21 @@ export function verifyRouteDomain(id: string): RouteRow | undefined {
 
 /** Mark the domain's DNS record as Dockyard-managed (created by us) and
  *  record which Route 53 hosted zone was used. */
+
+export function recordAuditLog(
+  action: string,
+  resourceType: string,
+  resourceId?: string | null,
+  userId?: string | null,
+  detail?: string | null,
+): void {
+  try {
+    db.prepare(
+      'INSERT INTO audit_log (action, resource_type, resource_id, user_id, detail) VALUES (?, ?, ?, ?, ?)',
+    ).run(action, resourceType, resourceId ?? null, userId ?? null, detail ?? null);
+  } catch { /* best-effort — don'''t let audit failures break the app */ }
+}
+
 export function setRouteDomainDnsManaged(id: string, zoneId: string): RouteRow | undefined {
   const existing = getRoute(id);
   if (!existing) return undefined;

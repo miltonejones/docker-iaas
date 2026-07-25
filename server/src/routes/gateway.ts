@@ -17,6 +17,7 @@ import {
   setRouteDomain,
   verifyRouteDomain,
   setRouteDomainDnsManaged,
+  recordAuditLog,
 } from '../db.js';
 
 export const gatewayRouter = Router();
@@ -618,6 +619,7 @@ gatewayRouter.delete('/:id/domain', async (req: Request, res: Response) => {
     removeCaddySite(route.domain);
     await reloadCaddy();
     setRouteDomain(route.id, null);
+    recordAuditLog("gateway.domain.delete", "route", route.id, userId, route.domain);
     res.json({ ok: true });
   } catch (err) { sendError(res, 500, (err as Error).message); }
 
