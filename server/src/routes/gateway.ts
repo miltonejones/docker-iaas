@@ -550,7 +550,7 @@ gatewayRouter.post('/:id/domain/enable', async (req: Request, res: Response) => 
 
     if (pf.matchedZone) {
       // Automated path: create the DNS record, then Caddy.
-      await upsertCname(pf.matchedZone.id, route.domain);
+      await upsertCname(pf.matchedZone.id, route.domain, true);
       setRouteDomainDnsManaged(route.id, pf.matchedZone.id);
       appendCaddySite(route.domain);
       await reloadCaddy();
