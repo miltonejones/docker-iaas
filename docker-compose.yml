@@ -20,6 +20,13 @@ services:
       # needing direct SQLite DB access.  Must match CONSUMER_API_KEY on
       # the consumer side.
       CONSUMER_API_KEY: "${CONSUMER_API_KEY:-}"
+      # Route 53 DNS automation for custom-domain gateway routes.
+      # If unset, the SDK falls back to the default credential chain
+      # (env vars, shared config, or EC2 instance role).
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-}"
+      AWS_REGION: "${AWS_REGION:-us-east-1}"
+      DOCKYARD_EDGE_HOST: "${DOCKYARD_EDGE_HOST:-dockyard-ai.com}"
     labels:
       iaas.system: 'true'
     volumes:
