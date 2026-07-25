@@ -304,6 +304,21 @@ const tools: Anthropic.Tool[] = [
     },
   },
   {
+    name: "manage_dns_records",
+    description:
+      "Manage DNS records in Amazon Route 53 for custom domains. Use 'list_zones' to see hosted zones, 'list_records' to see records in a zone, 'create_cname' to create a CNAME to the Dockyard edge, 'create_a' for an A record (apex only), or 'delete_record' to remove a record.",
+    input_schema: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["list_zones", "list_records", "create_cname", "create_a", "delete_record"] },
+        zoneId: { type: "string", description: "Hosted zone id. Required for list_records, create_cname, create_a, delete_record." },
+        name: { type: "string", description: "Record name. Required for create_cname, create_a, delete_record." },
+        value: { type: "string", description: "Target IP. Required for create_a only." },
+      },
+      required: ["action"],
+    },
+  },
+  {
     name: "launch_container",
     description:
       "Launch a new Docker container, either from a named preset or a raw image. Pass command to override the image's default CMD — useful for keeping build images alive with [\"sleep\",\"infinity\"] when they'd otherwise exit immediately.",
