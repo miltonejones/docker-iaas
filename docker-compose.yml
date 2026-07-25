@@ -100,6 +100,10 @@ services:
   caddy:
     image: caddy:2-alpine
     container_name: dockyard-caddy
+    # Always start fresh from the Caddyfile — the autosave.json can
+    # accumulate stale/corrupted config (e.g. SNI scanners).  Certs are
+    # in the /data volume which persists across restarts.
+    command: sh -c "rm -f /config/caddy/autosave.json && caddy run --config /etc/caddy/Caddyfile"
     labels:
       iaas.system: 'true'
     ports:
