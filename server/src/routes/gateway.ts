@@ -549,13 +549,15 @@ gatewayRouter.post('/:id/domain/enable', async (req: Request, res: Response) => 
     }
 
     if (pf.matchedZone) {
-      // Automated path: UPSERT CNAME → Caddy → verify.
+      // Automated path: UPSERT CNAME → mark managed → Caddy → verify.
       await upsertCname(pf.matchedZone.id, route.domain);
-      setRouteDomainDnsManaged(route.id, pf.matchedZone.id);
     }
 
     appendCaddySite(route.domain);
     await reloadCaddy();
+    if (pf.matchedZone) {
+      setRouteDomainDnsManaged(route.id, pf.matchedZone.id);
+    }
     verifyRouteDomain(route.id);
 
     const updated = getRoute(route.id, userId);

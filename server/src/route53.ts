@@ -29,7 +29,7 @@ function getClient(): Route53Client | null {
 
 export interface HostedZoneInfo {
   id: string;
-  name: string;  // normalized, trailing dot, e.g. "ktunes.app."
+  name: string;
   isPrivate: boolean;
 }
 
@@ -37,8 +37,8 @@ export interface PreflightResult {
   available: boolean;
   error?: string;
   zones: HostedZoneInfo[];
-  matchedZone?: HostedZoneInfo;  // the best match for the domain, if any
-  isApex: boolean;               // domain equals a zone name exactly
+  matchedZone?: HostedZoneInfo;
+  isApex: boolean;
 }
 
 /** Read-only capability probe.  Lists hosted zones and finds the best
@@ -63,13 +63,15 @@ export async function route53Preflight(domain: string): Promise<PreflightResult>
 
   const matchedZone = findHostedZoneForDomain(domain, zones);
   const normalizedDomain = domain.endsWith(".") ? domain : domain + ".";
-  const isApex = zones.some((z) => z.name === normalizedDomain);
+
+  // isApex: domain equals a PUBLIC zone name exactly (consistent with findHostedZoneForDomain's public-only filter)
+  const isApex = zones.some((z) => !z.isPrivate && z.name === normalizedDomain);
 
   return { available: true, zones, matchedZone, isApex };
 }
 
 /** Longest-suffix match of a domain against hosted zone names.
- *  e.g. for "start.ktunes.app" matches zone "ktunes.app." over "app."
+ *  e.g. "start.ktunes.app" matches zone "ktunes.app." over "app."
  *  Returns undefined if no zone matches.  Only matches public zones. */
 export function findHostedZoneForDomain(
   domain: string,
@@ -97,16 +99,62 @@ export function findHostedZoneForDomain(
 // ── DNS record operations ──────────────────────────────────────────────────
 
 const EDGE_HOST = process.env.DOCKYARD_EDGE_HOST || "dockyard-ai.com";
+const CNAME_TTL = 300;
 
-/** UPSERT a CNAME record in the given hosted zone.  Returns the change ID
- *  for polling propagation. */
+export interface ExistingRecord {
+  name: string;
+  type: string;
+  values: string[];
+}
+
+/** List records for a given name + type in a hosted zone.  Empty array if
+ *  no matching records exist. */
+export async function listExistingRecords(
+  zoneId: string,
+  recordName: string,
+  recordType = "CNAME",
+): Promise<ExistingRecord[]> {
+  const client = getClient();
+  if (!client) throw new Error("Route 53 client unavailable");
+
+  const fullName = recordName.endsWith(".") ? recordName : recordName + ".";
+  const res = await client.send(
+    new ListResourceRecordSetsCommand({
+      HostedZoneId: zoneId,
+      StartRecordName: fullName,
+      StartRecordType: recordType as any,
+      MaxItems: 10,
+    }),
+  );
+
+  return (res.ResourceRecordSets || [])
+    .filter((r) => r.Name === fullName && r.Type === recordType)
+    .map((r) => ({
+      name: r.Name || "",
+      type: r.Type || "",
+      values: (r.ResourceRecords || []).map((v) => v.Value || ""),
+    }));
+}
+
+/** UPSERT a CNAME record in the given hosted zone.  Without `overwrite`,
+ *  throws if any record already exists at this name. */
 export async function upsertCname(
   zoneId: string,
   recordName: string,
-  ttl = 300,
+  overwrite = false,
 ): Promise<{ changeId: string }> {
   const client = getClient();
   if (!client) throw new Error("Route 53 client unavailable");
+
+  if (!overwrite) {
+    const existing = await listExistingRecords(zoneId, recordName);
+    if (existing.length > 0) {
+      const detail = existing.map((r) => `${r.type} → ${r.values.join(", ")}`).join("; ");
+      throw new Error(
+        `Record "${recordName}" already exists (${detail}). Set overwrite: true to replace it.`,
+      );
+    }
+  }
 
   const res = await client.send(
     new ChangeResourceRecordSetsCommand({
@@ -118,7 +166,7 @@ export async function upsertCname(
             ResourceRecordSet: {
               Name: recordName.endsWith(".") ? recordName : recordName + ".",
               Type: "CNAME",
-              TTL: ttl,
+              TTL: CNAME_TTL,
               ResourceRecords: [{ Value: EDGE_HOST }],
             },
           },
@@ -150,7 +198,7 @@ export async function deleteCname(
               ResourceRecordSet: {
                 Name: recordName.endsWith(".") ? recordName : recordName + ".",
                 Type: "CNAME",
-                TTL: 300,
+                TTL: CNAME_TTL,
                 ResourceRecords: [{ Value: EDGE_HOST }],
               },
             },
@@ -159,7 +207,6 @@ export async function deleteCname(
       }),
     );
   } catch (err) {
-    // Tolerate "not found" or "no such record" — best-effort cleanup.
     const msg = (err as Error).message || "";
     if (!msg.includes("not found") && !msg.includes("but it was not found")) {
       throw err;
