@@ -3,12 +3,16 @@ import { getAuthUser } from '../auth.js';
 import {
   listRoutes,
   getRoutesByName,
+  getRoute,
   createRoute,
   deleteRoute,
   updateRoute,
   listGatewayTrafficEvents,
   summarizeGatewayTraffic,
   summarizeGatewayTrafficByHour,
+  getRouteByDomain,
+  setRouteDomain,
+  verifyRouteDomain,
 } from '../db.js';
 
 export const gatewayRouter = Router();
@@ -62,6 +66,8 @@ function toJson(r: import('../db.js').RouteRow) {
     targetPort: r.target_port,
     method: r.method || null,
     pathPattern: r.path_pattern || null,
+    domain: r.domain || null,
+    domainVerified: r.domain_verified === 1,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -475,4 +481,69 @@ gatewayRouter.get('/preview/:name', async (req: Request, res: Response) => {
       }
     }
   });
+});
+
+// ── Domain management ────────────────────────────────────────────────────
+
+const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
+
+gatewayRouter.patch('/:id/domain', (req: Request, res: Response) => {
+  try {
+    const userId = getAuthUser(req)?.userId;
+    const { domain } = req.body as { domain?: string | null };
+    const id = req.params.id;
+    if (domain != null && typeof domain !== 'string') { sendError(res, 400, 'domain must be a string or null.'); return; }
+    if (typeof domain === 'string' && !DOMAIN_RE.test(domain)) { sendError(res, 400, 'Invalid domain format.'); return; }
+
+    const existing = getRoute(id, userId);
+    if (!existing) { sendError(res, 404, 'Route not found.'); return; }
+
+    if (domain) {
+      const claimant = getRouteByDomain(domain);
+      if (claimant && claimant.id !== id) {
+        sendError(res, 409, `Domain "${domain}" is already claimed by route "${claimant.name}".`); return;
+      }
+    }
+    const updated = setRouteDomain(id, domain ?? null);
+    res.json(toJson(updated!));
+  } catch (err) { sendError(res, 500, (err as Error).message); }
+});
+
+gatewayRouter.post('/:id/domain/enable', (req: Request, res: Response) => {
+  try {
+    const userId = getAuthUser(req)?.userId;
+    const route = getRoute(req.params.id, userId);
+    if (!route) { sendError(res, 404, 'Route not found.'); return; }
+    if (!route.domain) { sendError(res, 400, 'Route has no domain set. PATCH /domain first.'); return; }
+    verifyRouteDomain(route.id);
+    const updated = getRoute(route.id, userId);
+    res.json({ ...toJson(updated!), dnsInstructions: null });
+  } catch (err) { sendError(res, 500, (err as Error).message); }
+});
+
+gatewayRouter.get('/:id/domain/status', (req: Request, res: Response) => {
+  try {
+    const userId = getAuthUser(req)?.userId;
+    const route = getRoute(req.params.id, userId);
+    if (!route) { sendError(res, 404, 'Route not found.'); return; }
+    res.json({
+      domain: route.domain || null,
+      verified: route.domain_verified === 1,
+      certStatus: route.domain_verified === 1 ? 'active' : route.domain ? 'pending' : null,
+      dnsInstructions: route.domain && route.domain_verified === 0
+        ? `Create a CNAME record pointing ${route.domain} to dockyard.ai. TLS will provision automatically.`
+        : null,
+    });
+  } catch (err) { sendError(res, 500, (err as Error).message); }
+});
+
+gatewayRouter.delete('/:id/domain', (req: Request, res: Response) => {
+  try {
+    const userId = getAuthUser(req)?.userId;
+    const route = getRoute(req.params.id, userId);
+    if (!route) { sendError(res, 404, 'Route not found.'); return; }
+    if (!route.domain) { sendError(res, 400, 'Route has no domain set.'); return; }
+    setRouteDomain(route.id, null);
+    res.json({ ok: true });
+  } catch (err) { sendError(res, 500, (err as Error).message); }
 });
