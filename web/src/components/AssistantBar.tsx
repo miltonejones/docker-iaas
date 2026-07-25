@@ -948,7 +948,6 @@ export function AssistantBar({
         if (act === 'list_zones') return api.dnsListZones();
         if (act === 'list_records') return api.dnsListRecords(String(input.zoneId ?? ''), str(input.name) ?? undefined);
         if (act === 'create_cname') return api.dnsCreateRecord(String(input.zoneId ?? ''), act, String(input.name ?? ''));
-        if (act === 'create_a') return api.dnsCreateRecord(String(input.zoneId ?? ''), act, String(input.name ?? ''), str(input.value) ?? undefined);
         if (act === 'delete_record') return api.dnsDeleteRecord(String(input.zoneId ?? ''), String(input.name ?? ''));
         throw new Error(`Unknown DNS action: ${act}`);
       }

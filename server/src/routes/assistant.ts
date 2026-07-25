@@ -306,14 +306,14 @@ const tools: Anthropic.Tool[] = [
   {
     name: "manage_dns_records",
     description:
-      "Manage DNS records in Amazon Route 53 for custom domains. Use 'list_zones' to see hosted zones, 'list_records' to see records in a zone, 'create_cname' to create a CNAME to the Dockyard edge, 'create_a' for an A record (apex only), or 'delete_record' to remove a record.",
+      "Manage DNS records in Amazon Route 53 for custom domains. Use 'list_zones' to see hosted zones, 'list_records' to see records in a zone, 'create_cname' to create a CNAME to the Dockyard edge, or 'delete_record' to remove a record.",
     input_schema: {
       type: "object",
       properties: {
-        action: { type: "string", enum: ["list_zones", "list_records", "create_cname", "create_a", "delete_record"] },
-        zoneId: { type: "string", description: "Hosted zone id. Required for list_records, create_cname, create_a, delete_record." },
+        action: { type: "string", enum: ["list_zones", "list_records", "create_cname", "delete_record"] },
+        zoneId: { type: "string", description: "Hosted zone id. Required for list_records, create_cname, delete_record." },
         name: { type: "string", description: "Record name. Required for create_cname, create_a, delete_record." },
-        value: { type: "string", description: "Target IP. Required for create_a only." },
+        
       },
       required: ["action"],
     },
