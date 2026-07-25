@@ -95,8 +95,8 @@ export function IssuesPage({ onCreateIssue }: { onCreateIssue: () => void }) {
               <option key={tab.key} value={tab.key}>{tab.label}</option>
             ))}
           </select>
-          <button className="btn btn--primary btn--sm" onClick={() => onCreateIssue()}>
-            + New Issue
+          <button className="btn btn--primary btn--sm" onClick={() => onCreateIssue()} title="New Issue">
+            <AppIcon name="plus" />
           </button>
         </div>
       </div>

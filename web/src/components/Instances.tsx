@@ -125,8 +125,8 @@ export function Instances({ containers, busy, onChanged, onSelect, onNewInstance
             </button>
           </div>
           {onNewInstance && (
-            <button className="btn btn--primary btn--sm" onClick={onNewInstance}>
-              + New instance
+            <button className="btn btn--primary btn--sm" onClick={onNewInstance} title="New instance">
+              <AppIcon name="plus" />
             </button>
           )}
         </div>

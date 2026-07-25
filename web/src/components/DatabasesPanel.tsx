@@ -1112,8 +1112,8 @@ export function DatabasesPanel({ activeId }: DatabasesPanelProps) {
       <section className="panel">
         <div className="panel__head">
           <h2>Connections <span className="count">{connections.length}</span></h2>
-          <button className="btn btn--primary btn--sm" onClick={() => navigate('/databases/new')}>
-            <AppIcon name="plus" /> New connection
+          <button className="btn btn--primary btn--sm" onClick={() => navigate('/databases/new')} title="New connection">
+            <AppIcon name="plus" />
           </button>
         </div>
         {connections.length === 0 ? (
