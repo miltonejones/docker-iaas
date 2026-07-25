@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { getAuthUser } from '../auth.js';
 import { appendCaddySite, removeCaddySite, reloadCaddy } from '../caddy.js';
-import { route53Preflight, upsertCname, deleteCname, listExistingRecords } from '../route53.js';
+import { route53Preflight, upsertCname, deleteCname, listExistingRecords, domainResolves } from '../route53.js';
 import {
   listRoutes,
   getRoutesByName,
