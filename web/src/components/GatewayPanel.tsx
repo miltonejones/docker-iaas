@@ -142,8 +142,8 @@ export function GatewayList() {
           >
             ▦
           </button>
-          <button className="btn btn--primary btn--sm" onClick={() => setCreating(true)}>
-            + New route
+          <button className="btn btn--primary btn--sm" onClick={() => setCreating(true)} title="New route">
+            <AppIcon name="plus" />
           </button>
         </div>
       </div>
@@ -540,8 +540,8 @@ export function GatewayDetail({ name }: { name: string }) {
             prompt={`Explain the gateway route "/gw/${name}" — what it does, how many endpoints it has (${routes.length}), and what traffic patterns to expect.`}
           />
         </h2>
-        <button className="btn btn--primary btn--sm" onClick={() => setAdding(true)}>
-          + Add endpoint
+        <button className="btn btn--primary btn--sm" onClick={() => setAdding(true)} title="Add endpoint">
+          <AppIcon name="plus" />
         </button>
       </div>
 

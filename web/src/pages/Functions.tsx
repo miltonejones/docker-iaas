@@ -49,8 +49,9 @@ function FunctionList() {
         <button
           className="btn btn--primary btn--sm"
           onClick={() => navigate('/functions/new')}
+          title="New function"
         >
-          + New function
+          <AppIcon name="plus" />
         </button>
       </div>
 

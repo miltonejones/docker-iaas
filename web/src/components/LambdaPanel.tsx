@@ -18,7 +18,7 @@ import type {
   LambdaRuntime,
 } from "../types";
 import { api } from "../api";
-import { RuntimeIcon } from "../icons";
+import { AppIcon, RuntimeIcon } from "../icons";
 import { InfoButton } from "./InfoButton";
 import { useToast } from "../ToastContext";
 import { useConfirm } from "./ConfirmContext";
@@ -395,8 +395,8 @@ export function LambdaPanel({
           <h2>
             Lambda <span className="count">fn</span>
           </h2>
-          <button className="btn btn--primary btn--sm" onClick={newFunction}>
-            + New function
+          <button className="btn btn--primary btn--sm" onClick={newFunction} title="New function">
+            <AppIcon name="plus" />
           </button>
         </div>
       )}
@@ -410,8 +410,9 @@ export function LambdaPanel({
             <button
               className="btn btn--primary panel-new-btn"
               onClick={newFunction}
+              title="New function"
             >
-              + New function
+              <AppIcon name="plus" />
             </button>
             <div className="panel-item-list">
               {functions.length === 0 ? (

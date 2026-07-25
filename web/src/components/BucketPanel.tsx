@@ -71,8 +71,8 @@ export function BucketList() {
             </button>
           </div>
         ) : (
-          <button className="btn btn--primary btn--sm" onClick={() => setCreating(true)}>
-            + New bucket
+          <button className="btn btn--primary btn--sm" onClick={() => setCreating(true)} title="New bucket">
+            <AppIcon name="plus" />
           </button>
         )}
       </div>
