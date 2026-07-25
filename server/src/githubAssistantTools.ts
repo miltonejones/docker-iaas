@@ -505,7 +505,12 @@ function authenticatedCloneUrl(owner: string, repo: string): string {
 
 async function git(cwd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
   try {
-    return await execFileAsync('git', args, { cwd, timeout: GIT_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024 });
+    // --global safe.directory covers repos cloned under data/github-repos/ when
+    // the server process runs as a different user than the directory owner
+    // (common in containerized environments where volume mounts or multi-user
+    // setups create ownership mismatches — without this, git refuses to operate
+    // with "fatal: detected dubious ownership").
+    return await execFileAsync('git', ['-c', 'safe.directory=*', ...args], { cwd, timeout: GIT_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024 });
   } catch (err) {
     const e = err as { stdout?: string; stderr?: string; message: string };
     throw new Error(`git ${args[0]} failed: ${(e.stderr || e.stdout || e.message).trim().slice(0, 2000)}`);
