@@ -97,21 +97,18 @@ function execInCaddy(cmd: string[]): Promise<string> {
 
 let baseConfigCache: string | null = null;
 
-async function getBaseConfig(): Promise<string> {
+function getBaseConfig(): string {
   if (baseConfigCache !== null) return baseConfigCache;
+  // Read the Caddyfile directly from the filesystem (volume-mounted
+  // into the console container).  No Docker exec — avoids the exec
+  // stream multiplex framing bug that contaminated the base config
+  // with `01 00 00 00 00 00 00 31`.
   try {
-    const raw = (await execInCaddy(['cat', '/etc/caddy/Caddyfile'])).trimEnd();
-    if (!raw) {
-      // Empty read — Caddy container may not be ready yet.  Don't cache
-      // so the next call retries instead of returning empty forever.
-      console.error('caddy: base config read returned empty — will retry on next reload');
-      return '';
-    }
-    baseConfigCache = raw;
-    return raw;
+    baseConfigCache = fs.readFileSync('/etc/caddy/Caddyfile', 'utf8').trimEnd();
+    return baseConfigCache;
   } catch (err) {
-    console.error('Failed to read base Caddyfile from Caddy container:', (err as Error).message);
-    return '';  // Don't cache errors either — retry next time
+    console.error('Failed to read base Caddyfile:', (err as Error).message);
+    return '';
   }
 }
 
@@ -150,7 +147,7 @@ function writeFileInCaddy(path: string, content: string): Promise<void> {
 export async function reloadCaddy(): Promise<void> {
   if (fs.existsSync('/.dockerenv')) {
     try {
-      const baseConfig = await getBaseConfig();
+      const baseConfig = getBaseConfig();
       const siteBlocks = readSitesFile().trimEnd();
 
       if (!baseConfig) {
@@ -159,6 +156,12 @@ export async function reloadCaddy(): Promise<void> {
       }
 
       const fullConfig = (baseConfig + '\n' + siteBlocks).trim() + '\n';
+
+      // Safety net: refuse to push a config missing the base domain.
+      if (!fullConfig.includes('dockyard-ai.com')) {
+        console.error('caddy: refusing to push config missing base domain');
+        return;
+      }
 
       await writeFileInCaddy(CADDY_CONTAINER_CONFIG, fullConfig);
       await execInCaddy(['caddy', 'reload', '--config', CADDY_CONTAINER_CONFIG]);
