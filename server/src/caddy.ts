@@ -101,11 +101,16 @@ async function getBaseConfig(): Promise<string> {
   if (baseConfigCache !== null) return baseConfigCache;
   try {
     baseConfigCache = (await execInCaddy(['cat', '/etc/caddy/Caddyfile'])).trimEnd();
+    if (!baseConfigCache) {
+      // Empty read — Caddy container may not be ready yet.  Don't cache
+      // so the next call retries instead of dropping the base config.
+      console.error('caddy: base config read returned empty — will retry on next reload');
+      return '';
+    }
     return baseConfigCache;
   } catch (err) {
     console.error('Failed to read base Caddyfile from Caddy container:', (err as Error).message);
-    baseConfigCache = '';
-    return baseConfigCache;
+    return '';  // Don't cache errors — retry next time
   }
 }
 
@@ -146,6 +151,14 @@ export async function reloadCaddy(): Promise<void> {
     try {
       const baseConfig = await getBaseConfig();
       const siteBlocks = readSitesFile().trimEnd();
+
+      // Guard: if base config is empty (Caddy container not ready yet),
+      // don't push — we'd drop the base block and break TLS.
+      if (!baseConfig && siteBlocks) {
+        console.error('caddy: refusing to push site blocks without base config — will retry on next reload');
+        return;
+      }
+
       const fullConfig = (baseConfig + '\n' + siteBlocks).trim() + '\n';
 
       await writeFileInCaddy(CADDY_CONTAINER_CONFIG, fullConfig);

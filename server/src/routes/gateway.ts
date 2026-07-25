@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { getAuthUser } from '../auth.js';
 import { appendCaddySite, removeCaddySite, reloadCaddy } from '../caddy.js';
-import { route53Preflight, upsertCname, deleteCname, listExistingRecords } from '../route53.js';
+import { route53Preflight, upsertCname, deleteCname, listExistingRecords, domainResolves } from '../route53.js';
 import {
   listRoutes,
   getRoutesByName,
@@ -541,7 +541,7 @@ gatewayRouter.post('/:id/domain/enable', async (req: Request, res: Response) => 
     if (!route) { sendError(res, 404, 'Route not found.'); return; }
     if (!route.domain) { sendError(res, 400, 'Route has no domain set. PATCH /domain first.'); return; }
 
-    // Preflight: check if we can automate DNS.
+        // Preflight: check if we can automate DNS.
     const pf = await route53Preflight(route.domain);
     if (pf.isApex) {
       sendError(res, 400, 'Apex (root) domains are not supported yet. Use a subdomain like www.' + route.domain);
@@ -549,22 +549,38 @@ gatewayRouter.post('/:id/domain/enable', async (req: Request, res: Response) => 
     }
 
     if (pf.matchedZone) {
-      // Automated path: UPSERT CNAME → mark managed immediately (so teardown
-      // can clean up even if Caddy fails) → Caddy → verify.
+      // Automated path: create the DNS record, then Caddy.
       await upsertCname(pf.matchedZone.id, route.domain);
       setRouteDomainDnsManaged(route.id, pf.matchedZone.id);
+      appendCaddySite(route.domain);
+      await reloadCaddy();
+      verifyRouteDomain(route.id);
+
+      const updated = getRoute(route.id, userId);
+      res.json({ ...toJson(updated!), dnsInstructions: null });
+      return;
     }
 
+    // No Route 53 zone matched.  Check if DNS already resolves before
+    // touching Caddy — avoids doomed ACME loops for unresolvable domains
+    // while still supporting manual/external DNS setups.
+    const dnsOk = await domainResolves(route.domain);
+    if (!dnsOk) {
+      const updated = getRoute(route.id, userId);
+      res.json({
+        ...toJson(updated!),
+        dnsInstructions: `Create a CNAME record pointing ${route.domain} to dockyard-ai.com, then call enable again. TLS will provision automatically once DNS resolves.`,
+      });
+      return;
+    }
+
+    // DNS resolves — the user set up the record manually. Add Caddy.
     appendCaddySite(route.domain);
     await reloadCaddy();
     verifyRouteDomain(route.id);
 
     const updated = getRoute(route.id, userId);
-    const dnsInstructions = pf.matchedZone
-      ? null  // automated — no manual step needed
-      : `Create a CNAME record pointing ${route.domain} to dockyard-ai.com. TLS will provision automatically.`;
-
-    res.json({ ...toJson(updated!), dnsInstructions });
+    res.json({ ...toJson(updated!), dnsInstructions: null });
   } catch (err) { sendError(res, 500, (err as Error).message); }
 });
 

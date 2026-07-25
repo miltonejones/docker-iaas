@@ -6,6 +6,7 @@ import {
   ChangeAction,
   type HostedZone,
 } from "@aws-sdk/client-route-53";
+import { resolveCname } from "node:dns/promises";
 
 let _client: Route53Client | null = null;
 let _clientError: string | null = null;
@@ -100,6 +101,18 @@ export function findHostedZoneForDomain(
 
 const EDGE_HOST = process.env.DOCKYARD_EDGE_HOST || "dockyard-ai.com";
 const CNAME_TTL = 300;
+
+/** Check if a domain resolves to a CNAME pointing at the Dockyard edge.
+ *  Used by the manual-DNS path — after the user creates the DNS record,
+ *  call this before adding the Caddy block to avoid doomed ACME loops. */
+export async function domainResolves(domain: string): Promise<boolean> {
+  try {
+    const results = await resolveCname(domain);
+    return results.some((r) => r === EDGE_HOST || r === EDGE_HOST + ".");
+  } catch {
+    return false;
+  }
+}
 
 export interface ExistingRecord {
   name: string;
