@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 # Prevent concurrent deploys from racing on the EC2 instance.
 # A new push cancels any in-progress deploy so the latest commit wins.
@@ -63,7 +64,7 @@ jobs:
 
   deploy:
     needs: [verify, build-images]
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
