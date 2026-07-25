@@ -274,6 +274,49 @@ const tools: Anthropic.Tool[] = [
     },
   },
   {
+    name: "update_gateway_route",
+    description:
+      "Update an existing gateway route's fields (displayName, method, pathPattern, or domain). Only provide the fields you want to change. Use this to set a custom domain on a route so it can be reached at e.g. https://mysite.example.com instead of /gw/mysite.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Route id, e.g. rt-abc123" },
+        displayName: { type: "string", description: "Optional new display name" },
+        method: { type: "string", enum: ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"] },
+        pathPattern: { type: "string", description: 'Must start with "/". Exact match against request path.' },
+        domain: { type: "string", description: "Custom domain for this route, e.g. start.ktunes.app. Set to null to clear." },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "manage_gateway_domain",
+    description:
+      "Manage the lifecycle of a custom domain on a gateway route. Use action 'set' to set/change the domain, 'enable' to provision TLS (appends Caddy config + reload), 'status' to check verification progress, or 'remove' to tear down the domain. Call this after setting the route domain via update_gateway_route.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Route id, e.g. rt-abc123" },
+        action: { type: "string", enum: ["set", "enable", "status", "remove"] },
+        domain: { type: "string", description: "Required for action 'set': the custom domain name" },
+      },
+      required: ["id", "action"],
+    },
+  },
+  {
+    name: "run_aws_command",
+    description:
+      "Run a scoped AWS CLI command for DNS and certificate management. Allowed services: route53, acm, cloudfront, iam. Write operations are restricted to a per-service allowlist (e.g. route53 change-resource-record-sets, acm request-certificate). Use this to check DNS records, request certificates, or verify domain ownership.",
+    input_schema: {
+      type: "object",
+      properties: {
+        service: { type: "string", enum: ["route53", "acm", "cloudfront", "iam"], description: "AWS service name" },
+        command: { type: "string", description: "AWS CLI subcommand and flags, e.g. 'list-hosted-zones' or 'change-resource-record-sets --hosted-zone-id Z123 --change-batch file://batch.json'" },
+      },
+      required: ["service", "command"],
+    },
+  },
+  {
     name: "launch_container",
     description:
       "Launch a new Docker container, either from a named preset or a raw image. Pass command to override the image's default CMD — useful for keeping build images alive with [\"sleep\",\"infinity\"] when they'd otherwise exit immediately.",

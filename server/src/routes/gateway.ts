@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { getAuthUser } from '../auth.js';
+import { appendCaddySite, removeCaddySite, reloadCaddy } from '../caddy.js';
 import {
   listRoutes,
   getRoutesByName,
@@ -515,6 +516,9 @@ gatewayRouter.post('/:id/domain/enable', (req: Request, res: Response) => {
     const route = getRoute(req.params.id, userId);
     if (!route) { sendError(res, 404, 'Route not found.'); return; }
     if (!route.domain) { sendError(res, 400, 'Route has no domain set. PATCH /domain first.'); return; }
+
+    appendCaddySite(route.domain);
+    reloadCaddy();
     verifyRouteDomain(route.id);
     const updated = getRoute(route.id, userId);
     res.json({ ...toJson(updated!), dnsInstructions: null });
@@ -543,6 +547,8 @@ gatewayRouter.delete('/:id/domain', (req: Request, res: Response) => {
     const route = getRoute(req.params.id, userId);
     if (!route) { sendError(res, 404, 'Route not found.'); return; }
     if (!route.domain) { sendError(res, 400, 'Route has no domain set.'); return; }
+    removeCaddySite(route.domain);
+    reloadCaddy();
     setRouteDomain(route.id, null);
     res.json({ ok: true });
   } catch (err) { sendError(res, 500, (err as Error).message); }
