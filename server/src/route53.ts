@@ -112,7 +112,6 @@ export interface ExistingRecord {
 export async function listExistingRecords(
   zoneId: string,
   recordName: string,
-  recordType = "CNAME",
 ): Promise<ExistingRecord[]> {
   const client = getClient();
   if (!client) throw new Error("Route 53 client unavailable");
@@ -122,13 +121,12 @@ export async function listExistingRecords(
     new ListResourceRecordSetsCommand({
       HostedZoneId: zoneId,
       StartRecordName: fullName,
-      StartRecordType: recordType as any,
-      MaxItems: 10,
+      MaxItems: 20,
     }),
   );
 
   return (res.ResourceRecordSets || [])
-    .filter((r) => r.Name === fullName && r.Type === recordType)
+    .filter((r) => r.Name === fullName)
     .map((r) => ({
       name: r.Name || "",
       type: r.Type || "",
@@ -151,7 +149,7 @@ export async function upsertCname(
     if (existing.length > 0) {
       const detail = existing.map((r) => `${r.type} → ${r.values.join(", ")}`).join("; ");
       throw new Error(
-        `Record "${recordName}" already exists (${detail}). Set overwrite: true to replace it.`,
+        `Record "${recordName}" already exists (${detail}). Remove it first or set overwrite: true.`,
       );
     }
   }
