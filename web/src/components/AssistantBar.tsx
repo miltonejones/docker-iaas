@@ -931,8 +931,11 @@ export function AssistantBar({
 
       case 'manage_gateway_domain': {
         const action = String(input.action ?? '');
-        if (action === 'set' || action === 'enable') {
+        if (action === 'set') {
           return api.gatewaySetDomain(String(input.id ?? ''), str(input.domain) ?? null);
+        }
+        if (action === 'enable') {
+          return api.gatewayEnableDomain(String(input.id ?? ''));
         }
         if (action === 'status') return api.gatewayDomainStatus(String(input.id ?? ''));
         if (action === 'remove') return api.gatewayRemoveDomain(String(input.id ?? ''));
