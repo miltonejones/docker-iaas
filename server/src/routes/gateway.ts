@@ -12,6 +12,7 @@ import {
   summarizeGatewayTraffic,
   summarizeGatewayTrafficByHour,
   getRouteByDomain,
+  getRouteByDomainAnyStatus,
   setRouteDomain,
   verifyRouteDomain,
 } from '../db.js';
@@ -500,7 +501,7 @@ gatewayRouter.patch('/:id/domain', (req: Request, res: Response) => {
     if (!existing) { sendError(res, 404, 'Route not found.'); return; }
 
     if (domain) {
-      const claimant = getRouteByDomain(domain);
+      const claimant = getRouteByDomainAnyStatus(domain);
       if (claimant && claimant.id !== id) {
         sendError(res, 409, `Domain "${domain}" is already claimed by route "${claimant.name}".`); return;
       }
@@ -510,7 +511,7 @@ gatewayRouter.patch('/:id/domain', (req: Request, res: Response) => {
   } catch (err) { sendError(res, 500, (err as Error).message); }
 });
 
-gatewayRouter.post('/:id/domain/enable', (req: Request, res: Response) => {
+gatewayRouter.post('/:id/domain/enable', async (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
     const route = getRoute(req.params.id, userId);
@@ -518,7 +519,7 @@ gatewayRouter.post('/:id/domain/enable', (req: Request, res: Response) => {
     if (!route.domain) { sendError(res, 400, 'Route has no domain set. PATCH /domain first.'); return; }
 
     appendCaddySite(route.domain);
-    reloadCaddy();
+    await reloadCaddy();
     verifyRouteDomain(route.id);
     const updated = getRoute(route.id, userId);
     res.json({ ...toJson(updated!), dnsInstructions: null });
@@ -541,14 +542,14 @@ gatewayRouter.get('/:id/domain/status', (req: Request, res: Response) => {
   } catch (err) { sendError(res, 500, (err as Error).message); }
 });
 
-gatewayRouter.delete('/:id/domain', (req: Request, res: Response) => {
+gatewayRouter.delete('/:id/domain', async (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
     const route = getRoute(req.params.id, userId);
     if (!route) { sendError(res, 404, 'Route not found.'); return; }
     if (!route.domain) { sendError(res, 400, 'Route has no domain set.'); return; }
     removeCaddySite(route.domain);
-    reloadCaddy();
+    await reloadCaddy();
     setRouteDomain(route.id, null);
     res.json({ ok: true });
   } catch (err) { sendError(res, 500, (err as Error).message); }

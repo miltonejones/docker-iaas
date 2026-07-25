@@ -54,15 +54,9 @@ export function parseContentLength(value: string | string[] | undefined): number
 export function chunkByteLength(chunk: unknown, encoding?: BufferEncoding): number {
   if (chunk == null) return 0;
   if (Buffer.isBuffer(chunk)) return chunk.length;
-  if (typeof chunk === 'string') {
-    if (encoding === 'base64') {
-      // Base64 data is 4 chars per 3 bytes, plus padding overhead.
-      const pad = (chunk.match(/=+$/) || [''])[0].length;
-      return Math.ceil((chunk.length * 3) / 4) - pad;
-    }
-    return Buffer.byteLength(chunk, encoding ?? 'utf8');
-  }
-  return 0;
+  if (chunk instanceof Uint8Array) return chunk.byteLength;
+  if (typeof chunk === 'string') return Buffer.byteLength(chunk, encoding);
+  return Buffer.byteLength(String(chunk));
 }
 
 export function setGatewayResolution(telem: GatewayTelemetryState, route: RouteRow | null): void {

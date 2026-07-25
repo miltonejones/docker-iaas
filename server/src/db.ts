@@ -359,6 +359,18 @@ export function getRouteByDomain(hostname: string, userId?: string): RouteRow | 
   return row;
 }
 
+/** Like getRouteByDomain but returns ANY claim regardless of verification
+ *  state.  Used for conflict checks when setting a domain — a pending
+ *  claim on the same domain must be detected before the UNIQUE index
+ *  surfaces it as a generic 500. */
+export function getRouteByDomainAnyStatus(hostname: string, userId?: string): RouteRow | undefined {
+  const row = db.prepare(
+    'SELECT * FROM routes WHERE domain = ?',
+  ).get(hostname) as RouteRow | undefined;
+  if (row && userId && row.user_id !== userId && row.user_id !== null) return undefined;
+  return row;
+}
+
 /** Set or clear the custom domain on a route.  Returns the updated row or
  *  undefined if the route was not found.  Caller must validate uniqueness
  *  before calling (the UNIQUE index on domain enforces it at DB level). */

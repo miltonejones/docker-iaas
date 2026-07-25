@@ -26,10 +26,11 @@ import {
   handleLambda,
   parseContentLength,
   setGatewayError,
-  setGatewayResolution,
+  chunkByteLength,
+  finalizeGatewayErrorClassification,
   type GatewayTelemetryState,
 } from './gatewayHandlers.js';
-import { getRouteByDomain } from './db.js';
+import { getRouteByDomain, recordGatewayTrafficEvent } from './db.js';
 import { initDb } from './db.js';
 import { connectToRelay } from './relay.js';
 import { ensureMinio } from './minio.js';
@@ -49,6 +50,7 @@ export function createApp(): express.Express {
     const route = getRouteByDomain(hostname);
     if (!route) return next();
 
+    const startedAt = process.hrtime.bigint();
     const telem: GatewayTelemetryState = {
       gatewayName: route.name,
       routeId: route.id,
@@ -58,10 +60,56 @@ export function createApp(): express.Express {
       entryPoint: 'custom_domain',
     };
 
+    // Byte counting for telemetry (same pattern as /gw dispatcher).
+    let responseBytes = 0;
+    let recorded = false;
+    const originalWrite = res.write.bind(res);
+    const originalEnd = res.end.bind(res);
+    res.write = ((chunk: unknown, encoding?: BufferEncoding, cb?: (error?: Error | null) => void) => {
+      responseBytes += chunkByteLength(chunk, encoding);
+      return originalWrite(chunk as never, encoding as never, cb as never);
+    }) as typeof res.write;
+    res.end = ((chunk?: unknown, encoding?: BufferEncoding, cb?: () => void) => {
+      responseBytes += chunkByteLength(chunk, encoding);
+      return originalEnd(chunk as never, encoding as never, cb as never);
+    }) as typeof res.end;
+
+    const record = (finished: boolean) => {
+      if (recorded) return;
+      recorded = true;
+      try {
+        recordGatewayTrafficEvent({
+          gatewayName: telem.gatewayName,
+          routeId: telem.routeId,
+          targetType: telem.targetType,
+          method: req.method.toUpperCase(),
+          path: req.path || '/',
+          statusCode: finished ? res.statusCode : 499,
+          durationMs: Number((process.hrtime.bigint() - startedAt) / 1_000_000n),
+          requestBytes: telem.requestBytes,
+          responseBytes,
+          errorClassification: finalizeGatewayErrorClassification(
+            telem.errorClassification, finished ? res.statusCode : 499, finished,
+          ),
+          entryPoint: telem.entryPoint,
+        });
+      } catch { /* best-effort */ }
+    };
+    res.on('finish', () => record(true));
+    res.on('close', () => { if (!res.writableFinished) record(false); });
+
+    // Lambda targets need the body as structured data.
+    if (route.target_type === 'lambda') {
+      express.raw({ type: '*/*', limit: '5mb' })(req, res, async () => {
+        try { await handleLambda(route, req, res, telem);
+        } catch (err) { if (!res.headersSent) { setGatewayError(telem, 'gateway_internal_error'); res.status(502).json({ error: (err as Error).message }); } }
+      });
+      return;
+    }
+
     try {
       if (route.target_type === 'bucket') await handleBucket(route, req, res, telem);
       else if (route.target_type === 'container') await handleContainer(route, req, res, telem);
-      else await handleLambda(route, req, res, telem);
     } catch (err) {
       if (!res.headersSent) {
         setGatewayError(telem, 'gateway_internal_error');
