@@ -8,3 +8,4 @@ data/
 .env
 .DS_Store
 scripts/issue-logs/
+sites.caddy

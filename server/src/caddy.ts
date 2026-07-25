@@ -1,19 +1,19 @@
 import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { docker } from './docker.js';
 
-// In the container, Caddy's config is at /etc/caddy/Caddyfile.
-// Outside, it's in the repo root. The env var lets tests override.
-const CADDYFILE = process.env.CADDYFILE_PATH
-  || (fs.existsSync('/etc/caddy/Caddyfile') ? '/etc/caddy/Caddyfile' : null)
-  || 'Caddyfile';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-/** True when the server process itself is running inside a container. */
-const inDocker = fs.existsSync('/.dockerenv');
+// In the container, Caddy's config is at /etc/caddy/Caddyfile (mounted
+// read-only from the repo root).  Custom-domain site blocks are kept in a
+// separate file so deploy-wipes don't lose them.
+// Outside Docker (local dev), both run on the host and the env var lets tests override.
+const SITES_FILE = process.env.CADDY_SITES_PATH
+  || (fs.existsSync('/.dockerenv') ? path.resolve(__dirname, '../../data/sites.caddy') : 'sites.caddy');
 
-/** The path inside the Caddy container where we write the generated config.
- *  /data is the caddy_data named volume — writable and persisted across
- *  container restarts. */
+// The path inside the Caddy container where we push the merged config.
 const CADDY_CONTAINER_CONFIG = '/data/Caddyfile';
 
 const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
@@ -25,17 +25,16 @@ function assertDomain(domain: string): void {
   }
 }
 
+// ── Site block management ─────────────────────────────────────────────────
+
 /** Append a reverse-proxy site block for a custom domain.  Skips if the
- *  domain already has a block (idempotent).  Validates the domain format. */
+ *  domain already has a block (idempotent).  Writes to SITES_FILE. */
 export function appendCaddySite(domain: string): void {
   assertDomain(domain);
-  let content = readCaddyfile();
-  if (content.includes(`${domain} {`)) return; // already present
+  let content = readSitesFile();
+  if (content.includes(`${domain} {`)) return;
 
-  // Inside Docker, Caddy and the console run in separate containers on the
-  // same Docker network, so the upstream must use the Docker service name.
-  // Outside Docker (local dev), both run on the host and localhost works.
-  const upstream = inDocker ? 'console:4300' : 'localhost:4300';
+  const upstream = fs.existsSync('/.dockerenv') ? 'console:4300' : 'localhost:4300';
 
   const block = [
     ``,
@@ -46,17 +45,17 @@ export function appendCaddySite(domain: string): void {
     `}`,
   ].join('\n');
 
-  fs.writeFileSync(CADDYFILE, content.trimEnd() + '\n' + block + '\n', 'utf8');
+  fs.mkdirSync(path.dirname(SITES_FILE), { recursive: true });
+  fs.writeFileSync(SITES_FILE, content.trimEnd() + '\n' + block + '\n', 'utf8');
 }
 
 /** Remove a site block for a custom domain.  No-op if the domain doesn't
  *  have a block. */
 export function removeCaddySite(domain: string): void {
   assertDomain(domain);
-  let content = readCaddyfile();
+  let content = readSitesFile();
   if (!content.includes(`${domain} {`)) return;
 
-  // Remove the block: from the line containing "domain {" through its "}"
   const lines = content.split('\n');
   const start = lines.findIndex((l) => l.trim() === `${domain} {`);
   if (start === -1) return;
@@ -72,12 +71,12 @@ export function removeCaddySite(domain: string): void {
   }
 
   lines.splice(start, end - start + 1);
-  fs.writeFileSync(CADDYFILE, lines.join('\n').replace(/\n{3,}/g, '\n\n'), 'utf8');
+  fs.mkdirSync(path.dirname(SITES_FILE), { recursive: true });
+  fs.writeFileSync(SITES_FILE, lines.join('\n').replace(/\n{3,}/g, '\n\n'), 'utf8');
 }
 
-// ── Caddy container helpers (Docker deployments) ─────────────────────────
+// ── Caddy container helpers ───────────────────────────────────────────────
 
-/** Run a command inside the dockyard-caddy container and return stdout. */
 function execInCaddy(cmd: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
     docker.getContainer('dockyard-caddy').exec(
@@ -96,9 +95,6 @@ function execInCaddy(cmd: string[]): Promise<string> {
   });
 }
 
-/** Cached copy of the Caddy container's base config.  Read once from
- *  /etc/caddy/Caddyfile inside the Caddy container, then reused across
- *  reloads so every push includes the base site block(s). */
 let baseConfigCache: string | null = null;
 
 async function getBaseConfig(): Promise<string> {
@@ -108,16 +104,13 @@ async function getBaseConfig(): Promise<string> {
     return baseConfigCache;
   } catch (err) {
     console.error('Failed to read base Caddyfile from Caddy container:', (err as Error).message);
-    baseConfigCache = ''; // don't retry — cache the empty result
+    baseConfigCache = '';
     return baseConfigCache;
   }
 }
 
-/** Push a string into a file inside the dockyard-caddy container via stdin. */
 function writeFileInCaddy(path: string, content: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    // Encode as base64 to safely embed in a shell string (no escaping issues
-    // with special characters in domain names or config blocks).
     const encoded = Buffer.from(content, 'utf8').toString('base64');
     docker.getContainer('dockyard-caddy').exec(
       {
@@ -144,39 +137,57 @@ function writeFileInCaddy(path: string, content: string): Promise<void> {
 
 /** Gracefully reload Caddy (zero downtime, async).
  *
- *  In Docker, Caddy runs in a separate container ("dockyard-caddy").
- *  We merge the base config (from /etc/caddy/Caddyfile inside the Caddy
- *  container) with the locally-tracked custom-domain blocks, push the
- *  result to a writable path inside the Caddy container, and reload.
+ *  In Docker, we merge the base config from the Caddy container with the
+ *  site blocks from SITES_FILE, push to a writable path, and reload.
  *
- *  Outside Docker, we call the local `caddy` CLI directly.  Degrades
- *  gracefully if Caddy is unavailable (e.g. local dev). */
+ *  Outside Docker, we call the local `caddy` CLI directly. */
 export async function reloadCaddy(): Promise<void> {
-  if (inDocker) {
+  if (fs.existsSync('/.dockerenv')) {
     try {
       const baseConfig = await getBaseConfig();
-      const domainBlocks = readCaddyfile().trimEnd();
-      const fullConfig = (baseConfig + '\n' + domainBlocks).trim() + '\n';
+      const siteBlocks = readSitesFile().trimEnd();
+      const fullConfig = (baseConfig + '\n' + siteBlocks).trim() + '\n';
 
       await writeFileInCaddy(CADDY_CONTAINER_CONFIG, fullConfig);
       await execInCaddy(['caddy', 'reload', '--config', CADDY_CONTAINER_CONFIG]);
       return;
     } catch (err) {
-      // Docker API may be unreachable (e.g. CI, tests).  Log and
-      // continue — the endpoint should still succeed; the operator
-      // can reload manually or restart the Caddy container.
       console.error('caddy reload via Docker API failed:', (err as Error).message);
       return;
     }
   }
 
-  // Non-Docker (local dev): reload Caddy directly via the host CLI.
-  return new Promise((resolve, reject) => {
-    const child = execFile('caddy', ['reload', '--config', CADDYFILE], { timeout: 10_000 }, (err) => {
+  // Non-Docker (local dev): merge base Caddyfile + sites.caddy into
+  // Caddyfile.merged and reload from there (never mutate the tracked file).
+  const caddyfile = process.env.CADDYFILE_PATH
+    || (fs.existsSync('/etc/caddy/Caddyfile') ? '/etc/caddy/Caddyfile' : 'Caddyfile');
+  const base = readCaddyfileBase(caddyfile);
+  const sitesContent = readSitesFile();
+  if (sitesContent.trim()) {
+    const merged = path.join(path.dirname(caddyfile), 'Caddyfile.merged');
+    fs.writeFileSync(merged, (base + "\n" + sitesContent).trim() + "\n", "utf8");
+    return new Promise((resolve, reject) => {
+      const child = execFile('caddy', ['reload', '--config', merged], { timeout: 10_000 }, (err) => {
       if (err) {
-        // caddy may not be installed (local dev) — degrade gracefully.
         if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-          resolve(); // not an error — caddy just isn't available
+          resolve();
+        } else {
+          reject(err);
+        }
+      } else {
+        resolve();
+      }
+    });
+    child.unref();
+  });
+  }
+
+  // No custom-domain blocks — reload base config directly.
+  return new Promise((resolve, reject) => {
+    const child = execFile('caddy', ['reload', '--config', caddyfile], { timeout: 10_000 }, (err) => {
+      if (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+          resolve();
         } else {
           reject(err);
         }
@@ -188,9 +199,14 @@ export async function reloadCaddy(): Promise<void> {
   });
 }
 
-function readCaddyfile(): string {
+function readCaddyfileBase(filepath: string): string {
+  try { return fs.readFileSync(filepath, "utf8"); }
+  catch { return ""; }
+}
+
+function readSitesFile(): string {
   try {
-    return fs.readFileSync(CADDYFILE, 'utf8');
+    return fs.readFileSync(SITES_FILE, 'utf8');
   } catch {
     return '';
   }
