@@ -142,6 +142,7 @@ export function initDb(dbPath?: string): void {
   // Migration: add user_id columns to existing resource tables.
   try { db.exec('ALTER TABLE functions ADD COLUMN user_id TEXT REFERENCES users(id)'); } catch { /* ok */ }
   try { db.exec('ALTER TABLE routes ADD COLUMN user_id TEXT REFERENCES users(id)'); } catch { /* ok */ }
+  try { db.exec('ALTER TABLE gateway_traffic_events ADD COLUMN entry_point TEXT DEFAULT \'gw_prefix\''); } catch { /* ok */ }
   try { db.exec('ALTER TABLE routes ADD COLUMN domain TEXT'); } catch { /* ok */ }
   try { db.exec('ALTER TABLE routes ADD COLUMN domain_verified INTEGER DEFAULT 0'); } catch { /* ok */ }
   try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_routes_domain ON routes(domain) WHERE domain IS NOT NULL'); } catch { /* ok */ }
@@ -428,6 +429,7 @@ export interface GatewayTrafficEventRow {
   request_bytes: number;
   response_bytes: number;
   error_classification: string | null;
+  entry_point: string | null;
 }
 
 export interface GatewayTrafficEventInput {
@@ -442,6 +444,7 @@ export interface GatewayTrafficEventInput {
   requestBytes?: number;
   responseBytes?: number;
   errorClassification?: string | null;
+  entryPoint?: string | null;
 }
 
 export interface GatewayTrafficSummaryFilters {
@@ -523,8 +526,9 @@ export function recordGatewayTrafficEvent(input: GatewayTrafficEventInput): void
         duration_ms,
         request_bytes,
         response_bytes,
-        error_classification
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        error_classification,
+        entry_point
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       occurredAt,
       event.gatewayName,
@@ -537,6 +541,7 @@ export function recordGatewayTrafficEvent(input: GatewayTrafficEventInput): void
       Math.max(0, Math.round(event.requestBytes || 0)),
       Math.max(0, Math.round(event.responseBytes || 0)),
       event.errorClassification || null,
+      event.entryPoint || null,
     );
 
     // Retain only the newest bounded event window so telemetry storage stays
