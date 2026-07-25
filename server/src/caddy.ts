@@ -11,7 +11,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // separate file so deploy-wipes don't lose them.
 // Outside Docker (local dev), both run on the host and the env var lets tests override.
 const SITES_FILE = process.env.CADDY_SITES_PATH
-  || (fs.existsSync('/.dockerenv') ? path.join(__dirname, '..', 'data', 'sites.caddy') : 'sites.caddy');
+  || (fs.existsSync('/.dockerenv') ? path.resolve(__dirname, '../../data/sites.caddy') : 'sites.caddy');
 
 // The path inside the Caddy container where we push the merged config.
 const CADDY_CONTAINER_CONFIG = '/data/Caddyfile';
@@ -45,6 +45,7 @@ export function appendCaddySite(domain: string): void {
     `}`,
   ].join('\n');
 
+  fs.mkdirSync(path.dirname(SITES_FILE), { recursive: true });
   fs.writeFileSync(SITES_FILE, content.trimEnd() + '\n' + block + '\n', 'utf8');
 }
 
@@ -70,6 +71,7 @@ export function removeCaddySite(domain: string): void {
   }
 
   lines.splice(start, end - start + 1);
+  fs.mkdirSync(path.dirname(SITES_FILE), { recursive: true });
   fs.writeFileSync(SITES_FILE, lines.join('\n').replace(/\n{3,}/g, '\n\n'), 'utf8');
 }
 
