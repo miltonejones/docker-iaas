@@ -169,6 +169,8 @@ export interface GatewayRoute {
   targetPort: number | null;
   method: string | null;
   pathPattern: string | null;
+  domain: string | null;
+  domainVerified: boolean;
   createdAt: string;
   updatedAt: string;
 }

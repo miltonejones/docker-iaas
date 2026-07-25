@@ -288,6 +288,20 @@ export function GatewayList() {
                   /gw/{group[0].name}/…
                 </a>
               </div>
+              {group[0].domain && (
+                <div className="gateway-card__route mono" style={{ opacity: group[0].domainVerified ? 1 : 0.6 }}>
+                  <a
+                    href={`https://${group[0].domain}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="instance-link"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    🌐 {group[0].domain}
+                    {!group[0].domainVerified && ' (pending)'}
+                  </a>
+                </div>
+              )}
               <GatewayCardPreview name={group[0].name} />
               <div className="gateway-card__footer">
                 <span className="gateway-card__targets">
