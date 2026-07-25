@@ -210,7 +210,15 @@ export async function handleContainer(route: RouteRow, req: Request, res: Respon
     return;
   }
 
-  const proxy = createProxyMiddleware({ target, changeOrigin: true });
+  const proxy = createProxyMiddleware({
+    target,
+    changeOrigin: true,
+    on: {
+      proxyReq: (proxyReq) => {
+        for (const h of STRIPPED_HEADERS) proxyReq.removeHeader(h);
+      },
+    },
+  });
   proxy(req, res, (err?: unknown) => {
     if (err && !res.headersSent) {
       sendGatewayJsonError(telem, res, 502, 'container_proxy_error', String(err));
