@@ -21,6 +21,8 @@ type ResolvedResult = AssistantResolvedResult;
 const ACTION_LABEL: Record<string, string> = {
   create_lambda_function: 'Create Lambda function',
   create_gateway_route: 'Create Gateway route',
+  update_gateway_route: 'Update Gateway route',
+  manage_gateway_domain: 'Manage Gateway domain',
   update_lambda_function: 'Update Lambda function',
   replace_lambda_function_files: 'Update function files',
   delete_lambda_function: 'Delete Lambda function',
@@ -923,6 +925,22 @@ export function AssistantBar({
 
       case 'delete_gateway_route':
         return api.gatewayDelete(String(input.id ?? ''));
+
+      case 'update_gateway_route':
+        return api.gatewayUpdate(String(input.id ?? ''), str(input.displayName) ?? null);
+
+      case 'manage_gateway_domain': {
+        const action = String(input.action ?? '');
+        if (action === 'set') {
+          return api.gatewaySetDomain(String(input.id ?? ''), str(input.domain) ?? null);
+        }
+        if (action === 'enable') {
+          return api.gatewayEnableDomain(String(input.id ?? ''));
+        }
+        if (action === 'status') return api.gatewayDomainStatus(String(input.id ?? ''));
+        if (action === 'remove') return api.gatewayRemoveDomain(String(input.id ?? ''));
+        throw new Error(`Unknown domain action: ${action}`);
+      }
 
       case 'launch_container':
         return api.launch({

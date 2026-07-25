@@ -477,6 +477,22 @@ export const api = {
       body: JSON.stringify({ displayName }),
     }).then((r) => json<GatewayRoute>(r)),
 
+  gatewaySetDomain: (id: string, domain: string | null) =>
+    fetch(`/api/gateway/${id}/domain`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain }),
+    }).then((r) => json<GatewayRoute>(r)),
+
+  gatewayEnableDomain: (id: string) =>
+    fetch(`/api/gateway/${id}/domain/enable`, { method: 'POST' }).then((r) => json<GatewayRoute>(r)),
+
+  gatewayDomainStatus: (id: string) =>
+    fetch(`/api/gateway/${id}/domain/status`).then((r) => json<{ domain: string | null; verified: boolean; certStatus: string | null; dnsInstructions: string | null }>(r)),
+
+  gatewayRemoveDomain: (id: string) =>
+    fetch(`/api/gateway/${id}/domain`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r)),
+
   gatewayTrafficSummary: (gatewayName?: string) => {
     const query = gatewayName ? `?gatewayName=${encodeURIComponent(gatewayName)}` : '';
     return fetch(`/api/gateway/traffic/summary${query}`).then((r) => json<GatewayTrafficSummary>(r));
