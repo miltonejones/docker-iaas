@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { getAuthUser } from '../auth.js';
 import { appendCaddySite, removeCaddySite, reloadCaddy } from '../caddy.js';
-import { route53Preflight, upsertCname, deleteCname, listExistingRecords } from '../route53.js';
+import { route53Preflight, upsertCname, deleteCname, listExistingRecords, domainResolves } from '../route53.js';
 import {
   listRoutes,
   getRoutesByName,
@@ -549,22 +549,38 @@ gatewayRouter.post('/:id/domain/enable', async (req: Request, res: Response) => 
     }
 
     if (pf.matchedZone) {
-      // Automated path: UPSERT CNAME → mark managed immediately (so teardown
-      // can clean up even if Caddy fails) → Caddy → verify.
+      // Automated path: create the DNS record, then Caddy.
       await upsertCname(pf.matchedZone.id, route.domain);
       setRouteDomainDnsManaged(route.id, pf.matchedZone.id);
+      appendCaddySite(route.domain);
+      await reloadCaddy();
+      verifyRouteDomain(route.id);
+
+      const updated = getRoute(route.id, userId);
+      res.json({ ...toJson(updated!), dnsInstructions: null });
+      return;
     }
 
-    appendCaddySite(route.domain);
-    await reloadCaddy();
-    verifyRouteDomain(route.id);
+    // No Route 53 zone matched.  Check if DNS already resolves before
+    // touching Caddy to avoid doomed ACME loops for un-resolvable domains
+    // while still supporting manual/external DNS setups.
+    if (await domainResolves(route.domain)) {
+      // DNS already points to the edge — user set it up manually.
+      appendCaddySite(route.domain);
+      await reloadCaddy();
+      verifyRouteDomain(route.id);
 
+      const updated = getRoute(route.id, userId);
+      res.json({ ...toJson(updated!), dnsInstructions: null });
+      return;
+    }
+
+    // DNS not set up.  Return instructions; don't touch Caddy.
     const updated = getRoute(route.id, userId);
-    const dnsInstructions = pf.matchedZone
-      ? null  // automated — no manual step needed
-      : `Create a CNAME record pointing ${route.domain} to dockyard-ai.com. TLS will provision automatically.`;
-
-    res.json({ ...toJson(updated!), dnsInstructions });
+    res.json({
+      ...toJson(updated!),
+      dnsInstructions: `Create a CNAME record pointing ${route.domain} to dockyard-ai.com, then call enable again. TLS will provision automatically once DNS resolves.`,
+    });
   } catch (err) { sendError(res, 500, (err as Error).message); }
 });
 
