@@ -4,6 +4,7 @@ import tar from 'tar-stream';
 import { docker, dockyardNetworkConfig, ensureImage } from '../docker.js';
 import { getAuthUser } from '../auth.js';
 import { findPreset } from '../presets.js';
+import { recordAuditLog } from '../db.js';
 
 export const containersRouter = Router();
 
@@ -770,6 +771,7 @@ containersRouter.delete('/:id', async (req: Request, res: Response) => {
       return;
     }
     await container.remove({ force, v: true });
+    recordAuditLog('container.delete', 'container', req.params.id, null, null);
     res.json({ ok: true });
   } catch (err) {
     res.status(502).json({ error: (err as Error).message });
