@@ -3038,7 +3038,7 @@ textarea:focus {
 }
 .assistant-pinned-panel {
   width: 420px;
-  margin: 8px 0 0 8px;
+  margin: 8px 0 1rem 8px;
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
