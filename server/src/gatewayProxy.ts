@@ -1,6 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import express from 'express';
-import { getRoutesByName, recordGatewayTrafficEvent, type RouteRow } from './db.js';
+import { getRoutesByName, recordGatewayTrafficEvent, type RouteRow } from './db/gateway.js';
 import {
   handleBucket,
   handleContainer,

@@ -80,7 +80,19 @@ function teardownGitAuth(askpass) {
 }
 
 // ── Auth token for PATCH-ing issues back to the local server ──────────
-const JWT_SECRET = process.env.JWT_SECRET || "dockyard-dev-secret-change-in-production";
+// Same strategy as the console: read the Docker secret file first, then
+// fall back to the JWT_SECRET env var.  No hardcoded default.
+let JWT_SECRET;
+const secretFile = '/run/secrets/jwt_secret';
+try {
+  JWT_SECRET = fs.readFileSync(secretFile, 'utf8').trim();
+} catch {
+  JWT_SECRET = process.env.JWT_SECRET || '';
+}
+if (!JWT_SECRET) {
+  console.error(`FATAL: JWT secret not found at ${secretFile} or in JWT_SECRET env var.`);
+  process.exit(1);
+}
 let authHeader = process.env.DOCKYARD_API_TOKEN
   ? `Bearer ${process.env.DOCKYARD_API_TOKEN}`
   : "";

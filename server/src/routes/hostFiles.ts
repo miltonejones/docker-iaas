@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { Router, type Request, type Response } from 'express';
+import { recordAuditLog } from '../db/audit.js';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import tar from 'tar-stream';
 import { docker } from '../docker.js';
@@ -173,6 +174,7 @@ hostFilesRouter.post('/to-bucket', async (req: Request, res: Response) => {
         ContentType: typeof contentType === 'string' && contentType ? contentType : 'application/octet-stream',
       }),
     );
+    recordAuditLog('host_file.copy_to_bucket', 'host', null, null, `${bucket}/${key}`);
     res.status(201).json({ bucket, key, size: file.content.length });
   } catch (err) {
     res.status(502).json({ error: (err as Error).message });
@@ -203,6 +205,7 @@ hostFilesRouter.post('/to-container', async (req: Request, res: Response) => {
 
     const file = await readHostFile(sourcePath);
     await container.putArchive(await archiveFile(relativePath, file.content), { path: '/' });
+    recordAuditLog('host_file.copy_to_container', 'host', null, null, `${id}:${destinationPath}`);
     res.json({ ok: true, id, path: destinationPath, size: file.content.length });
   } catch (err) {
     res.status(502).json({ error: (err as Error).message });

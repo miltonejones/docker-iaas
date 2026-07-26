@@ -17,8 +17,8 @@ import {
   setRouteDomain,
   verifyRouteDomain,
   setRouteDomainDnsManaged,
-  recordAuditLog,
-} from '../db.js';
+} from '../db/gateway.js';
+import { recordAuditLog } from '../db/audit.js';
 
 export const gatewayRouter = Router();
 
@@ -61,7 +61,7 @@ function integerQuery(
   return parsed;
 }
 
-function toJson(r: import('../db.js').RouteRow) {
+function toJson(r: import('../db/gateway.js').RouteRow) {
   return {
     id: r.id,
     name: r.name,
@@ -80,7 +80,7 @@ function toJson(r: import('../db.js').RouteRow) {
   };
 }
 
-function trafficEventJson(r: import('../db.js').GatewayTrafficEventRow) {
+function trafficEventJson(r: import('../db/gateway.js').GatewayTrafficEventRow) {
   return {
     id: r.id,
     occurredAt: r.occurred_at,
@@ -97,7 +97,7 @@ function trafficEventJson(r: import('../db.js').GatewayTrafficEventRow) {
   };
 }
 
-function trafficSummaryJson(r: import('../db.js').GatewayTrafficSummaryRow) {
+function trafficSummaryJson(r: import('../db/gateway.js').GatewayTrafficSummaryRow) {
   return {
     gatewayName: r.gateway_name,
     routeId: r.route_id,

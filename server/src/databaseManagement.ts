@@ -26,7 +26,7 @@ import {
   type DatabaseConnectionRow,
   type DatabaseJobRow,
   type DatabaseOperationRow,
-} from './db.js';
+} from './db/databaseOps.js';
 
 export type DatabaseEngine = 'mysql' | 'mongodb';
 

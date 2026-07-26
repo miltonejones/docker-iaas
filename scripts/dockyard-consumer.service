@@ -32,7 +32,8 @@ Environment=DEEPSEEK_CMD=copilot
 Environment=DOCKYARD_API=http://127.0.0.1:4300
 
 # JWT secret must match the server's JWT_SECRET so signed tokens are accepted.
-Environment=JWT_SECRET=dockyard-dev-secret-change-in-production
+# Set this to the same value as the server's JWT_SECRET.
+Environment=JWT_SECRET=
 
 # ── Logging ───────────────────────────────────────────────────────────
 StandardOutput=journal

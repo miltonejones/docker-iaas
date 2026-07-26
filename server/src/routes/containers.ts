@@ -4,7 +4,7 @@ import tar from 'tar-stream';
 import { docker, dockyardNetworkConfig, ensureImage } from '../docker.js';
 import { getAuthUser } from '../auth.js';
 import { findPreset } from '../presets.js';
-import { recordAuditLog } from '../db.js';
+import { recordAuditLog } from '../db/audit.js';
 
 export const containersRouter = Router();
 
@@ -176,6 +176,7 @@ containersRouter.post('/', async (req: Request, res: Response) => {
 // directory). The container must be running and must not be system-managed.
 containersRouter.post('/:id/files', async (req: Request, res: Response) => {
   try {
+    const userId = getAuthUser(req)?.userId;
     const target = String(req.body?.path ?? '');
     const rel = target.slice(1);
     if (!target.startsWith('/') || rel === '' || /\.\.(?:\/|$)/.test(target) || !/^[\w./-]+$/.test(rel)) {
@@ -209,6 +210,7 @@ containersRouter.post('/:id/files', async (req: Request, res: Response) => {
       pack.finalize();
     });
     await container.putArchive(tarBuffer, { path: '/' });
+    recordAuditLog('container.files.write', 'container', req.params.id, userId, target);
     res.json({ ok: true, path: target });
   } catch (err) {
     res.status(502).json({ error: (err as Error).message });
@@ -253,6 +255,7 @@ containersRouter.get('/execs/:execId/output', async (req: Request, res: Response
 });
 
 containersRouter.post('/:id/exec', async (req: Request, res: Response) => {
+  const userId = getAuthUser(req)?.userId;
   const { command, workingDir, background, timeoutSeconds } = req.body as Record<string, unknown>;
   if (
     !Array.isArray(command) ||
@@ -319,6 +322,7 @@ containersRouter.post('/:id/exec', async (req: Request, res: Response) => {
         setTimeout(() => backgroundExecOutputs.delete(execId), 5 * 60_000);
       })();
 
+      recordAuditLog('container.exec', 'container', req.params.id, userId, commandArgs[0]);
       res.json({
         command: commandArgs,
         workingDir: workingDir ?? null,
@@ -350,6 +354,7 @@ containersRouter.post('/:id/exec', async (req: Request, res: Response) => {
     }
 
     const result = await exec.inspect();
+    recordAuditLog('container.exec', 'container', req.params.id, userId, commandArgs[0]);
     res.json({
       command: commandArgs,
       workingDir: workingDir ?? null,
@@ -365,6 +370,7 @@ containersRouter.post('/:id/exec', async (req: Request, res: Response) => {
 // Streaming variant of exec — sends output lines in real-time via SSE.
 // Same validation and security model as /:id/exec.
 containersRouter.post('/:id/exec/stream', async (req: Request, res: Response) => {
+  const userId = getAuthUser(req)?.userId;
   const { command, workingDir, timeoutSeconds } = req.body as Record<string, unknown>;
   if (
     !Array.isArray(command) ||
@@ -415,6 +421,7 @@ containersRouter.post('/:id/exec/stream', async (req: Request, res: Response) =>
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
     });
+    recordAuditLog('container.exec.stream', 'container', req.params.id, userId, commandArgs[0]);
     res.status(200);
 
     const send = (data: Record<string, unknown>) => {
@@ -590,6 +597,7 @@ containersRouter.post('/:id/env', async (req: Request, res: Response) => {
       });
     }
 
+    recordAuditLog('container.env.update', 'container', req.params.id, null, hasEnvUpdate ? newEnv!.map((e) => e.key).join(',') : null);
     res.json({
       id: newContainer.id,
       envUpdated: hasEnvUpdate ? newEnv!.map((e) => e.key) : [],
@@ -673,6 +681,7 @@ containersRouter.post('/:id/files/replace', async (req: Request, res: Response) 
       pack.finalize();
     });
     await container.putArchive(tarBuffer, { path: '/' });
+    recordAuditLog('container.files.replace', 'container', req.params.id, null, target);
     res.json({ path: target, replaced: true, occurrences: currentContent.split(search).length - 1 });
   } catch (err) {
     res.status(502).json({ error: (err as Error).message });
@@ -718,6 +727,7 @@ containersRouter.post('/:id/files/bulk', async (req: Request, res: Response) => 
       pack.finalize();
     });
     await container.putArchive(tarBuffer, { path: '/' });
+    recordAuditLog('container.files.bulk_write', 'container', req.params.id, null, String(files.length));
     res.json({ ok: true, filesWritten: files.length });
   } catch (err) {
     res.status(502).json({ error: (err as Error).message });

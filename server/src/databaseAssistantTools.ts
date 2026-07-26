@@ -1,5 +1,5 @@
 import type Anthropic from '@anthropic-ai/sdk';
-import { getDatabaseJob } from './db.js';
+import { getDatabaseJob } from './db/databaseOps.js';
 import {
   getConnectionDetail,
   getOperationsOverview,

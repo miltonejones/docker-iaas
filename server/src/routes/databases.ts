@@ -10,7 +10,7 @@ import {
   updateDatabaseConnection,
   updateDatabaseJob,
   updateDatabaseOperation,
-} from '../db.js';
+} from '../db/databaseOps.js';
 import {
   DATABASE_MASTER_KEY_ERROR,
   HttpError,
@@ -44,6 +44,7 @@ import {
   type RestoreRequest,
   previewGrant,
 } from '../databaseManagement.js';
+import { recordAuditLog } from '../db/audit.js';
 
 export const databasesRouter = Router();
 
@@ -223,6 +224,7 @@ databasesRouter.post('/connections/:id/grant', async (req: Request, res: Respons
         finishedAt: new Date().toISOString(),
       });
       const operationHistory = listOperationHistory(req.params.id, 10);
+      recordAuditLog('database.grant', 'database_connection', req.params.id, null, null);
       res.json({ operationId: opId, operation: operationHistory[0] ?? null, operationHistory, ...asObject(result) });
     } catch (err) {
       updateDatabaseOperation(opId, {
@@ -264,6 +266,8 @@ databasesRouter.post('/connections/:id/mutate', async (req: Request, res: Respon
         resultJson: jsonString(result),
         finishedAt: new Date().toISOString(),
       });
+      recordAuditLog('database.mutate', 'database_connection', req.params.id, null, null);
+      recordAuditLog('database.migrate', 'database_connection', req.params.id, null, null);
       res.json({ operationId: opId, ...asObject(result) });
     } catch (err) {
       updateDatabaseOperation(opId, {
@@ -395,6 +399,7 @@ databasesRouter.post('/connections/:id/backup', async (req: Request, res: Respon
         resultJson: jsonString(result.result),
         finishedAt: new Date().toISOString(),
       });
+      recordAuditLog('database.backup', 'database_connection', req.params.id, null, null);
       res.json({ jobId, ...asObject(result.result), artifactFormat: result.artifactFormat, artifactSize: result.artifactSize });
     } catch (err) {
       updateDatabaseJob(jobId, {
@@ -444,6 +449,7 @@ databasesRouter.post('/connections/:id/restore', async (req: Request, res: Respo
         resultJson: jsonString(result),
         finishedAt: new Date().toISOString(),
       });
+      recordAuditLog('database.restore', 'database_connection', req.params.id, null, null);
       res.json({ jobId: restoreJobId, sourceJobId: jobId, ...asObject(result) });
     } catch (err) {
       updateDatabaseJob(restoreJobId, {

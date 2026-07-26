@@ -4,7 +4,7 @@ import {
   getAssistantSession,
   updateAssistantSession,
   createAssistantSession,
-} from "./db.js";
+} from "./db/assistantSessions.js";
 
 // Re-exported from assistant.ts — defined there because of tool/constant binding.
 // We receive these as constructor parameters to avoid a circular import.
