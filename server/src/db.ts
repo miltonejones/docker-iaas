@@ -1,7 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import fs from 'node:fs';
-import crypto from 'node:crypto';
 import Database from 'better-sqlite3';
 import { initAuditTables } from './db/audit.js';
 import { initGatewayTables } from './db/gateway.js';
@@ -150,43 +149,7 @@ export function setSetting(key: string, value: string): void {
 // Per-user encrypted credentials
 // ---------------------------------------------------------------------------
 
-function resolveMasterKey(): Buffer {
-  const MASTER_KEY_FILE = process.env.DOCKYARD_DATABASE_MASTER_KEY_FILE
-    || path.join(process.env.HOME || '/root', '.dockyard_database_master_key');
-  try {
-    const raw = fs.readFileSync(MASTER_KEY_FILE, 'utf8').trim();
-    return crypto.createHash('sha256').update(raw).digest();
-  } catch {
-    // Fall back to env var for dev/test
-    const envKey = process.env.DOCKYARD_DATABASE_MASTER_KEY;
-    if (envKey) return crypto.createHash('sha256').update(envKey).digest();
-    throw new Error('DOCKYARD_DATABASE_MASTER_KEY not available.');
-  }
-}
-
-function encryptValue(plaintext: string): string {
-  const key = resolveMasterKey();
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-  const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
-  return JSON.stringify({
-    alg: 'aes-256-gcm',
-    iv: iv.toString('base64'),
-    tag: cipher.getAuthTag().toString('base64'),
-    ciphertext: ciphertext.toString('base64'),
-  });
-}
-
-function decryptValue(payload: string): string {
-  const key = resolveMasterKey();
-  const parsed = JSON.parse(payload) as { iv: string; tag: string; ciphertext: string };
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(parsed.iv, 'base64'));
-  decipher.setAuthTag(Buffer.from(parsed.tag, 'base64'));
-  return Buffer.concat([
-    decipher.update(Buffer.from(parsed.ciphertext, 'base64')),
-    decipher.final(),
-  ]).toString('utf8');
-}
+import { encryptValue, decryptValue } from './encryption.js';
 
 export function getUserSetting(userId: string, key: string): string | undefined {
   const row = db.prepare(

@@ -1,15 +1,12 @@
 import { useEffect, useState } from 'react';
 
-interface UserSettings {
-  anthropic_api_key: string | null;
-  deepseek_api_key: string | null;
-  github_token: string | null;
-  aws_access_key_id: string | null;
-  aws_secret_access_key: string | null;
-  assistant_provider: string | null;
+interface SettingStatus {
+  configured: boolean;
 }
 
-const FIELD_LABELS: Record<keyof UserSettings, string> = {
+type UserSettings = Record<string, SettingStatus>;
+
+const FIELD_LABELS: Record<string, string> = {
   anthropic_api_key: 'Anthropic API key',
   deepseek_api_key: 'DeepSeek API key',
   github_token: 'GitHub personal access token',
@@ -18,7 +15,7 @@ const FIELD_LABELS: Record<keyof UserSettings, string> = {
   assistant_provider: 'Assistant provider',
 };
 
-const FIELD_PLACEHOLDERS: Record<keyof UserSettings, string> = {
+const FIELD_PLACEHOLDERS: Record<string, string> = {
   anthropic_api_key: 'sk-ant-...',
   deepseek_api_key: 'sk-...',
   github_token: 'ghp_...',
@@ -27,23 +24,16 @@ const FIELD_PLACEHOLDERS: Record<keyof UserSettings, string> = {
   assistant_provider: 'anthropic',
 };
 
-function maskValue(value: string | null): string {
-  if (!value) return '';
-  if (value.length <= 6) return '••••••';
-  return value.slice(0, 4) + '••••' + value.slice(-4);
-}
-
 export function SettingsPage() {
-  const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [status, setStatus] = useState<UserSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
-  const [reveal, setReveal] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     fetch('/api/auth/settings')
       .then((r) => r.json())
-      .then(setSettings)
+      .then(setStatus)
       .catch(() => setError('Failed to load settings.'));
   }, []);
 
@@ -64,6 +54,9 @@ export function SettingsPage() {
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error('Save failed');
+      // Refresh status after save
+      const updated = await fetch('/api/auth/settings').then((r) => r.json());
+      setStatus(updated);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err) {
@@ -73,53 +66,43 @@ export function SettingsPage() {
     }
   }
 
-  if (!settings) return <div className="page"><p>Loading…</p></div>;
+  if (!status) return <div className="page"><p>Loading…</p></div>;
 
-  const fields = Object.keys(FIELD_LABELS) as (keyof UserSettings)[];
+  const fields = Object.keys(FIELD_LABELS);
 
   return (
     <div className="page">
       <h1>Settings</h1>
-      <p className="muted">Configure your API keys and credentials. They are encrypted at rest.</p>
+      <p className="muted">Configure your API keys and credentials. They are encrypted at rest and never returned in plaintext.</p>
 
       {error && <div className="toast toast--error">{error}</div>}
       {saved && <div className="toast toast--success">Settings saved.</div>}
 
       <form onSubmit={handleSave} className="settings-form">
         {fields.map((key) => {
-          const value = settings[key] ?? '';
+          const configured = status[key]?.configured ?? false;
           const isSecret = key !== 'assistant_provider';
           return (
             <label key={key} className="settings-field">
-              <span className="settings-field__label">{FIELD_LABELS[key]}</span>
+              <span className="settings-field__label">
+                {FIELD_LABELS[key]}
+                {configured && <span className="badge badge--ok" style={{ marginLeft: 8 }}>configured</span>}
+              </span>
               {isSecret ? (
-                <div className="settings-field__secret">
-                  <input
-                    type={reveal[key] ? 'text' : 'password'}
-                    name={key}
-                    defaultValue={value}
-                    placeholder={FIELD_PLACEHOLDERS[key]}
-                    className="input"
-                    autoComplete="off"
-                  />
-                  <button
-                    type="button"
-                    className="btn btn--ghost btn--sm"
-                    onClick={() => setReveal((r) => ({ ...r, [key]: !r[key] }))}
-                  >
-                    {reveal[key] ? 'Hide' : 'Show'}
-                  </button>
-                </div>
+                <input
+                  type="password"
+                  name={key}
+                  defaultValue=""
+                  placeholder={configured ? '(unchanged)' : FIELD_PLACEHOLDERS[key]}
+                  className="input"
+                  autoComplete="off"
+                />
               ) : (
-                <select name={key} defaultValue={value || 'anthropic'} className="input">
+                <select name={key} defaultValue="" className="input">
+                  <option value="">System default</option>
                   <option value="anthropic">Anthropic</option>
                   <option value="deepseek">DeepSeek</option>
                 </select>
-              )}
-              {isSecret && value && (
-                <span className="settings-field__hint">
-                  {reveal[key] ? '' : maskValue(value)}
-                </span>
               )}
             </label>
           );

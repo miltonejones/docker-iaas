@@ -104,10 +104,10 @@ const SETTABLE_KEYS = [
 authRouter.get('/settings', requireAuth, (req: Request, res: Response) => {
   const user = getAuthUser(req)!;
   const settings = getAllUserSettings(user.userId);
-  // Return keys that exist with masked values so the UI can show what's configured.
-  const out: Record<string, string | null> = {};
+  // Return which keys are configured, never plaintext values.
+  const out: Record<string, { configured: boolean }> = {};
   for (const key of SETTABLE_KEYS) {
-    out[key] = settings[key] ?? null;
+    out[key] = { configured: !!settings[key] };
   }
   res.json(out);
 });

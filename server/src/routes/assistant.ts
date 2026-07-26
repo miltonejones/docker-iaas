@@ -2103,7 +2103,11 @@ assistantRouter.get("/sessions/:id/stream", (req: Request, res: Response) => {
   }
 
   const ac = getAssistantClient(userId ?? 'deploy');
-  const runner = getOrCreateSession(sessionId, row.name, userId, streamTurn, ac?.client ?? new Anthropic({ apiKey: 'unconfigured' }));
+  if (!ac?.client) {
+    res.status(400).json({ error: 'No API key configured. Set your Anthropic or DeepSeek key in Settings.' });
+    return;
+  }
+  const runner = getOrCreateSession(sessionId, row.name, userId, streamTurn, ac.client);
 
   res.set({
     "Content-Type": "text/event-stream",
@@ -2157,7 +2161,11 @@ assistantRouter.post("/sessions/:id/send", async (req: Request, res: Response) =
     }
 
     const ac = getAssistantClient(userId ?? 'deploy');
-    const runner = getOrCreateSession(sessionId, row.name, userId, streamTurn, ac?.client ?? new Anthropic({ apiKey: 'unconfigured' }));
+    if (!ac?.client) {
+      res.status(400).json({ error: 'No API key configured. Set your Anthropic or DeepSeek key in Settings.' });
+      return;
+    }
+    const runner = getOrCreateSession(sessionId, row.name, userId, streamTurn, ac.client);
 
     // Start processing in the background — client subscribes via /stream.
     const sessionState = state || JSON.parse(row.state);
