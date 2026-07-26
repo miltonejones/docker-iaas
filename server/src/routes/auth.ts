@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import bcrypt from 'bcryptjs';
-import { createUser, getUserByEmail, getFirstUser } from '../db.js';
+import { createUser, getUserByEmail, getFirstUser, getAllUserSettings, setUserSetting, deleteUserSetting } from '../db.js';
 import { signToken, requireAuth, getAuthUser } from '../auth.js';
 
 export const authRouter = Router();
@@ -88,6 +88,42 @@ authRouter.post('/login', async (req: Request, res: Response) => {
 authRouter.get('/me', requireAuth, (req: Request, res: Response) => {
   const authUser = getAuthUser(req)!;
   res.json(authUser);
+});
+
+// ── Per-user credential settings ─────────────────────────────────────────
+
+const SETTABLE_KEYS = [
+  'anthropic_api_key',
+  'deepseek_api_key',
+  'github_token',
+  'aws_access_key_id',
+  'aws_secret_access_key',
+  'assistant_provider',
+];
+
+authRouter.get('/settings', requireAuth, (req: Request, res: Response) => {
+  const user = getAuthUser(req)!;
+  const settings = getAllUserSettings(user.userId);
+  // Return which keys are configured, never plaintext values.
+  const out: Record<string, { configured: boolean }> = {};
+  for (const key of SETTABLE_KEYS) {
+    out[key] = { configured: !!settings[key] };
+  }
+  res.json(out);
+});
+
+authRouter.put('/settings', requireAuth, (req: Request, res: Response) => {
+  const user = getAuthUser(req)!;
+  const body = req.body as Record<string, unknown>;
+  for (const key of SETTABLE_KEYS) {
+    if (body[key] === undefined) continue;
+    if (body[key] === null || body[key] === '') {
+      deleteUserSetting(user.userId, key);
+    } else if (typeof body[key] === 'string') {
+      setUserSetting(user.userId, key, body[key] as string);
+    }
+  }
+  res.json({ ok: true });
 });
 
 /** Exchange a pre-shared consumer API key for a JWT.  Lets the automated issue

@@ -9,6 +9,7 @@ import {
 // Re-exported from assistant.ts — defined there because of tool/constant binding.
 // We receive these as constructor parameters to avoid a circular import.
 type RespondStreamFn = (
+  userId: string,
   messages: Anthropic.MessageParam[],
   onEvent: (event: SessionEvent) => void,
   signal: AbortSignal,
@@ -138,7 +139,7 @@ export class SessionRunner extends EventEmitter {
     }
 
     try {
-      await this.respondStream(messages, (event) => this.broadcast(event), this.abortController.signal);
+      await this.respondStream(this.userId ?? 'deploy', messages, (event) => this.broadcast(event), this.abortController.signal);
     } catch (err) {
       if (!this.abortController.signal.aborted) {
         this.broadcast({ type: "error", error: (err as Error).message });
