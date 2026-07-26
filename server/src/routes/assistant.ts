@@ -48,6 +48,7 @@ import * as gatewayService from "../services/gateway.js";
 import * as lambdaService from "../services/lambda.js";
 import * as imageService from "../services/images.js";
 import * as systemService from "../services/system.js";
+import * as projectService from "../services/projects.js";
 
 export const assistantRouter = Router();
 
@@ -823,6 +824,51 @@ const tools: Anthropic.Tool[] = [
     input_schema: { type: "object", properties: {}, required: [] },
   },
   {
+    name: "list_projects",
+    description:
+      "List all projects with their resource summaries (container count, function count, etc). Read-only, runs automatically with no confirmation. Use this whenever the user mentions a project by name — this helps you map project names to IDs.",
+    input_schema: { type: "object", properties: {}, required: [] },
+  },
+  {
+    name: "create_project",
+    description:
+      "Create a new project to organize resources (containers, functions, buckets, routes) into a named group. Requires a name; optional description. The user must confirm before creation.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Project name" },
+        description: { type: "string", description: "Optional description" },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "update_project",
+    description:
+      "Update a project's name or description. Requires the project id (use list_projects to look it up). The user must confirm before updating.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Project ID" },
+        name: { type: "string", description: "New name" },
+        description: { type: "string", description: "New description" },
+      },
+      required: ["id"],
+    },
+  },
+  {
+    name: "delete_project",
+    description:
+      "Delete a project. Resources linked to the project are NOT deleted — they just have their project association cleared. Requires the project id (use list_projects to look it up). The user must confirm before deletion.",
+    input_schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Project ID" },
+      },
+      required: ["id"],
+    },
+  },
+  {
     name: "run_function",
     description:
       "Run a saved Lambda function by id and return its stdout, status code, and duration. Use this when the user asks to test or run a function. An optional JSON `payload` is provided to the function as the DOCKYARD_REQUEST environment variable (the gateway contract); omit it for functions that take no request. The function runs with its saved environment variables, the same as the editor Run button and gateway invocations. The user confirms before it runs.",
@@ -1153,6 +1199,7 @@ const READ_ONLY_TOOLS = new Set([
   "list_presets",
   "list_used_ports",
   "list_host_build_presets",
+  "list_projects",
   "list_host_directory",
   "read_host_file",
   "list_container_files",
@@ -1247,6 +1294,8 @@ async function executeReadOnlyTool(
       return systemService.presets();
     case "list_used_ports":
       return systemService.usedPorts();
+    case "list_projects":
+      return projectService.list(userId);
     case "list_host_build_presets": {
       return listHostBuildPresets().map(
         ({ name, cwd, command, args, artifacts }) => ({ name, cwd, command, args, artifacts }),
