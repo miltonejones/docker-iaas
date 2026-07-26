@@ -555,7 +555,7 @@ gatewayRouter.post('/:id/domain/enable', async (req: Request, res: Response) => 
       // Automated path: create the DNS record, then Caddy.
       await upsertCname(pf.matchedZone.id, route.domain);
       setRouteDomainDnsManaged(route.id, pf.matchedZone.id);
-      appendCaddySite(route.domain);
+      await appendCaddySite(route.domain);
       await reloadCaddy();
       verifyRouteDomain(route.id);
       recordAuditLog("gateway.domain.enable", "route", route.id, userId, route.domain);
@@ -570,7 +570,7 @@ gatewayRouter.post('/:id/domain/enable', async (req: Request, res: Response) => 
     // while still supporting manual/external DNS setups.
     if (await domainResolves(route.domain)) {
       // DNS already points to the edge — user set it up manually.
-      appendCaddySite(route.domain);
+      await appendCaddySite(route.domain);
       await reloadCaddy();
       verifyRouteDomain(route.id);
 
@@ -619,7 +619,7 @@ gatewayRouter.delete('/:id/domain', async (req: Request, res: Response) => {
       catch { /* best-effort — cleanup continues */ }
     }
 
-    removeCaddySite(route.domain);
+    await removeCaddySite(route.domain);
     await reloadCaddy();
     setRouteDomain(route.id, null);
     recordAuditLog("gateway.domain.delete", "route", route.id, userId, route.domain);

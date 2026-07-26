@@ -138,7 +138,7 @@ export function createApp(): express.Express {
   app.use('/api/host-files', requireAuth, hostFilesRouter);
   app.use('/api/host-builds', requireAuth, hostBuildsRouter);
   app.use('/api/databases', requireAuth, databasesRouter);
-  app.use('/api/github', githubRouter);
+  app.use('/api/github', requireAuth, githubRouter);
   app.use('/api/assistant', requireAuth, assistantRouter);
   app.use('/api/notifications', optionalAuth, notificationsRouter);
   app.use('/api/auth', authRouter);
