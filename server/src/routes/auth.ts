@@ -1,87 +1,31 @@
 import { Router, type Request, type Response } from 'express';
-import bcrypt from 'bcryptjs';
-import { createUser, getUserByEmail, getFirstUser, getAllUserSettings, setUserSetting, deleteUserSetting } from '../db.js';
-import { signToken, requireAuth, getAuthUser } from '../auth.js';
+import { requireAuth, getAuthUser } from '../auth.js';
+import { HttpError } from '../services/HttpError.js';
+import * as authService from '../services/auth.js';
 
 export const authRouter = Router();
 
-// Shared secret that lets the automated issue consumer obtain a JWT without
-// needing direct filesystem access to the SQLite database.  Set this env var
-// on both the server and the consumer.  Falls back to the DB master key if no
-// consumer-specific key is configured.
-const CONSUMER_API_KEY = process.env.CONSUMER_API_KEY || '';
+function sendError(res: Response, err: unknown): void {
+  const status = err instanceof HttpError ? err.status : 500;
+  res.status(status).json({ error: err instanceof Error ? err.message : 'Unknown error.' });
+}
 
 authRouter.post('/register', async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body as { email?: string; password?: string };
-    if (!email?.trim() || !password) {
-      res.status(400).json({ error: 'Email and password are required.' });
-      return;
-    }
-    if (password.length < 8) {
-      res.status(400).json({ error: 'Password must be at least 8 characters.' });
-      return;
-    }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      res.status(400).json({ error: 'Invalid email address.' });
-      return;
-    }
-
-    const existing = getUserByEmail(email);
-    if (existing) {
-      res.status(409).json({ error: 'An account with this email already exists.' });
-      return;
-    }
-
-    const hash = await bcrypt.hash(password, 10);
-    const user = createUser(email, hash);
-    const token = signToken(user);
-
-    res.status(201).json({
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        portRangeStart: user.port_range_start,
-        portRangeEnd: user.port_range_end,
-      },
-    });
+    const result = await authService.register(email || '', password || '');
+    res.status(201).json(result);
   } catch (err) {
-    res.status(500).json({ error: (err as Error).message });
+    sendError(res, err);
   }
 });
 
 authRouter.post('/login', async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body as { email?: string; password?: string };
-    if (!email?.trim() || !password) {
-      res.status(400).json({ error: 'Email and password are required.' });
-      return;
-    }
-
-    const user = getUserByEmail(email);
-    if (!user) {
-      res.status(401).json({ error: 'Invalid email or password.' });
-      return;
-    }
-
-    const valid = await bcrypt.compare(password, user.password_hash);
-    if (!valid) {
-      res.status(401).json({ error: 'Invalid email or password.' });
-      return;
-    }
-
-    res.json({
-      token: signToken(user),
-      user: {
-        id: user.id,
-        email: user.email,
-        portRangeStart: user.port_range_start,
-        portRangeEnd: user.port_range_end,
-      },
-    });
+    res.json(await authService.login(email || '', password || ''));
   } catch (err) {
-    res.status(500).json({ error: (err as Error).message });
+    sendError(res, err);
   }
 });
 
@@ -90,39 +34,14 @@ authRouter.get('/me', requireAuth, (req: Request, res: Response) => {
   res.json(authUser);
 });
 
-// ── Per-user credential settings ─────────────────────────────────────────
-
-const SETTABLE_KEYS = [
-  'anthropic_api_key',
-  'deepseek_api_key',
-  'github_token',
-  'aws_access_key_id',
-  'aws_secret_access_key',
-  'assistant_provider',
-];
-
 authRouter.get('/settings', requireAuth, (req: Request, res: Response) => {
   const user = getAuthUser(req)!;
-  const settings = getAllUserSettings(user.userId);
-  // Return which keys are configured, never plaintext values.
-  const out: Record<string, { configured: boolean }> = {};
-  for (const key of SETTABLE_KEYS) {
-    out[key] = { configured: !!settings[key] };
-  }
-  res.json(out);
+  res.json(authService.getSettings(user.userId));
 });
 
 authRouter.put('/settings', requireAuth, (req: Request, res: Response) => {
   const user = getAuthUser(req)!;
-  const body = req.body as Record<string, unknown>;
-  for (const key of SETTABLE_KEYS) {
-    if (body[key] === undefined) continue;
-    if (body[key] === null || body[key] === '') {
-      deleteUserSetting(user.userId, key);
-    } else if (typeof body[key] === 'string') {
-      setUserSetting(user.userId, key, body[key] as string);
-    }
-  }
+  authService.updateSettings(user.userId, req.body as Record<string, unknown>);
   res.json({ ok: true });
 });
 
@@ -135,21 +54,10 @@ authRouter.put('/settings', requireAuth, (req: Request, res: Response) => {
  *  first user in the database so the consumer has a tenant identity for
  *  reading and updating per-user issues. */
 authRouter.post('/consumer', (req: Request, res: Response) => {
-  const key = req.headers['x-consumer-api-key'] as string | undefined;
-  if (!CONSUMER_API_KEY) {
-    res.status(501).json({ error: 'Consumer API key not configured on the server.' });
-    return;
+  try {
+    const key = req.headers['x-consumer-api-key'] as string | undefined;
+    res.json(authService.exchangeConsumerKey(key));
+  } catch (err) {
+    sendError(res, err);
   }
-  if (!key || key !== CONSUMER_API_KEY) {
-    res.status(401).json({ error: 'Invalid or missing consumer API key.' });
-    return;
-  }
-
-  const user = getFirstUser();
-  if (!user) {
-    res.status(404).json({ error: 'No users in the database yet. Register an account first.' });
-    return;
-  }
-
-  res.json({ token: signToken(user), userId: user.id, email: user.email });
 });

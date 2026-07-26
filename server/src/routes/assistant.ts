@@ -4,20 +4,12 @@ import path from "node:path";
 import { Router, type Request, type Response } from "express";
 import { getAuthUser } from "../auth.js";
 import Anthropic from "@anthropic-ai/sdk";
-import {
-  GetObjectCommand,
-  ListBucketsCommand,
-  ListObjectsV2Command,
-} from "@aws-sdk/client-s3";
-import { docker } from "../docker.js";
 import { stripLogHeaders } from "./containers.js";
 import {
   listContainerFiles,
   probeContainerEndpoint,
 } from "./containers.js";
 import {
-  listFunctions,
-  getFunction,
   getAllUserSettings,
 } from "../db.js";
 import {
@@ -37,10 +29,7 @@ import {
   countAssistantIssuesByStatus,
   ASSISTANT_ISSUE_STATUSES,
 } from "../db/assistantIssues.js";
-import { listRoutes } from "../db/gateway.js";
 import { sessionRegistry } from "../sessionRunner.js";
-import { getS3Client } from "../minio.js";
-import { PRESETS } from "../presets.js";
 import { listHostBuildPresets } from "./hostBuilds.js";
 import { listHostDirectory, readHostTextFile } from "./hostFiles.js";
 import {
@@ -53,6 +42,12 @@ import {
   GITHUB_ASSISTANT_TOOLS,
   executeGithubAssistantReadOnlyTool,
 } from "../githubAssistantTools.js";
+import * as containerService from "../services/containers.js";
+import * as bucketService from "../services/buckets.js";
+import * as gatewayService from "../services/gateway.js";
+import * as lambdaService from "../services/lambda.js";
+import * as imageService from "../services/images.js";
+import * as systemService from "../services/system.js";
 
 export const assistantRouter = Router();
 
@@ -1191,175 +1186,70 @@ async function executeReadOnlyTool(
 ): Promise<unknown> {
   switch (name) {
     case "list_containers": {
-      const list = await docker.listContainers({ all: true });
-      return list.map((c) => ({
-        id: c.Id,
-        name: (c.Names?.[0] || "").replace(/^\//, ""),
-        image: c.Image,
-        state: c.State,
-        description: c.Labels?.["iaas.description"] || undefined,
-        protected: !!c.Labels?.["iaas.protected"],
+      const containers = await containerService.list(userId, input.projectId as string | undefined);
+      return containers.map((c) => ({
+        id: c.id, name: c.name, image: c.image, state: c.state,
+        description: c.description, protected: c.protected,
       }));
     }
     case "list_functions":
-      return listFunctions().map((f) => ({
-        id: f.id,
-        name: f.name,
-        runtime: f.runtime,
+      return lambdaService.listFunctionsList(userId).map((f) => ({
+        id: f.id, name: f.name, runtime: f.runtime,
       }));
     case "list_gateway_routes":
-      return listRoutes().map((r) => ({
-        id: r.id,
-        name: r.name,
-        targetType: r.target_type,
-        targetId: r.target_id,
-        method: r.method,
-        pathPattern: r.path_pattern,
+      return gatewayService.list(userId).map((r) => ({
+        id: r.id, name: r.name, targetType: r.targetType,
+        targetId: r.targetId, method: r.method, pathPattern: r.pathPattern,
       }));
-    case "list_buckets": {
-      const out = await getS3Client().send(new ListBucketsCommand({}));
-      const { isBucketProtected } = await import("../db.js");
-      return (out.Buckets || []).map((b) => ({ name: b.Name, protected: isBucketProtected(b.Name!) }));
-    }
+    case "list_buckets":
+      return (await bucketService.list(userId)).map((b) => ({ name: b.name, protected: b.protected }));
     case "list_images": {
-      const list = await docker.listImages();
-      return list.map((img) => ({ id: img.Id, tags: img.RepoTags || [] }));
+      const images = await imageService.list();
+      return images.map((img) => ({ id: img.id, tags: img.tags }));
     }
-    case "list_bucket_objects": {
-      const prefix = typeof input.prefix === "string" ? input.prefix : "";
-      const out = await getS3Client().send(
-        new ListObjectsV2Command({
-          Bucket: String(input.name ?? ""),
-          Prefix: prefix,
-          Delimiter: "/",
-        }),
+    case "list_bucket_objects":
+      return bucketService.listObjects(
+        String(input.name ?? ""),
+        typeof input.prefix === "string" ? input.prefix : "",
       );
-      return {
-        prefixes: (out.CommonPrefixes || [])
-          .map((p) => p.Prefix)
-          .filter(Boolean),
-        objects: (out.Contents || [])
-          .filter((o) => o.Key !== prefix)
-          .map((o) => ({
-            key: o.Key,
-            size: o.Size ?? 0,
-            lastModified: o.LastModified,
-          })),
-      };
-    }
     case "read_bucket_object": {
-      const out = await getS3Client().send(
-        new GetObjectCommand({
-          Bucket: String(input.name ?? ""),
-          Key: String(input.key ?? ""),
-        }),
+      const obj = await bucketService.getObject(
+        String(input.name ?? ""),
+        String(input.key ?? ""),
       );
-      const content = await streamToString(out.Body);
+      const content = await streamToString(obj.body);
       const truncated = content.length > MAX_OBJECT_READ_CHARS;
       return {
-        contentType: out.ContentType,
+        contentType: obj.contentType,
         content: truncated ? content.slice(0, MAX_OBJECT_READ_CHARS) : content,
         truncated,
       };
     }
     case "read_function": {
-      const fn = getFunction(String(input.id ?? ""));
-      if (!fn) return { error: `Function "${input.id}" not found.` };
-      return {
-        id: fn.id,
-        name: fn.name,
-        runtime: fn.runtime,
-        code: fn.code,
-        packages: fn.packages || null,
-        entryPoint: fn.entry_point || null,
-        createdAt: fn.created_at,
-        updatedAt: fn.updated_at,
-      };
+      try {
+        return lambdaService.getFunc(String(input.id ?? ""), userId);
+      } catch { return { error: `Function \"${input.id}\" not found.` }; }
     }
     case "get_container_logs": {
-      const id = String(input.id ?? "");
-      const tailNum = Number.isFinite(input.tail) ? Number(input.tail) : 200;
-      const tail = Math.max(1, Math.min(500, Math.trunc(tailNum) || 200));
-      const buf = await docker.getContainer(id).logs({
-        stdout: true,
-        stderr: true,
-        tail,
-        timestamps: false,
-      });
-      const text = stripLogHeaders(buf as unknown as Buffer);
+      const tail = Math.max(1, Math.min(500, Math.trunc(Number(input.tail) || 200)));
+      const text = await containerService.logs(String(input.id ?? ""), tail);
       const MAX_LOG_CHARS = 20_000;
       const truncated = text.length > MAX_LOG_CHARS;
-      return {
-        tail,
-        content: truncated ? text.slice(0, MAX_LOG_CHARS) : text,
-        truncated,
-      };
+      return { tail, content: truncated ? text.slice(0, MAX_LOG_CHARS) : text, truncated };
     }
     case "inspect_container": {
-      const info = await docker.getContainer(String(input.id ?? "")).inspect();
-      // Env VALUES may contain secrets — return only the variable NAMES, never
-      // the values, per secrets hygiene.
-      const envNames = (info.Config?.Env || []).map((e) => e.split("=")[0]);
-      return {
-        id: info.Id,
-        name: (info.Name || "").replace(/^\//, ""),
-        image: info.Config?.Image ?? "",
-        state: info.State?.Status ?? "unknown",
-        ports: info.NetworkSettings?.Ports
-          ? Object.entries(info.NetworkSettings.Ports).flatMap(
-              ([key, bindings]) => {
-                const [port, proto] = key.split("/");
-                return (bindings || []).map((b) => ({
-                  privatePort: Number(port),
-                  publicPort: b?.HostPort ? Number(b.HostPort) : undefined,
-                  type: proto || "tcp",
-                }));
-              },
-            )
-          : [],
-        env: envNames,
-        volumes: (info.Mounts || []).map((m) => ({
-          source: m.Source ?? "",
-          destination: m.Destination ?? "",
-          type: m.Type ?? "volume",
-        })),
-        restartPolicy: info.HostConfig?.RestartPolicy?.Name ?? "no",
-        labels: info.Config?.Labels ?? {},
-        description: info.Config?.Labels?.["iaas.description"] || undefined,
-        protected: !!info.Config?.Labels?.["iaas.protected"],
-      };
+      const info = await containerService.inspect(String(input.id ?? ""));
+      // Redact env values — return only variable names, not values.
+      const envNames = (info.env || []).map((e: string) => e.split("=")[0]);
+      return { ...info, env: envNames };
     }
     case "list_presets":
-      return PRESETS.map((p) => ({
-        id: p.id,
-        name: p.name,
-        category: p.category,
-        image: p.image,
-        description: p.description,
-        ports: (p.ports || []).map((pp) => ({
-          container: pp.container,
-          host: pp.host,
-        })),
-      }));
-    case "list_used_ports": {
-      const list = await docker.listContainers({ all: true });
-      const used = new Set<number>();
-      for (const c of list) {
-        for (const p of c.Ports || []) {
-          if (p.PublicPort) used.add(p.PublicPort);
-        }
-      }
-      return { ports: Array.from(used).sort((a, b) => a - b) };
-    }
+      return systemService.presets();
+    case "list_used_ports":
+      return systemService.usedPorts();
     case "list_host_build_presets": {
       return listHostBuildPresets().map(
-        ({ name, cwd, command, args, artifacts }) => ({
-          name,
-          cwd,
-          command,
-          args,
-          artifacts,
-        }),
+        ({ name, cwd, command, args, artifacts }) => ({ name, cwd, command, args, artifacts }),
       );
     }
     case "list_host_directory":
@@ -1461,18 +1351,7 @@ async function executeReadOnlyTool(
       );
     case "get_container_exec_output": {
       const execId = String(input.execId ?? "");
-      const url = `http://127.0.0.1:${process.env.PORT || 4300}/api/containers/execs/${encodeURIComponent(execId)}/output`;
-      const http = await import("node:http");
-      return new Promise((resolve, reject) => {
-        http.get(url, (hres) => {
-          let data = "";
-          hres.on("data", (c: string) => data += c);
-          hres.on("end", () => {
-            try { resolve(JSON.parse(data)); }
-            catch { reject(new Error(`Failed to parse exec output response`)); }
-          });
-        }).on("error", reject);
-      });
+      return containerService.getExecOutput(execId) ?? { error: "Output not found." };
     }
     default:
       if (DATABASE_ASSISTANT_READ_ONLY_TOOLS.has(name)) {
