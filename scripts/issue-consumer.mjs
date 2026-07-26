@@ -60,22 +60,27 @@ try {
 }
 
 // ── Git credential helper — never bake the token into .git/config ───────
-function setupGitAuth(cwd) {
-  if (!process.env.GITHUB_TOKEN) return null;
+function setupGitAuth(cwd, token) {
+  const ghToken = token || process.env.GITHUB_TOKEN;
+  if (!ghToken) return null;
+  const savedToken = process.env.GITHUB_TOKEN;
+  process.env.GITHUB_TOKEN = ghToken;
   const askpass = path.join(os.tmpdir(), `git-askpass-${Date.now()}`);
-  fs.writeFileSync(askpass, `#!/bin/sh\necho "\${GITHUB_TOKEN}"`, { mode: 0o700 });
+  fs.writeFileSync(askpass, `#!/bin/sh\necho "$GITHUB_TOKEN"`, { mode: 0o700 });
   process.env.GIT_ASKPASS = askpass;
   try {
     execSync("git remote set-url origin https://github.com/miltonejones/docker-iaas.git",
       { cwd, timeout: 5_000 });
   } catch { /* best-effort */ }
-  return askpass;
+  return { file: askpass, savedToken };
 }
 
-function teardownGitAuth(askpass) {
+function teardownGitAuth(state) {
   delete process.env.GIT_ASKPASS;
-  if (askpass) {
-    try { fs.unlinkSync(askpass); } catch {}
+  if (state?.savedToken === undefined) delete process.env.GITHUB_TOKEN;
+  else process.env.GITHUB_TOKEN = state.savedToken;
+  if (state?.file) {
+    try { fs.unlinkSync(state.file); } catch {}
   }
 }
 
@@ -462,9 +467,32 @@ function classifyFailure(stderr, code) {
 const ENGINE_COOLDOWN_MS = 10 * 60_000; // 10 minutes
 const engineCooldowns = new Map(); // engineName → Date.now() + COOLDOWN_MS
 
+// ── Per-user credential fetching ────────────────────────────────────────
+
+/** Fetch the issue owner's API keys from the server.  Returns null if the
+ *  owner hasn't configured credentials (skip the issue gracefully). */
+async function fetchCredentials(ownerId) {
+  if (!ownerId) return null;
+  try {
+    const consumerKey = process.env.CONSUMER_API_KEY;
+    if (!consumerKey) return null;
+    const res = await fetch(`${DOCKYARD_API}/internal/credentials/${ownerId}`, {
+      headers: { 'x-consumer-api-key': consumerKey },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    log(`Failed to fetch credentials for ${ownerId}: ${err.message}`);
+    return null;
+  }
+}
+
+// ── Engine spawning ─────────────────────────────────────────────────────
+
 /** Run ONE engine invocation (low-level spawn).  Internal helper — callers
  *  use `runEngine` which wraps this with fallback logic. */
-function _spawnEngine(engineName, prompt) {
+function _spawnEngine(engineName, prompt, extraEnv = {}) {
   const entry = ENGINES[engineName];
   if (!entry) throw new Error(`Unknown engine: ${engineName}`);
 
@@ -479,6 +507,7 @@ function _spawnEngine(engineName, prompt) {
     ], {
       cwd: CODEBASE_PATH,
       stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, ...extraEnv },
     });
 
     const SUBPROCESS_TIMEOUT_MS = Number(process.env.CONSUMER_SUBPROCESS_TIMEOUT_MS) || 15 * 60_000;
@@ -545,21 +574,21 @@ function _spawnEngine(engineName, prompt) {
  *  Returns a result augmented with `augmentationPlan` metadata.
  *  If the planner is unavailable, falls back to running the implementer
  *  standalone (degraded but functional). */
-async function runPipeline(requested, pipeline, prompt) {
+async function runPipeline(requested, pipeline, prompt, extraEnv = {}) {
   const plannerName = pipeline.planner;
   const implementerName = pipeline.implementer;
   const tried = [];
 
   // ── Stage 1: Planner ──────────────────────────────────────────────
   log(`[augmented] Running planner: ${plannerName}`);
-  const plannerResult = await _spawnEngine(plannerName, prompt);
+  const plannerResult = await _spawnEngine(plannerName, prompt, extraEnv);
   tried.push(plannerName);
 
   // Planner unavailable → degrade to implementer standalone.
   if (plannerResult.outcome === "unavailable" || plannerResult.outcome === "transient") {
     log(`[augmented] Planner ${plannerName} unavailable — falling back to implementer standalone.`);
     engineCooldowns.set(plannerName, Date.now() + ENGINE_COOLDOWN_MS);
-    const implResult = await _spawnEngine(implementerName, prompt); // use original prompt, not planner output
+    const implResult = await _spawnEngine(implementerName, prompt, extraEnv); // use original prompt, not planner output
     tried.push(implementerName);
     return {
       ...implResult,
@@ -596,7 +625,7 @@ async function runPipeline(requested, pipeline, prompt) {
       const guidance = prompt
         + "\n\n## Analysis from the planner (unstructured)\n" + plannerStdout;
       const framed = wrapUntrusted(guidance);
-      const implResult = await _spawnEngine(implementerName, framed);
+      const implResult = await _spawnEngine(implementerName, framed, extraEnv);
       tried.push(implementerName);
       return {
         ...implResult,
@@ -609,10 +638,10 @@ async function runPipeline(requested, pipeline, prompt) {
       };
     }
     log(`[augmented] Planner ${plannerName} produced no parseable plan (${plannerStdout.length} chars) — falling back to implementer standalone.`);
-    const implResult = await _spawnEngine(implementerName, prompt);
+    const implResult2 = await _spawnEngine(implementerName, prompt, extraEnv);
     tried.push(implementerName);
     return {
-      ...implResult,
+      ...implResult2,
       engineUsed: implementerName,
       requestedEngine: requested,
       substitution: `augmented planner produced no output — ran ${implementerName} standalone`,
@@ -648,7 +677,7 @@ async function runPipeline(requested, pipeline, prompt) {
     + "\n\n## Analysis from the planner\n" + plan.plan
     + "\n\nFocus on these files: " + plan.targetFiles.join(", ");
   const framed = wrapUntrusted(implPrompt);
-  const implResult = await _spawnEngine(implementerName, framed);
+  const implResult = await _spawnEngine(implementerName, framed, extraEnv);
   tried.push(implementerName);
 
   return {
@@ -663,14 +692,14 @@ async function runPipeline(requested, pipeline, prompt) {
   };
 }
 
-async function runEngine(engineName, prompt) {
+async function runEngine(engineName, prompt, extraEnv = {}) {
   const requested = engineName || "default";
   const entry = ENGINES[requested];
   if (!entry) throw new Error(`Unknown engine: ${requested}`);
 
   // Pipeline engines run two stages (planner → implementer).
   if (entry.pipeline) {
-    return runPipeline(requested, entry.pipeline, prompt);
+    return runPipeline(requested, entry.pipeline, prompt, extraEnv);
   }
 
   let current = requested;
@@ -685,7 +714,7 @@ async function runEngine(engineName, prompt) {
       tried.push(current);
     } else {
       log(`Running ${current}…`);
-      const result = await _spawnEngine(current, prompt);
+      const result = await _spawnEngine(current, prompt, extraEnv);
       tried.push(current);
 
       // Success → return immediately.
@@ -945,9 +974,9 @@ function revertAndStageProtected(cwd, protectedList = PROTECTED) {
   }
 }
 
-async function pushToGitHub(issue) {
+async function pushToGitHub(issue, githubToken) {
   const { execSync } = await import("node:child_process");
-  const askpass = setupGitAuth(CODEBASE_PATH);
+  const askpass = setupGitAuth(CODEBASE_PATH, githubToken);
 
   try {
     // Check if copilot changed any files.
@@ -1212,7 +1241,34 @@ async function consumeOne() {
     log(`Unknown engine "${engineName}" — falling back to \"default\".`);
     engineName = "default";
   }
-  const result = await runEngine(engineName, prompt);
+
+  // Fetch the issue owner's credentials so the LLM and git push use
+  // their keys, not shared system secrets.
+  const creds = await fetchCredentials(issue.ownerId);
+  const extraEnv = {};
+  let githubToken;
+  if (creds) {
+    // Honor the owner's provider preference — only set the key for their chosen
+    // provider.  Falls back to the system manager (process.env) if neither is set.
+    const provider = creds.assistant_provider || 'anthropic';
+    if (provider === 'deepseek' && creds.deepseek_api_key) {
+      extraEnv.DEEPSEEK_API_KEY = creds.deepseek_api_key;
+    } else if (creds.anthropic_api_key) {
+      extraEnv.ANTHROPIC_AUTH_TOKEN = creds.anthropic_api_key;
+    }
+    if (creds.github_token) githubToken = creds.github_token;
+    if (Object.keys(extraEnv).length === 0 && !githubToken) {
+      log(`Issue owner ${issue.ownerId} has no credentials configured — skipping.`);
+      writeStatus("idle");
+      return false;
+    }
+  } else if (issue.ownerId) {
+    log(`Issue owner ${issue.ownerId} has no credentials — skipping.`);
+    writeStatus("idle");
+    return false;
+  }
+
+  const result = await runEngine(engineName, prompt, extraEnv);
   const { stdout, stderr, code, outcome, engineUsed, substitution, tried,
           augmentationPlan, pipelineGate, plannerStdout } = result;
 
@@ -1309,7 +1365,7 @@ async function consumeOne() {
         resolution = `[Augmented: ${augmentationPlan.confidence} confidence]\n${augmentationPlan.plan}\n\n---\n${resolution}`;
       }
       await updateIssueOnServer(issue, "deploying", resolution);
-      pushToGitHub(issue);
+      pushToGitHub(issue, githubToken);
     } else if (augmentationPlan) {
       // Augmented pipeline ran but produced no file changes.
       const reason = pipelineGate
