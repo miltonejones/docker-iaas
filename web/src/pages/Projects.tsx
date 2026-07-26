@@ -98,11 +98,11 @@ export function ProjectsPage() {
               <span className="home-card__label">{p.description}</span>
             )}
             <div style={{ display: 'flex', gap: 12, fontSize: 12, marginTop: 4 }}>
-              <span><AppIcon name="container" /> {p.summary.containers}</span>
-              <span><AppIcon name="function" /> {p.summary.functions}</span>
-              <span><AppIcon name="bucket" /> {p.summary.buckets}</span>
-              <span><AppIcon name="gateway" /> {p.summary.routes}</span>
-              <span><AppIcon name="database" /> {p.summary.databases}</span>
+              <span><AppIcon name="container" /> {p.summary?.containers ?? 0}</span>
+              <span><AppIcon name="function" /> {p.summary?.functions ?? 0}</span>
+              <span><AppIcon name="bucket" /> {p.summary?.buckets ?? 0}</span>
+              <span><AppIcon name="gateway" /> {p.summary?.routes ?? 0}</span>
+              <span><AppIcon name="database" /> {p.summary?.databases ?? 0}</span>
             </div>
             <button
               className="btn btn--ghost btn--sm"
