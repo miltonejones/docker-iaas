@@ -37,8 +37,11 @@ docker compose $COMPOSE_ARGS build console consumer 2>&1 | tail -5
 info "Test 1: Consumer boots without JWT FATAL error"
 
 # Start both services.  console depends_on nothing, consumer depends_on console.
-# Pass the JWT secret via env var override so both services get it.
-JWT_SECRET_FILE="$SECRET_FILE" docker compose $COMPOSE_ARGS up console consumer -d 2>&1 | tail -3
+# Pass the JWT secret both as a Docker secret AND as an env var fallback.
+# The consumer reads /run/secrets/jwt_secret first, falls back to JWT_SECRET.
+JWT_SECRET="$(cat "$SECRET_FILE")" \
+  JWT_SECRET_FILE="$SECRET_FILE" \
+  docker compose $COMPOSE_ARGS up console consumer -d 2>&1 | tail -3
 
 # Wait for services to be healthy
 sleep 3
