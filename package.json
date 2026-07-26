@@ -6,13 +6,15 @@
   "workspaces": [
     "server",
     "web",
-    "relay"
+    "relay",
+    "mcp"
   ],
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:server": "npm --workspace server run dev",
     "dev:web": "npm --workspace web run dev",
     "dev:relay": "npm --workspace relay run dev",
+    "dev:mcp": "npm --workspace mcp run dev",
     "build": "npm --workspace web run build && npm --workspace server run build && npm --workspace relay run build",
     "start": "npm --workspace server run start",
     "start:relay": "npm --workspace relay run start",

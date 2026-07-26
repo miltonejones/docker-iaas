@@ -27,6 +27,7 @@ import {
   type DatabaseJobRow,
   type DatabaseOperationRow,
 } from './db/databaseOps.js';
+import { HttpError } from './services/HttpError.js';
 
 export type DatabaseEngine = 'mysql' | 'mongodb';
 
@@ -102,14 +103,7 @@ const READ_ONLY_SQL_RE = /^(SELECT|SHOW|DESCRIBE|DESC|EXPLAIN|WITH)\b/i;
 const SQL_MUTATION_VERBS = new Set(['INSERT', 'UPDATE', 'DELETE', 'REPLACE']);
 const SQL_MIGRATION_VERBS = new Set(['CREATE', 'ALTER', 'DROP', 'TRUNCATE', 'RENAME']);
 
-export class HttpError extends Error {
-  status: number;
-
-  constructor(status: number, message: string) {
-    super(message);
-    this.status = status;
-  }
-}
+export { HttpError } from './services/HttpError.js';
 
 interface BaseConnectionConfig {
   engine: DatabaseEngine;

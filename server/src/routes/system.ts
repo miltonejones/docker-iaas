@@ -1,84 +1,58 @@
 import { Router, type Request, type Response } from 'express';
-import { pingDocker, docker } from '../docker.js';
-import { PRESETS } from '../presets.js';
-import { getUsageSnapshot } from '../usage.js';
-import { listAuditLogs } from '../db/audit.js';
 import { requireAuth } from '../auth.js';
+import { HttpError } from '../services/HttpError.js';
+import * as systemService from '../services/system.js';
 
 export const systemRouter = Router();
 
 const POLL_MS = Number(process.env.USAGE_POLL_MS || 5000);
 
+function sendError(res: Response, err: unknown): void {
+  const status = err instanceof HttpError ? err.status : 502;
+  res.status(status).json({ error: err instanceof Error ? err.message : 'Unknown error.' });
+}
+
 systemRouter.get('/ping', requireAuth, async (_req: Request, res: Response) => {
-  res.json(await pingDocker());
-});
-
-systemRouter.get('/presets', requireAuth, (_req: Request, res: Response) => {
-  res.json(PRESETS);
-});
-
-// One-shot usage snapshot.
-systemRouter.get('/usage', requireAuth, async (_req: Request, res: Response) => {
-  res.json(await getUsageSnapshot());
-});
-
-// Return host ports currently published by running containers, so the launch
-// flow can warn about conflicts before creating a new container.
-// Build-cache detail extracted from docker system df.
-systemRouter.get('/build-cache', requireAuth, async (_req: Request, res: Response) => {
   try {
-    const data: any = await new Promise((resolve, reject) => {
-      (docker as any).modem.dial(
-        { method: 'GET', path: '/system/df', statusCodes: { 200: true } },
-        (err: unknown, result: any) => (err ? reject(err) : resolve(result)),
-      );
-    });
-    const entries = (data?.BuildCache || []).map((e: any) => ({
-      id: e.ID?.slice(0, 12) || '',
-      type: e.Type || '',
-      description: e.Description || '',
-      size: e.Size || 0,
-      created: e.CreatedAt || '',
-      inUse: e.InUse || false,
-      shared: e.Shared || false,
-    }));
-    res.json(entries);
+    res.json(await systemService.ping());
   } catch (err) {
-    res.status(502).json({ error: (err as Error).message });
+    sendError(res, err);
   }
 });
 
-// Prune build cache.
+systemRouter.get('/presets', requireAuth, (_req: Request, res: Response) => {
+  res.json(systemService.presets());
+});
+
+systemRouter.get('/usage', requireAuth, async (_req: Request, res: Response) => {
+  try {
+    res.json(await systemService.usage());
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+systemRouter.get('/build-cache', requireAuth, async (_req: Request, res: Response) => {
+  try {
+    res.json(await systemService.buildCache());
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
 systemRouter.post('/build-cache/prune', requireAuth, async (_req: Request, res: Response) => {
   try {
-    const data: any = await new Promise((resolve, reject) => {
-      (docker as any).modem.dial(
-        { method: 'POST', path: '/build/prune?all=true', statusCodes: { 200: true } },
-        (err: unknown, result: any) => (err ? reject(err) : resolve(result)),
-      );
-    });
-    res.json({
-      ok: true,
-      reclaimedBytes: data?.SpaceReclaimed || 0,
-      cachesDeleted: data?.CachesDeleted?.length || 0,
-    });
+    res.json(await systemService.pruneBuildCache());
   } catch (err) {
-    res.status(502).json({ error: (err as Error).message });
+    sendError(res, err);
   }
 });
 
 systemRouter.get('/used-ports', requireAuth, async (_req: Request, res: Response) => {
   try {
-    const list = await docker.listContainers({ all: true });
-    const used = new Set<number>();
-    for (const c of list) {
-      for (const p of c.Ports || []) {
-        if (p.PublicPort) used.add(p.PublicPort);
-      }
-    }
-    res.json({ ports: Array.from(used).sort((a, b) => a - b) });
+    res.json(await systemService.usedPorts());
   } catch (err) {
-    res.status(502).json({ error: (err as Error).message });
+    sendError(res, err);
   }
 });
 
@@ -97,7 +71,7 @@ systemRouter.get('/usage/stream', async (req: Request, res: Response) => {
   const send = async () => {
     if (!alive) return;
     try {
-      const snapshot = await getUsageSnapshot();
+      const snapshot = await systemService.usage();
       res.write(`data: ${JSON.stringify(snapshot)}\n\n`);
     } catch {
       /* keep the stream open even if one poll fails */
@@ -119,7 +93,7 @@ systemRouter.get('/audit', requireAuth, (req: Request, res: Response) => {
   try {
     const raw = req.query.limit;
     const limit = typeof raw === 'string' ? Math.min(Math.max(1, parseInt(raw, 10) || 50), 1000) : 50;
-    res.json(listAuditLogs(limit));
+    res.json(systemService.audit(limit));
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
