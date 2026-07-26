@@ -8,9 +8,8 @@ pass()  { echo -e "${GREEN}PASS${NC} $*"; }
 fail()  { echo -e "${RED}FAIL${NC} $*"; }
 info()  { echo -e "${YELLOW}INFO${NC} $*"; }
 
-# Use CI override if running in CI or if it exists locally
-# (remaps missing secret files to /dev/null). GitHub Actions always sets CI=true.
-if [ "${CI:-}" = "true" ] || [ -f docker-compose.ci.yml ]; then
+# Use CI override if it exists (remaps missing secret files to /dev/null).
+if [ -f docker-compose.ci.yml ]; then
   COMPOSE_ARGS="-f docker-compose.yml -f docker-compose.ci.yml"
   info "Using CI compose override"
 else
