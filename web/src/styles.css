@@ -3319,19 +3319,24 @@ textarea:focus {
     gap: 16px;
   }
 
-  /* --- Topbar: compact --- */
+  /* --- Topbar: 2-row layout so the Ask Dockyard input has room --- */
   .topbar {
     padding: 10px 12px;
     margin: 0;
     width: 100%;
     gap: 8px;
+    flex-wrap: wrap;
   }
   .topbar__left {
     gap: 10px;
+    order: 1;
+  }
+  .topbar__right {
+    order: 2;
   }
   .topbar__center {
-    flex: 1;
-    min-width: 0;
+    flex: 0 0 100%;
+    order: 3;
   }
   .topbar__center .assistant-search {
     width: 100%;
