@@ -7,12 +7,13 @@ import {
   type ReactNode,
 } from "react";
 
-export type Theme = "light" | "dark" | "glass" | "material" | "illustrated";
+export type Theme = "light" | "dark" | "flat" | "neon" | "material" | "illustrated";
 
 const THEME_CLASS: Record<Theme, string> = {
   light: "",
   dark: "dark-theme",
-  glass: "glass-theme",
+  flat: "flat-theme",
+  neon: "neon-theme",
   material: "material-theme",
   illustrated: "illustrated-theme",
 };
