@@ -8,7 +8,8 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { initSpotlight } from './spotlight';
 import './styles.css';
 import './themes/dark.css';
-import './themes/glass.css';
+import './themes/flat.css';
+import './themes/neon.css';
 import './themes/material.css';
 import './themes/illustrated.css';
 

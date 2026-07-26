@@ -4,7 +4,8 @@ import { useState, useRef, useEffect } from "react";
 const THEMES: { key: Theme; label: string; colors: string[] }[] = [
   { key: "light", label: "Light", colors: ["#f3f4f7", "#2563eb", "#e3e6ec"] },
   { key: "dark", label: "Dark", colors: ["#0a0a0f", "#4d8fff", "#262632"] },
-  { key: "glass", label: "Glass", colors: ["#eef2ff", "#6366f1", "#f5f3ff"] },
+  { key: "flat", label: "Flat", colors: ["#f8f9fa", "#1a73e8", "#e8eaed"] },
+  { key: "neon", label: "Neon", colors: ["#0a0a0a", "#00ff88", "#1a1a2e"] },
   { key: "material", label: "Material", colors: ["#fafafa", "#6200ee", "#e0e0e0"] },
   { key: "illustrated", label: "Illustrated", colors: ["#fff8f0", "#f59e0b", "#fde68a"] },
 ];
