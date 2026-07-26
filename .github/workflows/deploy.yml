@@ -64,7 +64,7 @@ jobs:
           context: .
           file: ${{ matrix.image.file }}
           platforms: linux/arm64
-          push: ${{ github.event_name == 'push' }}
+          push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
           tags: |
             ghcr.io/${{ github.repository }}-${{ matrix.image.name }}:${{ github.sha }}
             ghcr.io/${{ github.repository }}-${{ matrix.image.name }}:latest
