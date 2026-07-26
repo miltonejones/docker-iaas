@@ -20,8 +20,9 @@ fi
 cleanup() {
   set +e
   info "Cleaning up…"
-  docker compose $COMPOSE_ARGS down --remove-orphans 2>/dev/null
-  [ -n "${SECRET_FILE:-}" ] && rm -f "$SECRET_FILE"
+  timeout 10 docker compose $COMPOSE_ARGS down --remove-orphans 2>/dev/null
+  rm -f "${SECRET_FILE:-}"
+  true
 }
 trap cleanup EXIT
 
