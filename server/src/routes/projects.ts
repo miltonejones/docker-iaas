@@ -62,7 +62,6 @@ projectsRouter.get('/:id', (req: Request, res: Response) => {
     if (!project) { res.status(404).json({ error: 'Project not found.' }); return; }
 
     const summary = getProjectResourceSummary(project.id);
-    // Container count is resolved by the caller (Docker labels).
     res.json({ ...toJson(project), summary });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
@@ -82,13 +81,14 @@ projectsRouter.put('/:id', (req: Request, res: Response) => {
       name: name?.trim() || undefined,
       description: description !== undefined ? description.trim() : undefined,
     });
+    recordAuditLog('project.update', 'project', req.params.id, userId);
     res.json(toJson(row!));
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
 });
 
-// ── Delete a project (unlinks resources, does not cascade-delete) ─────────
+// ── Delete a project (FK ON DELETE SET NULL handles resource unlinking) ───
 
 projectsRouter.delete('/:id', (req: Request, res: Response) => {
   try {
@@ -104,13 +104,15 @@ projectsRouter.delete('/:id', (req: Request, res: Response) => {
   }
 });
 
-// ── Set a resource's project ──────────────────────────────────────────────
+// ── Link a resource to a project ──────────────────────────────────────────
 
 const RESOURCE_TABLES = ['functions', 'routes', 'bucket_owners', 'database_connections'] as const;
 
 projectsRouter.put('/:id/resources', (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
+    if (!userId) { res.status(401).json({ error: 'Authentication required.' }); return; }
+
     const project = getProject(req.params.id, userId);
     if (!project) { res.status(404).json({ error: 'Project not found.' }); return; }
 
@@ -129,13 +131,18 @@ projectsRouter.put('/:id/resources', (req: Request, res: Response) => {
     }
 
     const idColumn = resourceTable === 'bucket_owners' ? 'bucket_name' : 'id';
-    const ok = setResourceProject(
+    const result = setResourceProject(
       resourceTable as typeof RESOURCE_TABLES[number],
       idColumn,
       resourceId.trim(),
       project.id,
+      userId,
     );
-    if (!ok) { res.status(404).json({ error: 'Resource not found.' }); return; }
+    if (!result.ok) {
+      const status = result.reason === 'Resource not found.' ? 404 : 403;
+      res.status(status).json({ error: result.reason });
+      return;
+    }
 
     recordAuditLog('project.link', resourceTable, resourceId.trim(), userId, `${project.id}:${project.name}`);
     res.json({ ok: true, projectId: project.id });
@@ -149,33 +156,39 @@ projectsRouter.put('/:id/resources', (req: Request, res: Response) => {
 projectsRouter.delete('/:id/resources', (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
+    if (!userId) { res.status(401).json({ error: 'Authentication required.' }); return; }
+
     const project = getProject(req.params.id, userId);
     if (!project) { res.status(404).json({ error: 'Project not found.' }); return; }
 
-    const { resourceTable, resourceId } = req.body as {
-      resourceTable?: string;
-      resourceId?: string;
-    };
+    // Read resource identifiers from query params (DELETE bodies may be stripped).
+    const resourceTable = typeof req.query.resourceTable === 'string' ? req.query.resourceTable : null;
+    const resourceId = typeof req.query.resourceId === 'string' ? req.query.resourceId.trim() : null;
 
     if (!resourceTable || !RESOURCE_TABLES.includes(resourceTable as typeof RESOURCE_TABLES[number])) {
       res.status(400).json({ error: `resourceTable must be one of: ${RESOURCE_TABLES.join(', ')}.` });
       return;
     }
-    if (!resourceId?.trim()) {
-      res.status(400).json({ error: 'resourceId is required.' });
+    if (!resourceId) {
+      res.status(400).json({ error: 'resourceId query parameter is required.' });
       return;
     }
 
     const idColumn = resourceTable === 'bucket_owners' ? 'bucket_name' : 'id';
-    const ok = setResourceProject(
+    const result = setResourceProject(
       resourceTable as typeof RESOURCE_TABLES[number],
       idColumn,
-      resourceId.trim(),
+      resourceId,
       null,
+      userId,
     );
-    if (!ok) { res.status(404).json({ error: 'Resource not found.' }); return; }
+    if (!result.ok) {
+      const status = result.reason === 'Resource not found.' ? 404 : 403;
+      res.status(status).json({ error: result.reason });
+      return;
+    }
 
-    recordAuditLog('project.unlink', resourceTable, resourceId.trim(), userId);
+    recordAuditLog('project.unlink', resourceTable, resourceId, userId);
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });

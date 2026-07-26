@@ -783,10 +783,8 @@ export const api = {
 
   // ── Projects ────────────────────────────────────────────────────────
 
-  projectList: (projectId?: string) => {
-    const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
-    return fetch(`/api/projects${query}`).then((r) => json<ProjectDetail[]>(r));
-  },
+  projectList: () =>
+    fetch('/api/projects').then((r) => json<ProjectDetail[]>(r)),
 
   projectGet: (id: string) =>
     fetch(`/api/projects/${encodeURIComponent(id)}`).then((r) => json<ProjectDetail>(r)),

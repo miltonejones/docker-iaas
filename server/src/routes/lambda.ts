@@ -14,6 +14,7 @@ import {
   getFunctionFiles,
   setFunctionFiles,
   type FunctionFileRow,
+  getProject,
 } from '../db.js';
 
 export const lambdaRouter = Router();
@@ -476,6 +477,13 @@ lambdaRouter.post('/functions', (req: Request, res: Response) => {
       res.status(400).json({ error: 'A function name is required.' });
       return;
     }
+
+    // Validate projectId if provided.
+    if (projectId?.trim()) {
+      const project = getProject(projectId.trim(), getAuthUser(req)?.userId);
+      if (!project) { res.status(400).json({ error: 'Project not found.' }); return; }
+    }
+
     const id = `fn-${Math.random().toString(36).slice(2, 8)}`;
     const resolvedEntry = entryPoint?.trim() || RUNTIMES[runtime || 'node']?.defaultEntry || null;
     const row = createFunction(id, name.trim(), runtime || 'node', code || '', packages || '', resolvedEntry, getAuthUser(req)?.userId, projectId || null);

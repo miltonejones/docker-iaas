@@ -19,6 +19,7 @@ import {
   setRouteDomainDnsManaged,
 } from '../db/gateway.js';
 import { recordAuditLog } from '../db/audit.js';
+import { getProject } from '../db.js';
 
 export const gatewayRouter = Router();
 
@@ -272,6 +273,7 @@ gatewayRouter.get('/traffic/timeseries', (req: Request, res: Response) => {
 
 gatewayRouter.post('/', (req: Request, res: Response) => {
   try {
+    const userId = getAuthUser(req)?.userId;
     const { name, displayName, targetType, targetId, targetPort, method, pathPattern, projectId } = req.body as {
       name?: string;
       displayName?: string;
@@ -300,6 +302,12 @@ gatewayRouter.post('/', (req: Request, res: Response) => {
       return;
     }
 
+    // Validate projectId if provided.
+    if (projectId?.trim()) {
+      const project = getProject(projectId.trim(), userId);
+      if (!project) { res.status(400).json({ error: 'Project not found.' }); return; }
+    }
+
     const methodNorm = method?.trim().toUpperCase() || null;
     if (methodNorm && !VALID_METHODS.has(methodNorm)) {
       res.status(400).json({ error: `Invalid method. Must be one of: ${Array.from(VALID_METHODS).join(', ')}.` });
@@ -323,7 +331,6 @@ gatewayRouter.post('/', (req: Request, res: Response) => {
       return;
     }
 
-    const userId = getAuthUser(req)?.userId;
     const id = `rt-${Math.random().toString(36).slice(2, 8)}`;
     const row = createRoute(
       id,

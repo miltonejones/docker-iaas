@@ -5,6 +5,7 @@ import { docker, dockyardNetworkConfig, ensureImage } from '../docker.js';
 import { getAuthUser } from '../auth.js';
 import { findPreset } from '../presets.js';
 import { recordAuditLog } from '../db/audit.js';
+import { getProject } from '../db.js';
 
 export const containersRouter = Router();
 
@@ -111,6 +112,12 @@ containersRouter.post('/', async (req: Request, res: Response) => {
   if (!image) {
     res.status(400).json({ error: 'An image or a valid presetId is required.' });
     return;
+  }
+
+  // Validate projectId if provided.
+  if (body.projectId?.trim()) {
+    const project = getProject(body.projectId.trim(), userId);
+    if (!project) { res.status(400).json({ error: 'Project not found.' }); return; }
   }
 
   try {

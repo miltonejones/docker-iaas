@@ -11,6 +11,7 @@ export function initDatabaseOpsTables(database: Database.Database): void {
       engine TEXT NOT NULL,
       summary_json TEXT NOT NULL,
       encrypted_config TEXT NOT NULL,
+      project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       last_tested_at TEXT,
@@ -21,6 +22,9 @@ export function initDatabaseOpsTables(database: Database.Database): void {
 
   // Migration: add user_id — this table is created after the bulk user_id block.
   try { db.exec('ALTER TABLE database_connections ADD COLUMN user_id TEXT REFERENCES users(id)'); } catch { /* ok */ }
+
+  // Migration: add project_id to database_connections if upgrading from older schema.
+  try { db.exec('ALTER TABLE database_connections ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL'); } catch { /* ok */ }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS database_operations (
@@ -117,13 +121,14 @@ export function createDatabaseConnection(
   summaryJson: string,
   encryptedConfig: string,
   userId?: string,
+  projectId?: string | null,
 ): DatabaseConnectionRow {
   const now = new Date().toISOString();
   db.prepare(
     `INSERT INTO database_connections
-      (id, name, engine, summary_json, encrypted_config, user_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(id, name, engine, summaryJson, encryptedConfig, userId || null, now, now);
+      (id, name, engine, summary_json, encrypted_config, user_id, project_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, name, engine, summaryJson, encryptedConfig, userId || null, projectId || null, now, now);
   return getDatabaseConnection(id)!;
 }
 

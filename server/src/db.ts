@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import Database from 'better-sqlite3';
 import { initAuditTables } from './db/audit.js';
 import { initGatewayTables } from './db/gateway.js';
@@ -84,18 +85,19 @@ export function initDb(dbPath?: string): void {
       description TEXT NOT NULL DEFAULT '',
       user_id TEXT NOT NULL REFERENCES users(id),
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      UNIQUE(name, user_id)
     )
   `);
 
   // Migration: add user_id columns to existing resource tables.
   try { db.exec('ALTER TABLE functions ADD COLUMN user_id TEXT REFERENCES users(id)'); } catch { /* ok */ }
 
-  // Migration: add project_id to resource tables.
+  // Migration: add project_id to functions and routes (these tables exist before
+  // this point).  bucket_owners and database_connections migrations run after
+  // their respective CREATE TABLE statements below.
   try { db.exec('ALTER TABLE functions ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL'); } catch { /* ok */ }
   try { db.exec('ALTER TABLE routes ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL'); } catch { /* ok */ }
-  try { db.exec('ALTER TABLE bucket_owners ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL'); } catch { /* ok */ }
-  try { db.exec('ALTER TABLE database_connections ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL'); } catch { /* ok */ }
 
   initAuditTables(db);
 
@@ -103,10 +105,14 @@ export function initDb(dbPath?: string): void {
     CREATE TABLE IF NOT EXISTS bucket_owners (
       bucket_name TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
+      project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
       created_at TEXT NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id)
     )
   `);
+
+  // Migration: add project_id to bucket_owners if upgrading from older schema.
+  try { db.exec('ALTER TABLE bucket_owners ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL'); } catch { /* ok */ }
 
   // Migration: add protected column for bucket-level deletion guard.
   try { db.exec('ALTER TABLE bucket_owners ADD COLUMN protected INTEGER NOT NULL DEFAULT 0'); } catch { /* ok */ }
@@ -474,7 +480,7 @@ export function getProject(id: string, userId?: string): ProjectRow | undefined 
 }
 
 export function createProject(name: string, description: string, userId: string): ProjectRow {
-  const id = `proj-${Math.random().toString(36).slice(2, 8)}`;
+  const id = `proj-${crypto.randomBytes(8).toString('hex')}`;
   const now = new Date().toISOString();
   db.prepare(
     'INSERT INTO projects (id, name, description, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
@@ -493,26 +499,35 @@ export function updateProject(id: string, fields: { name?: string; description?:
 }
 
 export function deleteProject(id: string): boolean {
-  // Unlink all resources before deleting the project.
-  db.prepare('UPDATE functions SET project_id = NULL WHERE project_id = ?').run(id);
-  db.prepare('UPDATE routes SET project_id = NULL WHERE project_id = ?').run(id);
-  db.prepare('UPDATE bucket_owners SET project_id = NULL WHERE project_id = ?').run(id);
-  db.prepare('UPDATE database_connections SET project_id = NULL WHERE project_id = ?').run(id);
+  // FK constraints (ON DELETE SET NULL) handle unlinking — no manual UPDATEs needed.
   const result = db.prepare('DELETE FROM projects WHERE id = ?').run(id);
   return result.changes > 0;
 }
 
-/** Set the project for a resource.  The table/column are trusted inputs. */
+/** Set the project for a resource.  Verifies the resource belongs to the
+ *  requesting user before updating.  Returns true when the project column
+ *  was changed, false if the resource was not found or not owned. */
 export function setResourceProject(
   table: 'functions' | 'routes' | 'bucket_owners' | 'database_connections',
   idColumn: string,
   resourceId: string,
   projectId: string | null,
-): boolean {
+  userId: string,
+): { ok: boolean; reason?: string } {
+  // Verify the resource exists and belongs to this user (or is system-owned
+  // with null user_id — legacy data the first user claims).
+  const idCol = idColumn === 'bucket_name' ? idColumn : 'id';
+  const userCol = table === 'bucket_owners' ? 'user_id' : 'user_id';
+  const row = db.prepare(
+    `SELECT ${userCol} FROM ${table} WHERE ${idCol} = ?`,
+  ).get(resourceId) as { user_id: string | null } | undefined;
+  if (!row) return { ok: false, reason: 'Resource not found.' };
+  if (row.user_id !== null && row.user_id !== userId) return { ok: false, reason: 'Resource does not belong to you.' };
+
   const result = db.prepare(
-    `UPDATE ${table} SET project_id = ? WHERE ${idColumn} = ?`,
+    `UPDATE ${table} SET project_id = ? WHERE ${idCol} = ?`,
   ).run(projectId, resourceId);
-  return result.changes > 0;
+  return { ok: result.changes > 0 };
 }
 
 /** Summarise all resources currently linked to a project.

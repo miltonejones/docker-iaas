@@ -11,6 +11,7 @@ import {
   updateDatabaseJob,
   updateDatabaseOperation,
 } from '../db/databaseOps.js';
+import { getProject } from '../db.js';
 import {
   DATABASE_MASTER_KEY_ERROR,
   HttpError,
@@ -108,6 +109,14 @@ databasesRouter.post('/connections', (req: Request, res: Response) => {
     const userId = getAuthUser(req)?.userId;
     const normalized = normalizeConnectionInput(req.body);
     const stored = serializeConnectionForStorage(normalized.config);
+
+    // Validate projectId if provided.
+    const projectId = (req.body as { projectId?: string }).projectId?.trim() || null;
+    if (projectId) {
+      const project = getProject(projectId, userId);
+      if (!project) { res.status(400).json({ error: 'Project not found.' }); return; }
+    }
+
     const row = createDatabaseConnection(
       newConnectionId(),
       normalized.name,
@@ -115,6 +124,7 @@ databasesRouter.post('/connections', (req: Request, res: Response) => {
       stored.summaryJson,
       stored.encryptedConfig,
       userId,
+      projectId,
     );
     res.status(201).json(getConnectionDetail(row.id, userId));
   } catch (err) {
