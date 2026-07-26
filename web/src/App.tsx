@@ -313,7 +313,6 @@ export function App() {
   const { token, email, logout } = useAuth();
   const { askConfirm } = useConfirm();
   const toast = useToast();
-  const location = useLocation();
   const [presets, setPresets] = useState<Preset[]>([]);
   const [containers, setContainers] = useState<Container[]>([]);
   const [usage, setUsage] = useState<UsageSnapshot | null>(null);
@@ -335,9 +334,19 @@ export function App() {
 
   // When navigating to a project detail page, keep the project selector in sync.
   useEffect(() => {
-    const match = location.pathname.match(/^\/projects\/([^/]+)$/);
+    const match = window.location.pathname.match(/^\/projects\/([^/]+)$/);
     if (match) setProjectId(match[1]);
-  }, [location.pathname]);
+  }, []);
+
+  // Re-sync on popstate (back/forward navigation).
+  useEffect(() => {
+    const handler = () => {
+      const match = window.location.pathname.match(/^\/projects\/([^/]+)$/);
+      if (match) setProjectId(match[1]);
+    };
+    window.addEventListener('popstate', handler);
+    return () => window.removeEventListener('popstate', handler);
+  }, []);
 
   /** Called by NotificationBell when a deploy notification arrives or the SSE
    *  stream reconnects (possible server redeploy).  Asks the user if they want
