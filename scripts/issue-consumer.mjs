@@ -77,7 +77,8 @@ function setupGitAuth(cwd, token) {
 
 function teardownGitAuth(state) {
   delete process.env.GIT_ASKPASS;
-  if (state?.savedToken !== undefined) process.env.GITHUB_TOKEN = state.savedToken;
+  if (state?.savedToken === undefined) delete process.env.GITHUB_TOKEN;
+  else process.env.GITHUB_TOKEN = state.savedToken;
   if (state?.file) {
     try { fs.unlinkSync(state.file); } catch {}
   }
