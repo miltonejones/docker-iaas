@@ -18,6 +18,7 @@ import {
 import {
   listFunctions,
   getFunction,
+  getAllUserSettings,
 } from "../db.js";
 import {
   listAssistantSessions,
@@ -57,13 +58,14 @@ export const assistantRouter = Router();
 
 type AssistantProvider = 'anthropic' | 'deepseek';
 
-function assistantProvider(): AssistantProvider {
-  return process.env.ASSISTANT_PROVIDER === 'deepseek' ? 'deepseek' : 'anthropic';
-}
+/** Resolve the API key for a provider, checking user settings first, then
+ *  Docker secrets (the system default). */
+function resolveApiKeyForUser(userId: string, provider: AssistantProvider): string | undefined {
+  const settings = getAllUserSettings(userId);
+  const settingKey = provider === 'deepseek' ? 'deepseek_api_key' : 'anthropic_api_key';
+  if (settings[settingKey]) return settings[settingKey];
 
-/** Resolve the selected provider's credential once at startup. The key is
- * never logged or persisted; Compose mounts the production values as secrets. */
-function resolveApiKey(provider: AssistantProvider): string | undefined {
+  // Fall back to system-level Docker secrets / env vars.
   const envKey = provider === 'deepseek' ? process.env.DEEPSEEK_API_KEY : process.env.ANTHROPIC_API_KEY;
   if (envKey) return envKey;
   const candidates = provider === 'deepseek'
@@ -74,30 +76,48 @@ function resolveApiKey(provider: AssistantProvider): string | undefined {
     try {
       const key = fs.readFileSync(file, "utf8").trim();
       if (key) return key;
-    } catch {
-      // try the next candidate
-    }
+    } catch { /* try next */ }
   }
   return undefined;
 }
 
-const PROVIDER = assistantProvider();
-const MAIN_MODEL = PROVIDER === 'deepseek'
-  ? process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro'
-  : process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
-// Use the rolling alias (no dated snapshot suffix) so this keeps working once
-// Anthropic retires the specific snapshot it currently points at — pinning to
-// a dated snapshot (e.g. claude-haiku-4-5-20251001) causes title generation
-// (and any other caller of this constant) to break outright once that
-// snapshot reaches its deprecation/retirement date.
-const TITLE_MODEL = PROVIDER === 'deepseek'
-  ? process.env.DEEPSEEK_TITLE_MODEL || 'deepseek-v4-flash'
-  : process.env.ANTHROPIC_TITLE_MODEL || 'claude-haiku-4-5';
+function resolveProviderForUser(userId: string): AssistantProvider {
+  const settings = getAllUserSettings(userId);
+  if (settings.assistant_provider === 'deepseek') return 'deepseek';
+  return process.env.ASSISTANT_PROVIDER === 'deepseek' ? 'deepseek' : 'anthropic';
+}
 
-const client = new Anthropic({
-  apiKey: resolveApiKey(PROVIDER),
-  baseURL: PROVIDER === 'deepseek' ? 'https://api.deepseek.com/anthropic' : 'https://api.anthropic.com',
-});
+interface AssistantClient {
+  client: Anthropic;
+  provider: AssistantProvider;
+  mainModel: string;
+  titleModel: string;
+}
+
+/** Build an Anthropic client using the given user's credentials.  Falls back
+ *  to the system-level Docker secrets if the user hasn't configured keys. */
+function getAssistantClient(userId: string): AssistantClient | null {
+  const provider = resolveProviderForUser(userId);
+  const apiKey = resolveApiKeyForUser(userId, provider);
+  if (!apiKey) return null;
+
+  const mainModel = provider === 'deepseek'
+    ? process.env.DEEPSEEK_MODEL || 'deepseek-v4-pro'
+    : process.env.ANTHROPIC_MODEL || 'claude-opus-4-8';
+  const titleModel = provider === 'deepseek'
+    ? process.env.DEEPSEEK_TITLE_MODEL || 'deepseek-v4-flash'
+    : process.env.ANTHROPIC_TITLE_MODEL || 'claude-haiku-4-5';
+
+  return {
+    client: new Anthropic({
+      apiKey,
+      baseURL: provider === 'deepseek' ? 'https://api.deepseek.com/anthropic' : 'https://api.anthropic.com',
+    }),
+    provider,
+    mainModel,
+    titleModel,
+  };
+}
 
 const SYSTEM = `You are the Dockyard.ai assistant. You translate a user's natural-language request into tool calls that manage Lambda functions, Gateway routes, containers, Docker images, storage buckets, and saved MySQL/MongoDB connections.
 
@@ -1530,7 +1550,7 @@ async function respondStream(
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
 
-  await streamTurn(messages, (e) => {
+  await streamTurn(getAuthUser(req)?.userId ?? 'deploy', messages, (e) => {
     if (e.type === "text") send({ type: "text", delta: e.delta });
     else if (e.type === "turn") send(e as unknown as Record<string, unknown>);
     else if (e.type === "error") send({ type: "error", error: e.error });
@@ -1617,13 +1637,16 @@ assistantRouter.post("/title", async (req: Request, res: Response) => {
   }
   try {
     let title: string | null = null;
+    const userId = getAuthUser(req)?.userId ?? 'deploy';
+    const ac = getAssistantClient(userId);
 
-    if (PROVIDER === 'deepseek') {
+    if (ac?.provider === 'deepseek') {
+      const apiKey = resolveApiKeyForUser(userId, 'deepseek');
       const deepseekRes = await fetch('https://api.deepseek.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${resolveApiKey('deepseek')}`,
+          Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
           model: 'deepseek-chat',
@@ -1638,9 +1661,9 @@ assistantRouter.post("/title", async (req: Request, res: Response) => {
       });
       const body = await deepseekRes.json() as { choices?: { message?: { content?: string } }[] };
       title = body.choices?.[0]?.message?.content?.trim() ?? null;
-    } else {
-      const out = await client.messages.create({
-        model: TITLE_MODEL,
+    } else if (ac) {
+      const out = await ac.client.messages.create({
+        model: ac.titleModel,
         max_tokens: 32,
         system: "Generate a short, descriptive title summarizing what the user asked for. Reply with only the title.",
         messages: [
@@ -1937,6 +1960,7 @@ import { getOrCreateSession, type SessionEvent } from "../sessionRunner.js";
  *  Used by both the old HTTP endpoints (via respondStream wrapper) and the new
  *  SessionRunner. */
 async function streamTurn(
+  userId: string,
   messages: Anthropic.MessageParam[],
   onEvent: (e: SessionEvent) => void,
   signal?: AbortSignal,
@@ -1946,11 +1970,14 @@ async function streamTurn(
   signal?.addEventListener("abort", onAbort, { once: true });
 
   try {
+    const ac = getAssistantClient(userId);
+    if (!ac) throw new Error('No API key configured. Set your Anthropic or DeepSeek key in Settings.');
+
     for (let round = 0; round < MAX_AUTO_ROUNDS; round++) {
       if (aborted) return;
 
-      const stream = client.messages.stream({
-        model: MAIN_MODEL,
+      const stream = ac.client.messages.stream({
+        model: ac.mainModel,
         max_tokens: 32000,
         system: SYSTEM,
         tools,
@@ -2075,7 +2102,8 @@ assistantRouter.get("/sessions/:id/stream", (req: Request, res: Response) => {
     return;
   }
 
-  const runner = getOrCreateSession(sessionId, row.name, userId, streamTurn, client);
+  const ac = getAssistantClient(userId ?? 'deploy');
+  const runner = getOrCreateSession(sessionId, row.name, userId, streamTurn, ac?.client ?? new Anthropic({ apiKey: 'unconfigured' }));
 
   res.set({
     "Content-Type": "text/event-stream",
@@ -2128,7 +2156,8 @@ assistantRouter.post("/sessions/:id/send", async (req: Request, res: Response) =
       return;
     }
 
-    const runner = getOrCreateSession(sessionId, row.name, userId, streamTurn, client);
+    const ac = getAssistantClient(userId ?? 'deploy');
+    const runner = getOrCreateSession(sessionId, row.name, userId, streamTurn, ac?.client ?? new Anthropic({ apiKey: 'unconfigured' }));
 
     // Start processing in the background — client subscribes via /stream.
     const sessionState = state || JSON.parse(row.state);

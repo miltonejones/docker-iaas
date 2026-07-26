@@ -24,7 +24,8 @@ const GIT_TIMEOUT_MS = 5 * 60 * 1000;
  *  database master key — read fresh on every call (not cached at module
  *  load) so rotating the secret file just needs a container restart, not a
  *  code change, and a missing token never crashes startup. */
-function resolveGithubToken(): string | undefined {
+function resolveGithubToken(userToken?: string): string | undefined {
+  if (userToken) return userToken;
   const envToken = process.env.GITHUB_TOKEN?.trim();
   if (envToken) return envToken;
   const secretFile = process.env.GITHUB_TOKEN_FILE || '/run/secrets/github_token';
@@ -36,8 +37,8 @@ function resolveGithubToken(): string | undefined {
   }
 }
 
-function githubHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  const token = resolveGithubToken();
+function githubHeaders(userToken?: string, extra: Record<string, string> = {}): Record<string, string> {
+  const token = resolveGithubToken(userToken);
   return {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
@@ -47,8 +48,8 @@ function githubHeaders(extra: Record<string, string> = {}): Record<string, strin
   };
 }
 
-function requireToken(action: string): string {
-  const token = resolveGithubToken();
+function requireToken(action: string, userToken?: string): string {
+  const token = resolveGithubToken(userToken);
   if (!token) {
     throw new Error(
       `${action} requires a GitHub token. Add one at ~/.github_token (or set GITHUB_TOKEN_FILE / GITHUB_TOKEN) and restart the container.`,
@@ -58,7 +59,7 @@ function requireToken(action: string): string {
 }
 
 async function githubJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, { ...init, headers: githubHeaders(init?.headers as Record<string, string>) });
+  const res = await fetch(url, { ...init, headers: githubHeaders(undefined, init?.headers as Record<string, string>) });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     let message = `GitHub API ${res.status} for ${url}`;

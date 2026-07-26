@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import Database from 'better-sqlite3';
 import { initAuditTables } from './db/audit.js';
 import { initGatewayTables } from './db/gateway.js';
@@ -63,6 +64,17 @@ export function initDb(dbPath?: string): void {
       port_range_start INTEGER NOT NULL,
       port_range_end INTEGER NOT NULL,
       created_at TEXT NOT NULL
+    )
+  `);
+
+  // Per-user encrypted credentials and preferences.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_settings (
+      user_id TEXT NOT NULL REFERENCES users(id),
+      key TEXT NOT NULL,
+      encrypted_value TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (user_id, key)
     )
   `);
 
@@ -132,6 +144,80 @@ export function setSetting(key: string, value: string): void {
     `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
   ).run(key, value, new Date().toISOString());
+}
+
+// ---------------------------------------------------------------------------
+// Per-user encrypted credentials
+// ---------------------------------------------------------------------------
+
+function resolveMasterKey(): Buffer {
+  const MASTER_KEY_FILE = process.env.DOCKYARD_DATABASE_MASTER_KEY_FILE
+    || path.join(process.env.HOME || '/root', '.dockyard_database_master_key');
+  try {
+    const raw = fs.readFileSync(MASTER_KEY_FILE, 'utf8').trim();
+    return crypto.createHash('sha256').update(raw).digest();
+  } catch {
+    // Fall back to env var for dev/test
+    const envKey = process.env.DOCKYARD_DATABASE_MASTER_KEY;
+    if (envKey) return crypto.createHash('sha256').update(envKey).digest();
+    throw new Error('DOCKYARD_DATABASE_MASTER_KEY not available.');
+  }
+}
+
+function encryptValue(plaintext: string): string {
+  const key = resolveMasterKey();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  return JSON.stringify({
+    alg: 'aes-256-gcm',
+    iv: iv.toString('base64'),
+    tag: cipher.getAuthTag().toString('base64'),
+    ciphertext: ciphertext.toString('base64'),
+  });
+}
+
+function decryptValue(payload: string): string {
+  const key = resolveMasterKey();
+  const parsed = JSON.parse(payload) as { iv: string; tag: string; ciphertext: string };
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(parsed.iv, 'base64'));
+  decipher.setAuthTag(Buffer.from(parsed.tag, 'base64'));
+  return Buffer.concat([
+    decipher.update(Buffer.from(parsed.ciphertext, 'base64')),
+    decipher.final(),
+  ]).toString('utf8');
+}
+
+export function getUserSetting(userId: string, key: string): string | undefined {
+  const row = db.prepare(
+    'SELECT encrypted_value FROM user_settings WHERE user_id = ? AND key = ?',
+  ).get(userId, key) as { encrypted_value: string } | undefined;
+  if (!row) return undefined;
+  try { return decryptValue(row.encrypted_value); } catch { return undefined; }
+}
+
+/** Returns all settings for a user as a plain object.  Values are decrypted. */
+export function getAllUserSettings(userId: string): Record<string, string> {
+  const rows = db.prepare(
+    'SELECT key, encrypted_value FROM user_settings WHERE user_id = ?',
+  ).all(userId) as { key: string; encrypted_value: string }[];
+  const out: Record<string, string> = {};
+  for (const row of rows) {
+    try { out[row.key] = decryptValue(row.encrypted_value); } catch { /* skip */ }
+  }
+  return out;
+}
+
+export function setUserSetting(userId: string, key: string, value: string): void {
+  const encrypted = encryptValue(value);
+  db.prepare(
+    `INSERT INTO user_settings (user_id, key, encrypted_value, updated_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT(user_id, key) DO UPDATE SET encrypted_value = excluded.encrypted_value, updated_at = excluded.updated_at`,
+  ).run(userId, key, encrypted, new Date().toISOString());
+}
+
+export function deleteUserSetting(userId: string, key: string): void {
+  db.prepare('DELETE FROM user_settings WHERE user_id = ? AND key = ?').run(userId, key);
 }
 
 // ---------------------------------------------------------------------------
