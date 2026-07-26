@@ -72,6 +72,7 @@ const UI_ICONS: Record<string, IconDefinition> = {
   copy: faCopy,
   close: faXmark,
   lookup: faMagnifyingGlass,
+  project: faCube,
   github: faGithub,
   speak: faVolumeHigh,
   'speak-stop': faStop,

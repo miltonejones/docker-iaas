@@ -15,6 +15,7 @@ import { assistantRouter } from './routes/assistant.js';
 import { hostFilesRouter } from './routes/hostFiles.js';
 import { hostBuildsRouter } from './routes/hostBuilds.js';
 import { databasesRouter } from './routes/databases.js';
+import { projectsRouter } from './routes/projects.js';
 import { githubRouter } from './routes/github.js';
 import { notificationsRouter } from './routes/notifications.js';
 import { authRouter } from './routes/auth.js';
@@ -139,6 +140,7 @@ export function createApp(): express.Express {
   app.use('/api/host-files', requireAuth, hostFilesRouter);
   app.use('/api/host-builds', requireAuth, hostBuildsRouter);
   app.use('/api/databases', requireAuth, databasesRouter);
+  app.use('/api/projects', requireAuth, projectsRouter);
   app.use('/api/github', requireAuth, githubRouter);
   app.use('/api/assistant', requireAuth, assistantRouter);
   app.use('/api/notifications', optionalAuth, notificationsRouter);

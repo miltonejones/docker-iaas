@@ -12,10 +12,13 @@ import { GatewayPage } from './pages/Gateway';
 import { DatabasesPage } from './pages/Databases';
 import { IssuesPage } from './pages/IssuesList';
 import { IssueDetailPage } from './pages/IssueDetail';
+import { ProjectsPage } from './pages/Projects';
+import { ProjectDetailPage } from './pages/ProjectDetail';
 import { SettingsPage } from './pages/Settings';
 import { AssistantBar } from './components/AssistantBar';
 import { CreateIssueModal } from './components/CreateIssueModal';
 import { LoginPage } from './components/LoginPage';
+import { ProjectSelector, getStoredProjectId } from './components/ProjectSelector';
 import { useAuth } from './AuthContext';
 import { emitRefresh } from './refresh';
 import { onOpenAssistant } from './assistant';
@@ -33,6 +36,7 @@ const SERVICES = [
   { path: '/buckets', label: 'Buckets', icon: 'bucket' },
   { path: '/databases', label: 'Databases', icon: 'database' },
   { path: '/gateway', label: 'Gateway', icon: 'gateway' },
+  { path: '/projects', label: 'Projects', icon: 'project' },
   { path: '/issues', label: 'Issues', icon: 'bug' },
   { path: '/settings', label: 'Settings', icon: 'tool' },
 ] as const;
@@ -151,8 +155,10 @@ function Breadcrumbs() {
   const bucketName = pathname.match(/^\/buckets\/(.+)$/)?.[1];
   const databaseId = pathname.match(/^\/databases\/(.+)$/)?.[1];
   const issueId = pathname.match(/^\/issues\/(.+)$/)?.[1];
+  const projectIdParam = pathname.match(/^\/projects\/(.+)$/)?.[1];
   const [databaseName, setDatabaseName] = useState<string | null>(null);
   const [issueLabel, setIssueLabel] = useState<string | null>(null);
+  const [projectName, setProjectName] = useState<string | null>(null);
 
   useEffect(() => {
     if (!databaseId || databaseId === 'new') {
@@ -176,6 +182,13 @@ function Breadcrumbs() {
       .catch(() => setIssueLabel(issueId));
   }, [issueId]);
 
+  useEffect(() => {
+    if (!projectIdParam) { setProjectName(null); return; }
+    api.projectGet(projectIdParam)
+      .then((p) => setProjectName(p.name))
+      .catch(() => setProjectName(projectIdParam));
+  }, [projectIdParam]);
+
   const detailLabel = functionId
     ? (functionId === 'new' ? 'New function' : functionName ?? 'Function')
     : isNewContainer
@@ -190,7 +203,9 @@ function Breadcrumbs() {
               ? (databaseId === 'new' ? 'New connection' : databaseName ?? 'Connection')
               : issueId
                 ? (issueLabel ?? issueId)
-                : null;
+                : projectIdParam
+                  ? (projectName ?? projectIdParam)
+                  : null;
 
   if (pathname === '/') return null;
 
@@ -298,6 +313,7 @@ export function App() {
   const { token, email, logout } = useAuth();
   const { askConfirm } = useConfirm();
   const toast = useToast();
+  const location = useLocation();
   const [presets, setPresets] = useState<Preset[]>([]);
   const [containers, setContainers] = useState<Container[]>([]);
   const [usage, setUsage] = useState<UsageSnapshot | null>(null);
@@ -315,6 +331,13 @@ export function App() {
   const [assistantSessionId, setAssistantSessionId] = useState<string | undefined>(undefined);
   const [modalKey, setModalKey] = useState(0);
   const [createIssueOpen, setCreateIssueOpen] = useState(false);
+  const [projectId, setProjectId] = useState<string | null>(() => getStoredProjectId());
+
+  // When navigating to a project detail page, keep the project selector in sync.
+  useEffect(() => {
+    const match = location.pathname.match(/^\/projects\/([^/]+)$/);
+    if (match) setProjectId(match[1]);
+  }, [location.pathname]);
 
   /** Called by NotificationBell when a deploy notification arrives or the SSE
    *  stream reconnects (possible server redeploy).  Asks the user if they want
@@ -514,6 +537,7 @@ export function App() {
               </div>
             </Link>
             <ServiceNav />
+            <ProjectSelector value={projectId} onChange={setProjectId} />
           </div>
           <div className="topbar__center">
             <label className="assistant-search">
@@ -690,6 +714,8 @@ export function App() {
               <Route path="/issues/:id" element={<IssueDetailPage />} />
               <Route path="/gateway/:name" element={<GatewayPage />} />
               <Route path="/gateway" element={<GatewayPage />} />
+              <Route path="/projects/:id" element={<ProjectDetailPage />} />
+              <Route path="/projects" element={<ProjectsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Routes>
           </main>

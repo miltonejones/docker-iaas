@@ -5,6 +5,7 @@ import { docker, dockyardNetworkConfig, ensureImage } from '../docker.js';
 import { getAuthUser } from '../auth.js';
 import { findPreset } from '../presets.js';
 import { recordAuditLog } from '../db/audit.js';
+import { getProject } from '../db.js';
 
 export const containersRouter = Router();
 
@@ -19,6 +20,7 @@ interface ContainerView {
   sizeRw: number;
   sizeRootFs: number;
   presetId?: string;
+  projectId?: string;
   /** System-managed containers (e.g. the persistent MinIO instance) can't be removed from the UI. */
   system?: boolean;
   /** User-flagged as protected — start/stop/restart/remove are blocked, but unlike
@@ -45,6 +47,7 @@ function toView(c: Docker.ContainerInfo): ContainerView {
     sizeRw: (c as unknown as { SizeRw?: number }).SizeRw ?? 0,
     sizeRootFs: (c as unknown as { SizeRootFs?: number }).SizeRootFs ?? 0,
     presetId: c.Labels?.['iaas.preset'],
+    projectId: c.Labels?.['iaas.project_id'] || undefined,
     system: !!c.Labels?.['iaas.system'],
     protected: !!c.Labels?.['iaas.protected'],
     description: c.Labels?.['iaas.description'] || undefined,
@@ -56,13 +59,16 @@ function toView(c: Docker.ContainerInfo): ContainerView {
 containersRouter.get('/', async (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
+    const projectId = typeof req.query.projectId === 'string' && req.query.projectId.trim()
+      ? req.query.projectId.trim()
+      : null;
     const list = await docker.listContainers({ all: true, size: true });
     // Lambda invocations spin up a fresh, disposable container per call and
     // tear it down immediately after — surfacing those in the container list
     // would just be create/destroy noise, so they're filtered out entirely
     // regardless of who's asking.
     const withoutEphemeral = list.filter((c) => !c.Labels?.['iaas.ephemeral']);
-    const filtered = userId
+    let filtered = userId
       ? withoutEphemeral.filter((c) => {
           const owner = c.Labels?.['iaas.owner'];
           const system = c.Labels?.['iaas.system'];
@@ -71,6 +77,10 @@ containersRouter.get('/', async (req: Request, res: Response) => {
           return system || owner === userId || !owner;
         })
       : withoutEphemeral;
+    // Further filter by project if requested (via Docker label).
+    if (projectId) {
+      filtered = filtered.filter((c) => c.Labels?.['iaas.project_id'] === projectId);
+    }
     res.json(filtered.map(toView));
   } catch (err) {
     res.status(502).json({ error: (err as Error).message });
@@ -83,6 +93,7 @@ interface LaunchBody {
   name?: string;
   description?: string;
   protected?: boolean;
+  projectId?: string;
   command?: string[];
   ports?: { container: string; host: number }[];
   env?: { key: string; value: string }[];
@@ -101,6 +112,12 @@ containersRouter.post('/', async (req: Request, res: Response) => {
   if (!image) {
     res.status(400).json({ error: 'An image or a valid presetId is required.' });
     return;
+  }
+
+  // Validate projectId if provided.
+  if (body.projectId?.trim()) {
+    const project = getProject(body.projectId.trim(), userId);
+    if (!project) { res.status(400).json({ error: 'Project not found.' }); return; }
   }
 
   try {
@@ -152,6 +169,7 @@ containersRouter.post('/', async (req: Request, res: Response) => {
         ...(userId ? { 'iaas.owner': userId } : {}),
         ...(body.description?.trim() ? { 'iaas.description': body.description.trim() } : {}),
         ...(body.protected ? { 'iaas.protected': 'true' } : {}),
+        ...(body.projectId?.trim() ? { 'iaas.project_id': body.projectId.trim() } : {}),
       },
       Tty: needsTty,
       HostConfig: {

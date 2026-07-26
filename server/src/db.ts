@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import Database from 'better-sqlite3';
 import { initAuditTables } from './db/audit.js';
 import { initGatewayTables } from './db/gateway.js';
@@ -77,18 +78,41 @@ export function initDb(dbPath?: string): void {
     )
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS projects (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      user_id TEXT NOT NULL REFERENCES users(id),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(name, user_id)
+    )
+  `);
+
   // Migration: add user_id columns to existing resource tables.
   try { db.exec('ALTER TABLE functions ADD COLUMN user_id TEXT REFERENCES users(id)'); } catch { /* ok */ }
+
+  // Migration: add project_id to functions and routes (these tables exist before
+  // this point).  bucket_owners and database_connections migrations run after
+  // their respective CREATE TABLE statements below.
+  try { db.exec('ALTER TABLE functions ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL'); } catch { /* ok */ }
+  try { db.exec('ALTER TABLE routes ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL'); } catch { /* ok */ }
+
   initAuditTables(db);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS bucket_owners (
       bucket_name TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
+      project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
       created_at TEXT NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id)
     )
   `);
+
+  // Migration: add project_id to bucket_owners if upgrading from older schema.
+  try { db.exec('ALTER TABLE bucket_owners ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL'); } catch { /* ok */ }
 
   // Migration: add protected column for bucket-level deletion guard.
   try { db.exec('ALTER TABLE bucket_owners ADD COLUMN protected INTEGER NOT NULL DEFAULT 0'); } catch { /* ok */ }
@@ -195,15 +219,26 @@ export interface LambdaFunctionRow {
   packages: string;
   entry_point: string | null;
   user_id: string | null;
+  project_id: string | null;
   created_at: string;
   updated_at: string;
 }
 
-export function listFunctions(userId?: string): LambdaFunctionRow[] {
+export function listFunctions(userId?: string, projectId?: string): LambdaFunctionRow[] {
+  if (userId && projectId) {
+    return db
+      .prepare('SELECT * FROM functions WHERE (user_id = ? OR user_id IS NULL) AND project_id = ? ORDER BY updated_at DESC')
+      .all(userId, projectId) as LambdaFunctionRow[];
+  }
   if (userId) {
     return db
       .prepare('SELECT * FROM functions WHERE user_id = ? OR user_id IS NULL ORDER BY updated_at DESC')
       .all(userId) as LambdaFunctionRow[];
+  }
+  if (projectId) {
+    return db
+      .prepare('SELECT * FROM functions WHERE project_id = ? ORDER BY updated_at DESC')
+      .all(projectId) as LambdaFunctionRow[];
   }
   return db
     .prepare('SELECT * FROM functions ORDER BY updated_at DESC')
@@ -224,17 +259,18 @@ export function createFunction(
   packages?: string,
   entryPoint?: string | null,
   userId?: string,
+  projectId?: string | null,
 ): LambdaFunctionRow {
   const now = new Date().toISOString();
   db.prepare(
-    'INSERT INTO functions (id, name, runtime, code, packages, entry_point, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-  ).run(id, name, runtime, code, packages || '', entryPoint || null, userId || null, now, now);
+    'INSERT INTO functions (id, name, runtime, code, packages, entry_point, user_id, project_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  ).run(id, name, runtime, code, packages || '', entryPoint || null, userId || null, projectId || null, now, now);
   return getFunction(id)!;
 }
 
 export function updateFunction(
   id: string,
-  fields: { name?: string; runtime?: string; code?: string; packages?: string; entryPoint?: string | null },
+  fields: { name?: string; runtime?: string; code?: string; packages?: string; entryPoint?: string | null; projectId?: string | null },
 ): LambdaFunctionRow | undefined {
   const existing = getFunction(id);
   if (!existing) return undefined;
@@ -247,6 +283,7 @@ export function updateFunction(
       code = ?,
       entry_point = ?,
       packages = ?,
+      project_id = ?,
       updated_at = ?
      WHERE id = ?`,
   ).run(
@@ -255,6 +292,7 @@ export function updateFunction(
     fields.code ?? existing.code,
     fields.entryPoint !== undefined ? fields.entryPoint : existing.entry_point,
     fields.packages ?? existing.packages,
+    fields.projectId !== undefined ? fields.projectId : existing.project_id,
     now,
     id,
   );
@@ -388,6 +426,11 @@ export function listUserBuckets(userId: string): string[] {
   return rows.map((r) => r.bucket_name);
 }
 
+export function getBucketProjectId(bucketName: string): string | null {
+  const row = db.prepare('SELECT project_id FROM bucket_owners WHERE bucket_name = ?').get(bucketName) as { project_id: string | null } | undefined;
+  return row?.project_id ?? null;
+}
+
 export function createUser(email: string, passwordHash: string): UserRow {
   const id = `usr-${Math.random().toString(36).slice(2, 8)}`;
   const networkName = `dockyard-${id}`;
@@ -409,4 +452,109 @@ export function createUser(email: string, passwordHash: string): UserRow {
   }
 
   return getUserById(id)!;
+}
+
+// ---------------------------------------------------------------------------
+// Projects — named groupings of related resources
+// ---------------------------------------------------------------------------
+
+export interface ProjectRow {
+  id: string;
+  name: string;
+  description: string;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export function listProjects(userId?: string): ProjectRow[] {
+  if (userId) {
+    return db
+      .prepare('SELECT * FROM projects WHERE user_id = ? ORDER BY created_at DESC')
+      .all(userId) as ProjectRow[];
+  }
+  return db
+    .prepare('SELECT * FROM projects ORDER BY created_at DESC')
+    .all() as ProjectRow[];
+}
+
+export function getProject(id: string, userId?: string): ProjectRow | undefined {
+  const row = db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as ProjectRow | undefined;
+  if (row && userId && row.user_id !== userId) return undefined;
+  return row;
+}
+
+export function createProject(name: string, description: string, userId: string): ProjectRow {
+  const id = `proj-${crypto.randomBytes(8).toString('hex')}`;
+  const now = new Date().toISOString();
+  db.prepare(
+    'INSERT INTO projects (id, name, description, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+  ).run(id, name, description, userId, now, now);
+  return getProject(id)!;
+}
+
+export function updateProject(id: string, fields: { name?: string; description?: string }): ProjectRow | undefined {
+  const existing = getProject(id);
+  if (!existing) return undefined;
+  const now = new Date().toISOString();
+  db.prepare(
+    'UPDATE projects SET name = ?, description = ?, updated_at = ? WHERE id = ?',
+  ).run(fields.name ?? existing.name, fields.description ?? existing.description, now, id);
+  return getProject(id)!;
+}
+
+export function deleteProject(id: string): boolean {
+  // FK constraints (ON DELETE SET NULL) handle unlinking — no manual UPDATEs needed.
+  const result = db.prepare('DELETE FROM projects WHERE id = ?').run(id);
+  return result.changes > 0;
+}
+
+/** Set the project for a resource.  Verifies the resource belongs to the
+ *  requesting user before updating.  Returns true when the project column
+ *  was changed, false if the resource was not found or not owned. */
+export function setResourceProject(
+  table: 'functions' | 'routes' | 'bucket_owners' | 'database_connections',
+  idColumn: string,
+  resourceId: string,
+  projectId: string | null,
+  userId: string,
+): { ok: boolean; reason?: string } {
+  // Verify the resource exists and belongs to this user (or is system-owned
+  // with null user_id — legacy data the first user claims).
+  const idCol = idColumn === 'bucket_name' ? idColumn : 'id';
+  const userCol = table === 'bucket_owners' ? 'user_id' : 'user_id';
+  const row = db.prepare(
+    `SELECT ${userCol} FROM ${table} WHERE ${idCol} = ?`,
+  ).get(resourceId) as { user_id: string | null } | undefined;
+  if (!row) return { ok: false, reason: 'Resource not found.' };
+  if (row.user_id !== null && row.user_id !== userId) return { ok: false, reason: 'Resource does not belong to you.' };
+
+  const result = db.prepare(
+    `UPDATE ${table} SET project_id = ? WHERE ${idCol} = ?`,
+  ).run(projectId, resourceId);
+  return { ok: result.changes > 0 };
+}
+
+/** Summarise all resources currently linked to a project.
+ *  Container count must be resolved by the caller via Docker labels. */
+export function getProjectResourceSummary(projectId: string): {
+  containers: number;
+  functions: number;
+  buckets: number;
+  routes: number;
+  databases: number;
+} {
+  const fnCount = (db.prepare(
+    'SELECT COUNT(*) AS c FROM functions WHERE project_id = ?',
+  ).get(projectId) as { c: number }).c;
+  const routeCount = (db.prepare(
+    'SELECT COUNT(*) AS c FROM routes WHERE project_id = ?',
+  ).get(projectId) as { c: number }).c;
+  const bucketCount = (db.prepare(
+    'SELECT COUNT(*) AS c FROM bucket_owners WHERE project_id = ?',
+  ).get(projectId) as { c: number }).c;
+  const dbCount = (db.prepare(
+    'SELECT COUNT(*) AS c FROM database_connections WHERE project_id = ?',
+  ).get(projectId) as { c: number }).c;
+  return { containers: 0, functions: fnCount, buckets: bucketCount, routes: routeCount, databases: dbCount };
 }

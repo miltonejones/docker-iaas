@@ -166,6 +166,7 @@ export interface DatabaseConnectionDetail {
   name: string;
   engine: DatabaseEngine;
   summary: DatabaseConnectionSummary;
+  projectId: string | null;
   createdAt: string;
   updatedAt: string;
   lastTestedAt: string | null;
@@ -602,6 +603,7 @@ function toDetail(row: DatabaseConnectionRow): DatabaseConnectionDetail {
     name: row.name,
     engine: row.engine as DatabaseEngine,
     summary: parseSummary(row),
+    projectId: row.project_id || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lastTestedAt: row.last_tested_at,
@@ -727,8 +729,8 @@ export function applyConnectionUpdate(row: DatabaseConnectionRow, body: unknown)
   return { name, engine, config, summary: buildSummary(config) };
 }
 
-export function listConnectionDetails(userId?: string): DatabaseConnectionDetail[] {
-  return listDatabaseConnections(userId).map(toDetail);
+export function listConnectionDetails(userId?: string, projectId?: string): DatabaseConnectionDetail[] {
+  return listDatabaseConnections(userId, projectId).map(toDetail);
 }
 
 export function getConnectionDetail(id: string, userId?: string): DatabaseConnectionDetail {

@@ -14,6 +14,7 @@ import {
   getFunctionFiles,
   setFunctionFiles,
   type FunctionFileRow,
+  getProject,
 } from '../db.js';
 
 export const lambdaRouter = Router();
@@ -427,6 +428,7 @@ function toJson(r: import('../db.js').LambdaFunctionRow) {
     packages: r.packages,
     entryPoint: entryPathOf(r),
     files: getFunctionFiles(r.id),
+    projectId: r.project_id || null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -435,7 +437,10 @@ function toJson(r: import('../db.js').LambdaFunctionRow) {
 lambdaRouter.get('/functions', (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
-    res.json(listFunctions(userId).map(toJson));
+    const projectId = typeof req.query.projectId === 'string' && req.query.projectId.trim()
+      ? req.query.projectId.trim()
+      : undefined;
+    res.json(listFunctions(userId, projectId).map(toJson));
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -459,21 +464,29 @@ lambdaRouter.get('/functions/:id', (req: Request, res: Response) => {
 // Create a new function.
 lambdaRouter.post('/functions', (req: Request, res: Response) => {
   try {
-    const { name, runtime, code, packages, entryPoint, files } = req.body as {
+    const { name, runtime, code, packages, entryPoint, files, projectId } = req.body as {
       name?: string;
       runtime?: string;
       code?: string;
       packages?: string;
       entryPoint?: string;
       files?: FunctionFileRow[];
+      projectId?: string;
     };
     if (!name?.trim()) {
       res.status(400).json({ error: 'A function name is required.' });
       return;
     }
+
+    // Validate projectId if provided.
+    if (projectId?.trim()) {
+      const project = getProject(projectId.trim(), getAuthUser(req)?.userId);
+      if (!project) { res.status(400).json({ error: 'Project not found.' }); return; }
+    }
+
     const id = `fn-${Math.random().toString(36).slice(2, 8)}`;
     const resolvedEntry = entryPoint?.trim() || RUNTIMES[runtime || 'node']?.defaultEntry || null;
-    const row = createFunction(id, name.trim(), runtime || 'node', code || '', packages || '', resolvedEntry, getAuthUser(req)?.userId);
+    const row = createFunction(id, name.trim(), runtime || 'node', code || '', packages || '', resolvedEntry, getAuthUser(req)?.userId, projectId || null);
     if (files?.length) {
       setFunctionFiles(id, files.filter((f) => f.path && f.path !== resolvedEntry));
     }
@@ -486,15 +499,16 @@ lambdaRouter.post('/functions', (req: Request, res: Response) => {
 // Update an existing function.
 lambdaRouter.put('/functions/:id', (req: Request, res: Response) => {
   try {
-    const { name, runtime, code, packages, entryPoint, files } = req.body as {
+    const { name, runtime, code, packages, entryPoint, files, projectId } = req.body as {
       name?: string;
       runtime?: string;
       code?: string;
       packages?: string;
       entryPoint?: string;
       files?: FunctionFileRow[];
+      projectId?: string | null;
     };
-    const row = updateFunction(req.params.id, { name, runtime, code, packages, entryPoint });
+    const row = updateFunction(req.params.id, { name, runtime, code, packages, entryPoint, projectId });
     if (!row) {
       res.status(404).json({ error: 'Function not found.' });
       return;
