@@ -392,6 +392,19 @@ const tools: Anthropic.Tool[] = [
             required: ["key", "value"],
           },
         },
+        projectId: {
+          type: "string",
+          description: "Project ID to associate this container with (use list_projects to find IDs).",
+        },
+        volumes: {
+          type: "array",
+          items: { type: "string" },
+          description: 'Volume mounts, e.g. ["mydata:/app/data"] — named volumes persist across container removal.',
+        },
+        autoStart: {
+          type: "boolean",
+          description: "Start the container immediately after creation (default: true).",
+        },
       },
       required: [],
     },
@@ -703,25 +716,45 @@ const tools: Anthropic.Tool[] = [
   {
     name: "list_containers",
     description:
-      "List all containers (id, name, image, state) — use this to resolve a container the user referred to by name to its id.",
-    input_schema: { type: "object", properties: {}, required: [] },
+      "List all containers (id, name, image, state) — use this to resolve a container the user referred to by name to its id. Optionally filter by project.",
+    input_schema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Filter by project ID (use list_projects to find IDs)" },
+      },
+    },
   },
   {
     name: "list_functions",
     description:
-      "List all saved Lambda functions (id, name, runtime) — use this to resolve a function's name to its id.",
-    input_schema: { type: "object", properties: {}, required: [] },
+      "List all saved Lambda functions (id, name, runtime) — use this to resolve a function's name to its id. Optionally filter by project.",
+    input_schema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Filter by project ID (use list_projects to find IDs)" },
+      },
+    },
   },
   {
     name: "list_gateway_routes",
     description:
-      "List all gateway routes (id, name, targetType, targetId, method, pathPattern) — use this to resolve a route's name to its id.",
-    input_schema: { type: "object", properties: {}, required: [] },
+      "List all gateway routes (id, name, targetType, targetId, method, pathPattern) — use this to resolve a route's name to its id. Optionally filter by project.",
+    input_schema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Filter by project ID (use list_projects to find IDs)" },
+      },
+    },
   },
   {
     name: "list_buckets",
-    description: "List all storage buckets (name).",
-    input_schema: { type: "object", properties: {}, required: [] },
+    description: "List all storage buckets (name) — use this to resolve a bucket's name to its id. Optionally filter by project.",
+    input_schema: {
+      type: "object",
+      properties: {
+        projectId: { type: "string", description: "Filter by project ID (use list_projects to find IDs)" },
+      },
+    },
   },
   {
     name: "list_images",
@@ -1240,16 +1273,16 @@ async function executeReadOnlyTool(
       }));
     }
     case "list_functions":
-      return lambdaService.listFunctionsList(userId).map((f) => ({
+      return lambdaService.listFunctionsList(userId, input.projectId as string | undefined).map((f) => ({
         id: f.id, name: f.name, runtime: f.runtime,
       }));
     case "list_gateway_routes":
-      return gatewayService.list(userId).map((r) => ({
+      return gatewayService.list(userId, input.projectId as string | undefined).map((r) => ({
         id: r.id, name: r.name, targetType: r.targetType,
         targetId: r.targetId, method: r.method, pathPattern: r.pathPattern,
       }));
     case "list_buckets":
-      return (await bucketService.list(userId)).map((b) => ({ name: b.name, protected: b.protected }));
+      return (await bucketService.list(userId, input.projectId as string | undefined)).map((b) => ({ name: b.name, protected: b.protected }));
     case "list_images": {
       const images = await imageService.list();
       return images.map((img) => ({ id: img.id, tags: img.tags }));
