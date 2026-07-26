@@ -21,6 +21,7 @@ import { onOpenAssistant } from './assistant';
 import { AppIcon } from './icons';
 import { ToastViewport } from './components/ToastViewport';
 import { NotificationBell } from './components/NotificationBell';
+import { ThemeSwitcher } from './components/ThemeSwitcher';
 import type { NotificationEntry } from './api';
 import { useToast } from './ToastContext';
 
@@ -524,6 +525,7 @@ export function App() {
             </label>
           </div>
           <div className="topbar__right">
+            <ThemeSwitcher />
             <NotificationBell
               onDeployNotification={handleDeployNotification}
               onStreamReconnect={handleDeployNotification}
