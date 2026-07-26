@@ -32,7 +32,7 @@ export function ProjectDetailPage() {
       api.containers().then((list) => setContainers(list.filter((c) => c.projectId === id))),
       api.lambdaListFunctions().then((list) => setFunctions(list.filter((f) => f.projectId === id))),
       api.gatewayList().then((list) => setRoutes(list.filter((r) => r.projectId === id))),
-      api.bucketList().then((list) => setBuckets(list.filter((b) => (b as any).projectId === id))),
+      api.bucketList().then((list) => setBuckets(list.filter((b) => b.projectId === id))),
       api.databaseConnections().then((list) => setDbs(list.filter((d) => d.projectId === id))),
     ]).catch(console.error);
   }

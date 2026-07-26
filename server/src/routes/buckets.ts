@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import express from 'express';
 import { getAuthUser } from '../auth.js';
-import { setBucketOwner, getBucketOwner, listUserBuckets, isBucketProtected, setBucketProtected } from '../db.js';
+import { setBucketOwner, getBucketOwner, listUserBuckets, isBucketProtected, setBucketProtected, getBucketProjectId } from '../db.js';
 import {
   ListBucketsCommand,
   CreateBucketCommand,
@@ -47,9 +47,9 @@ bucketsRouter.get('/', async (req: Request, res: Response) => {
       userFiltered.map(async (b) => {
         try {
           const { size, objectCount } = await bucketStats(b.Name!);
-          return { name: b.Name, creationDate: b.CreationDate, size, objectCount, protected: isBucketProtected(b.Name!) };
+          return { name: b.Name, creationDate: b.CreationDate, size, objectCount, protected: isBucketProtected(b.Name!), projectId: getBucketProjectId(b.Name!) };
         } catch {
-          return { name: b.Name, creationDate: b.CreationDate, size: 0, objectCount: 0, protected: isBucketProtected(b.Name!) };
+          return { name: b.Name, creationDate: b.CreationDate, size: 0, objectCount: 0, protected: isBucketProtected(b.Name!), projectId: getBucketProjectId(b.Name!) };
         }
       }),
     );

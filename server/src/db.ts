@@ -426,6 +426,11 @@ export function listUserBuckets(userId: string): string[] {
   return rows.map((r) => r.bucket_name);
 }
 
+export function getBucketProjectId(bucketName: string): string | null {
+  const row = db.prepare('SELECT project_id FROM bucket_owners WHERE bucket_name = ?').get(bucketName) as { project_id: string | null } | undefined;
+  return row?.project_id ?? null;
+}
+
 export function createUser(email: string, passwordHash: string): UserRow {
   const id = `usr-${Math.random().toString(36).slice(2, 8)}`;
   const networkName = `dockyard-${id}`;

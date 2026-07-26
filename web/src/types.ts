@@ -149,6 +149,7 @@ export interface Bucket {
   size?: number;
   objectCount?: number;
   protected?: boolean;
+  projectId?: string | null;
 }
 
 export interface BucketObject {

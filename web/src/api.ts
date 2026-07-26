@@ -814,11 +814,10 @@ export const api = {
     }).then((r) => json<{ ok: true; projectId: string }>(r)),
 
   projectRemoveResource: (projectId: string, resourceTable: string, resourceId: string) =>
-    fetch(`/api/projects/${encodeURIComponent(projectId)}/resources`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ resourceTable, resourceId }),
-    }).then((r) => json<{ ok: true }>(r)),
+    fetch(
+      `/api/projects/${encodeURIComponent(projectId)}/resources?resourceTable=${encodeURIComponent(resourceTable)}&resourceId=${encodeURIComponent(resourceId)}`,
+      { method: 'DELETE' },
+    ).then((r) => json<{ ok: true }>(r)),
 };
 
 /** A single consumer/issue event surfaced by the notification log. */
