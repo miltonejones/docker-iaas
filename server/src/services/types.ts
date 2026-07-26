@@ -59,6 +59,7 @@ export interface BackgroundExecResult {
   execId: string;
   command: string[];
   workingDir: string | null;
+  background: true;
 }
 
 export interface ProbeResult {

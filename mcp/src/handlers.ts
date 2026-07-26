@@ -13,6 +13,9 @@ import { resolveUserId } from './auth.js';
 import { runSavedConnectionRead } from '../../server/src/databaseManagement.js';
 import {
   executeGithubAssistantReadOnlyTool,
+  pullGithubRepoToBucket,
+  pullGithubRepoToContainer,
+  commitAndPushGithubFiles,
 } from '../../server/src/githubAssistantTools.js';
 
 type CallToolRequest = { params: { name: string; arguments?: Record<string, unknown> } };
@@ -94,7 +97,7 @@ export async function handleCallTool(request: CallToolRequest) {
 
       // ── Buckets ─────────────────────────────────────────────
       case 'list_buckets':
-        result = await bucketService.list(userId);
+        result = await bucketService.list(userId, args.projectId as string | undefined);
         break;
       case 'create_bucket':
         result = await bucketService.create(userId, args.name as string, args.protected as boolean | undefined);
@@ -341,13 +344,13 @@ export async function handleCallTool(request: CallToolRequest) {
         result = await executeGithubAssistantReadOnlyTool(name, args);
         break;
       case 'pull_github_repo_to_bucket':
-        result = await executeGithubAssistantReadOnlyTool(name, args);
+        result = await pullGithubRepoToBucket(args);
         break;
       case 'pull_github_repo_to_container':
-        result = await executeGithubAssistantReadOnlyTool(name, args);
+        result = await pullGithubRepoToContainer(args);
         break;
       case 'commit_and_push_github_files':
-        result = await executeGithubAssistantReadOnlyTool(name, args);
+        result = await commitAndPushGithubFiles(args);
         break;
 
       default:

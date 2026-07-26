@@ -53,7 +53,7 @@ containersRouter.post('/:id/files', async (req: Request, res: Response) => {
 // ── Exec output polling ───────────────────────────────────────
 
 containersRouter.get('/execs/:execId/output', async (req: Request, res: Response) => {
-  const entry = containerService.backgroundExecOutputs.get(req.params.execId);
+  const entry = containerService.getExecOutput(req.params.execId);
   if (!entry) {
     res.status(404).json({ error: `Exec "${req.params.execId}" output not found.` });
     return;
@@ -200,8 +200,13 @@ containersRouter.post('/:id/env', async (req: Request, res: Response) => {
 
 containersRouter.post('/:id/files/replace', async (req: Request, res: Response) => {
   try {
-    res.json(await containerService.replaceInFile(req.params.id, getAuthUser(req)?.userId, req.body));
+    const result = await containerService.replaceInFile(req.params.id, getAuthUser(req)?.userId, req.body);
+    res.json({ path: req.body.path, replaced: true, occurrences: result.replacements });
   } catch (err) {
+    if (err instanceof HttpError && err.status === 404) {
+      res.json({ path: req.body.path, replaced: false, reason: err.message });
+      return;
+    }
     sendError(res, err);
   }
 });

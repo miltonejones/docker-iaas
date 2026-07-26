@@ -413,7 +413,7 @@ export async function execCommand(
     })();
 
     recordAuditLog('container.exec', 'container', id, userId, command[0]);
-    return { command, workingDir: workingDir ?? null, execId };
+    return { command, workingDir: workingDir ?? null, background: true, execId };
   }
 
   const stream = await exec.start({ hijack: true, stdin: false });

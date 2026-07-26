@@ -38,12 +38,15 @@ async function bucketStats(name: string): Promise<{ size: number; objectCount: n
 
 export { bucketStats };
 
-export async function list(userId?: string): Promise<BucketView[]> {
+export async function list(userId?: string, projectId?: string): Promise<BucketView[]> {
   const userBuckets = userId ? listUserBuckets(userId) : null;
   const out = await getS3Client().send(new ListBucketsCommand({}));
-  const userFiltered = userBuckets
+  let userFiltered = userBuckets
     ? (out.Buckets || []).filter((b) => userBuckets.includes(b.Name!))
     : (out.Buckets || []);
+  if (projectId) {
+    userFiltered = userFiltered.filter((b) => getBucketProjectId(b.Name!) === projectId);
+  }
   return Promise.all(
     userFiltered.map(async (b) => {
       try {
@@ -190,16 +193,4 @@ export async function writeObjects(name: string, objects: WriteObjectInput[]): P
     ),
   );
   return { ok: true, objectsWritten: objects.length };
-}
-
-export async function copyHostFileToBucket(
-  sourcePath: string,
-  bucket: string,
-  key: string,
-  contentType?: string,
-): Promise<{ bucket: string; key: string; size: number }> {
-  // Delegate to host-files service (avoid circular dependency by using the S3 client directly)
-  // Actually we import from host-files but that would create a circular dependency since
-  // host-files already imports from S3. Instead, handle this inline or in the route layer.
-  throw new HttpError(500, 'copyHostFileToBucket should be called through the route layer.');
 }

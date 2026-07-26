@@ -3,8 +3,6 @@ import express from 'express';
 import { getAuthUser } from '../auth.js';
 import { HttpError } from '../services/HttpError.js';
 import * as bucketService from '../services/buckets.js';
-import { getS3Client } from '../minio.js';
-import { PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 
 export const bucketsRouter = Router();
 

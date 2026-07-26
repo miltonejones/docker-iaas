@@ -1185,8 +1185,13 @@ async function executeReadOnlyTool(
   userId?: string,
 ): Promise<unknown> {
   switch (name) {
-    case "list_containers":
-      return containerService.list(userId, input.projectId as string | undefined);
+    case "list_containers": {
+      const containers = await containerService.list(userId, input.projectId as string | undefined);
+      return containers.map((c) => ({
+        id: c.id, name: c.name, image: c.image, state: c.state,
+        description: c.description, protected: c.protected,
+      }));
+    }
     case "list_functions":
       return lambdaService.listFunctionsList(userId).map((f) => ({
         id: f.id, name: f.name, runtime: f.runtime,
@@ -1232,8 +1237,12 @@ async function executeReadOnlyTool(
       const truncated = text.length > MAX_LOG_CHARS;
       return { tail, content: truncated ? text.slice(0, MAX_LOG_CHARS) : text, truncated };
     }
-    case "inspect_container":
-      return containerService.inspect(String(input.id ?? ""));
+    case "inspect_container": {
+      const info = await containerService.inspect(String(input.id ?? ""));
+      // Redact env values — return only variable names, not values.
+      const envNames = (info.env || []).map((e: string) => e.split("=")[0]);
+      return { ...info, env: envNames };
+    }
     case "list_presets":
       return systemService.presets();
     case "list_used_ports":
