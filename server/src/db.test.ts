@@ -1,7 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { initDb, createUser, getUserById, getUserByEmail, hasUsers, getFirstUser } from './db.js';
-import { recordGatewayTrafficEvent, GATEWAY_TRAFFIC_RETENTION_LIMIT } from './db.js';
+import { recordGatewayTrafficEvent, GATEWAY_TRAFFIC_RETENTION_LIMIT } from './db/gateway.js';
 
 // ---------------------------------------------------------------------------
 // All tests use an in-memory database — no filesystem side effects.

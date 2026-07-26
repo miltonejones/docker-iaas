@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { pingDocker, docker } from '../docker.js';
 import { PRESETS } from '../presets.js';
 import { getUsageSnapshot } from '../usage.js';
+import { listAuditLogs } from '../db/audit.js';
 
 export const systemRouter = Router();
 
@@ -110,4 +111,15 @@ systemRouter.get('/usage/stream', async (req: Request, res: Response) => {
     clearInterval(timer);
     res.end();
   });
+});
+
+// GET /api/system/audit?limit=50
+systemRouter.get('/audit', (req: Request, res: Response) => {
+  try {
+    const raw = req.query.limit;
+    const limit = typeof raw === 'string' ? Math.min(Math.max(1, parseInt(raw, 10) || 50), 1000) : 50;
+    res.json(listAuditLogs(limit));
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
 });

@@ -4,14 +4,21 @@ import jwt from 'jsonwebtoken';
 import { getUserById } from './db.js';
 
 let JWT_SECRET: string;
-const secretFile = '/run/secrets/jwt_secret';
-try {
-  JWT_SECRET = fs.readFileSync(secretFile, 'utf8').trim();
-} catch {
-  JWT_SECRET = process.env.JWT_SECRET || '';
+
+/** Load the JWT secret from the Docker secret file or environment.
+ *  Exported so tests can validate the loading logic in isolation. */
+export function loadJwtSecret(secretPath?: string, envValue?: string): string {
+  const secretFile = secretPath ?? '/run/secrets/jwt_secret';
+  try {
+    return fs.readFileSync(secretFile, 'utf8').trim();
+  } catch {
+    return envValue ?? process.env.JWT_SECRET ?? '';
+  }
 }
+
+JWT_SECRET = loadJwtSecret();
 if (!JWT_SECRET) {
-  console.error(`FATAL: JWT secret not found at ${secretFile} or in JWT_SECRET env var.`);
+  console.error(`FATAL: JWT secret not found at /run/secrets/jwt_secret or in JWT_SECRET env var.`);
   process.exit(1);
 }
 const JWT_EXPIRES_IN = '7d';

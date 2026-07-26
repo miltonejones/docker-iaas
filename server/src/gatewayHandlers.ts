@@ -6,11 +6,10 @@ import { docker, isSelfContainerized, remoteDockerHost } from './docker.js';
 import { getS3Client } from './minio.js';
 import {
   getRoutesByName,
-  getFunction,
-  getFunctionEnv,
   recordGatewayTrafficEvent,
   type RouteRow,
-} from './db.js';
+} from './db/gateway.js';
+import { getFunction, getFunctionEnv } from './db.js';
 import { runLambda, entryPathOf, fullFileSet } from './routes/lambda.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────

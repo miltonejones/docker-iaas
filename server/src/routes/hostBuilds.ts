@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import net from 'node:net';
 import path from 'node:path';
 import { Router, type Request, type Response } from 'express';
+import { recordAuditLog } from '../db/audit.js';
 import tar from 'tar-stream';
 import { docker } from '../docker.js';
 
@@ -162,6 +163,7 @@ hostBuildsRouter.post('/run', async (req: Request, res: Response) => {
     await runHelper(preset.name);
     const artifacts = await directoryArchive(resolveHostDirectory(preset.cwd, preset.artifacts));
     await container.putArchive(artifacts.archive, { path: destination });
+    recordAuditLog('host_build.run', 'host_build', null, null, preset.name);
     res.json({ ok: true, preset: preset.name, id, path: destination, size: artifacts.size });
   } catch (err) {
     res.status(502).json({ error: (err as Error).message });

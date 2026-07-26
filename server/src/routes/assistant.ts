@@ -18,12 +18,15 @@ import {
 import {
   listFunctions,
   getFunction,
-  listRoutes,
+} from "../db.js";
+import {
   listAssistantSessions,
   getAssistantSession,
   createAssistantSession,
   updateAssistantSession,
   deleteAssistantSession,
+} from "../db/assistantSessions.js";
+import {
   listAssistantIssues,
   getAssistantIssue,
   createAssistantIssue,
@@ -32,7 +35,8 @@ import {
   clearAssistantIssues,
   countAssistantIssuesByStatus,
   ASSISTANT_ISSUE_STATUSES,
-} from "../db.js";
+} from "../db/assistantIssues.js";
+import { listRoutes } from "../db/gateway.js";
 import { sessionRegistry } from "../sessionRunner.js";
 import { getS3Client } from "../minio.js";
 import { PRESETS } from "../presets.js";
@@ -1655,7 +1659,7 @@ assistantRouter.post("/title", async (req: Request, res: Response) => {
   }
 });
 
-function toIssueSummary(r: import("../db.js").AssistantIssueRow) {
+function toIssueSummary(r: import("../db/assistantIssues.js").AssistantIssueRow) {
   let details: unknown = {};
   try { details = JSON.parse(r.details_json); } catch { /* ok */ }
   return {
@@ -1686,7 +1690,7 @@ function toSessionSummary(r: {
   };
 }
 
-function toSessionFull(r: import("../db.js").AssistantSessionRow) {
+function toSessionFull(r: import("../db/assistantSessions.js").AssistantSessionRow) {
   let state: unknown = {};
   try {
     state = JSON.parse(r.state);
