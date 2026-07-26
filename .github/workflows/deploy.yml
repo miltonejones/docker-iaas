@@ -28,6 +28,15 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
+  smoke-test:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and smoke test
+        run: bash scripts/smoke-test-hardening.sh
+
   build-images:
     needs: verify
     runs-on: ubuntu-24.04-arm
@@ -63,7 +72,7 @@ jobs:
           cache-to: type=gha,scope=${{ matrix.image.name }}-v2,mode=max
 
   deploy:
-    needs: [verify, build-images]
+    needs: [verify, smoke-test, build-images]
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 15
