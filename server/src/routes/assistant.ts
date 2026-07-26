@@ -1695,6 +1695,7 @@ function toIssueSummary(r: import("../db/assistantIssues.js").AssistantIssueRow)
     resolution: r.resolution,
     resolvedBy: r.resolved_by,
     engine: r.engine,
+    ownerId: r.user_id,
   };
 }
 

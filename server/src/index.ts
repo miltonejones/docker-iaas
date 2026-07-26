@@ -20,6 +20,7 @@ import { notificationsRouter } from './routes/notifications.js';
 import { authRouter } from './routes/auth.js';
 import { requireAuth, optionalAuth } from './auth.js';
 import { gatewayProxyRouter } from './gatewayProxy.js';
+import { getAllUserSettings } from './db.js';
 import {
   handleBucket,
   handleContainer,
@@ -142,6 +143,22 @@ export function createApp(): express.Express {
   app.use('/api/assistant', requireAuth, assistantRouter);
   app.use('/api/notifications', optionalAuth, notificationsRouter);
   app.use('/api/auth', authRouter);
+
+  // Internal endpoints — only reachable from the Docker network (not proxied
+  // by Caddy).  Used by the autonomous consumer for credential resolution.
+  app.get('/internal/credentials/:userId', (req, res) => {
+    const key = req.headers['x-consumer-api-key'] as string | undefined;
+    const CONSUMER_API_KEY = process.env.CONSUMER_API_KEY || '';
+    if (!CONSUMER_API_KEY) return res.status(501).json({ error: 'Consumer API key not configured.' });
+    if (!key || key !== CONSUMER_API_KEY) return res.status(401).json({ error: 'Invalid consumer API key.' });
+    const settings = getAllUserSettings(req.params.userId);
+    res.json({
+      anthropic_api_key: settings.anthropic_api_key || null,
+      deepseek_api_key: settings.deepseek_api_key || null,
+      github_token: settings.github_token || null,
+      assistant_provider: settings.assistant_provider || null,
+    });
+  });
 
   // Serve the built frontend in production (web/dist), if present.
   const __dirname = path.dirname(fileURLToPath(import.meta.url));

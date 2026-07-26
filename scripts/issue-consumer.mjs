@@ -63,8 +63,10 @@ try {
 function setupGitAuth(cwd, token) {
   const ghToken = token || process.env.GITHUB_TOKEN;
   if (!ghToken) return null;
+  process.env.GIT_ASKPASS = 'true';
+  process.env.GITHUB_TOKEN = ghToken;
   const askpass = path.join(os.tmpdir(), `git-askpass-${Date.now()}`);
-  fs.writeFileSync(askpass, `#!/bin/sh\necho "${ghToken}"`, { mode: 0o700 });
+  fs.writeFileSync(askpass, `#!/bin/sh\necho "$GITHUB_TOKEN"`, { mode: 0o700 });
   process.env.GIT_ASKPASS = askpass;
   try {
     execSync("git remote set-url origin https://github.com/miltonejones/docker-iaas.git",
@@ -472,7 +474,7 @@ async function fetchCredentials(ownerId) {
   try {
     const consumerKey = process.env.CONSUMER_API_KEY;
     if (!consumerKey) return null;
-    const res = await fetch(`${DOCKYARD_API}/api/auth/credentials/${ownerId}`, {
+    const res = await fetch(`${DOCKYARD_API}/internal/credentials/${ownerId}`, {
       headers: { 'x-consumer-api-key': consumerKey },
       signal: AbortSignal.timeout(10_000),
     });
@@ -1244,8 +1246,14 @@ async function consumeOne() {
   const extraEnv = {};
   let githubToken;
   if (creds) {
-    if (creds.anthropic_api_key) extraEnv.ANTHROPIC_AUTH_TOKEN = creds.anthropic_api_key;
-    if (creds.deepseek_api_key) extraEnv.DEEPSEEK_API_KEY = creds.deepseek_api_key;
+    // Honor the owner's provider preference — only set the key for their chosen
+    // provider.  Falls back to the system manager (process.env) if neither is set.
+    const provider = creds.assistant_provider || 'anthropic';
+    if (provider === 'deepseek' && creds.deepseek_api_key) {
+      extraEnv.DEEPSEEK_API_KEY = creds.deepseek_api_key;
+    } else if (creds.anthropic_api_key) {
+      extraEnv.ANTHROPIC_AUTH_TOKEN = creds.anthropic_api_key;
+    }
     if (creds.github_token) githubToken = creds.github_token;
     if (Object.keys(extraEnv).length === 0 && !githubToken) {
       log(`Issue owner ${issue.ownerId} has no credentials configured — skipping.`);
