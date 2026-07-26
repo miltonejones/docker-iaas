@@ -55,7 +55,7 @@ const UI_ICONS: Record<string, IconDefinition> = {
   container: faBoxArchive,
   folder: faFolder,
   function: faBolt,
-  gateway: faCircleNodes,
+  gateway: faGlobe,
   warning: faTriangleExclamation,
   external: faArrowUpRightFromSquare,
   info: faCircleInfo,
