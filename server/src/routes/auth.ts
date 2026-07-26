@@ -153,3 +153,25 @@ authRouter.post('/consumer', (req: Request, res: Response) => {
 
   res.json({ token: signToken(user), userId: user.id, email: user.email });
 });
+
+/** Internal endpoint — the autonomous consumer fetches the issue owner's
+ *  credentials so it can use the owner's LLM key + GitHub token instead of
+ *  shared system secrets.  Authenticated via x-consumer-api-key. */
+authRouter.get('/credentials/:userId', (req: Request, res: Response) => {
+  const key = req.headers['x-consumer-api-key'] as string | undefined;
+  if (!CONSUMER_API_KEY) {
+    res.status(501).json({ error: 'Consumer API key not configured.' });
+    return;
+  }
+  if (!key || key !== CONSUMER_API_KEY) {
+    res.status(401).json({ error: 'Invalid or missing consumer API key.' });
+    return;
+  }
+  const settings = getAllUserSettings(req.params.userId);
+  res.json({
+    anthropic_api_key: settings.anthropic_api_key || null,
+    deepseek_api_key: settings.deepseek_api_key || null,
+    github_token: settings.github_token || null,
+    assistant_provider: settings.assistant_provider || null,
+  });
+});
