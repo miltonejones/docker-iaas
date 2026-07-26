@@ -3797,3 +3797,65 @@ textarea:focus {
   gap: 8px;
   justify-content: flex-end;
 }
+
+/* ── Theme switcher ──────────────────────────────────────────────────── */
+
+.theme-switcher {
+  position: relative;
+}
+
+.theme-switcher__toggle {
+  padding: 4px !important;
+  border-radius: var(--r-sm);
+}
+
+.theme-switcher__dots {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.theme-switcher__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  display: inline-block;
+}
+
+.theme-switcher__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  min-width: 160px;
+  z-index: 100;
+}
+
+.theme-switcher__option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  text-align: left;
+}
+
+.theme-switcher__option:hover {
+  background: var(--bg-elev-2);
+}
+
+.theme-switcher__option--active {
+  background: var(--accent-dim);
+  color: var(--accent-text);
+}
