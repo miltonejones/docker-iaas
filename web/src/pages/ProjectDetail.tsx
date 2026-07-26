@@ -83,17 +83,19 @@ export function ProjectDetailPage() {
   useEffect(() => { load(); }, [id]);
   useEffect(() => onRefresh(load), []);
 
-  if (!project || !id) return <p className="muted empty">Loading…</p>;
-  const pid = id!; // narrowed — id is string after guard above
+  // All hooks must run unconditionally (React hook rules).
+  const pid = (project && id) ? id : null;
 
-  // Project-scoped resources.
-  const projectResources: Resource[] = [
-    ...containers.filter((c) => c.projectId === pid).map((c) => ({ kind: 'container' as const, data: c })),
-    ...functions.filter((f) => f.projectId === id).map((f) => ({ kind: 'function' as const, data: f })),
-    ...routes.filter((r) => r.projectId === id).map((r) => ({ kind: 'route' as const, data: r })),
-    ...buckets.filter((b) => b.projectId === id).map((b) => ({ kind: 'bucket' as const, data: b })),
-    ...dbs.filter((db) => db.projectId === id).map((db) => ({ kind: 'database' as const, data: db })),
-  ];
+  const projectResources: Resource[] = useMemo(() => {
+    if (!pid) return [];
+    return [
+      ...containers.filter((c) => c.projectId === pid).map((c) => ({ kind: 'container' as const, data: c })),
+      ...functions.filter((f) => f.projectId === pid).map((f) => ({ kind: 'function' as const, data: f })),
+      ...routes.filter((r) => r.projectId === pid).map((r) => ({ kind: 'route' as const, data: r })),
+      ...buckets.filter((b) => b.projectId === pid).map((b) => ({ kind: 'bucket' as const, data: b })),
+      ...dbs.filter((db) => db.projectId === pid).map((db) => ({ kind: 'database' as const, data: db })),
+    ];
+  }, [containers, functions, routes, buckets, dbs, pid]);
 
   const resourcesByKind = useMemo(() => {
     const map = new Map<Resource['kind'], Resource[]>();
@@ -146,6 +148,9 @@ export function ProjectDetailPage() {
     return map;
   }, [filteredUnassigned]);
 
+  // ── Early return after all hooks ──────────────────────────
+  if (!project || !pid) return <p className="muted empty">Loading…</p>;
+
   async function removeResource(r: Resource) {
     const tableMap: Record<string, string> = {
       container: 'undefined', // containers use Docker labels, not DB
@@ -165,7 +170,7 @@ export function ProjectDetailPage() {
         // For now: containers can only be added via creation with projectId set.
         return;
       }
-      await api.projectRemoveResource(pid, tableMap[r.kind]!, resourceId);
+      await api.projectRemoveResource(pid!, tableMap[r.kind]!, resourceId);
       load();
       if (selected && getResourceId(selected) === resourceId) setSelected(null);
     } catch (err) {
@@ -183,7 +188,7 @@ export function ProjectDetailPage() {
     };
     try {
       const rid: string = r.id;
-      await api.projectAddResource(pid, tableMap[r.kind]!, rid);
+      await api.projectAddResource(pid!, tableMap[r.kind]!, rid);
       load();
       setAddMode(false);
       setSearch('');
@@ -233,7 +238,7 @@ export function ProjectDetailPage() {
                 className="btn btn--primary btn--sm"
                 onClick={async () => {
                   try {
-                    const updated = await api.projectUpdate(id, { name: editName, description: editDesc });
+                    const updated = await api.projectUpdate(pid!, { name: editName, description: editDesc });
                     setProject(updated);
                     setEditing(false);
                   } catch (err) { console.error(err); }
