@@ -1200,6 +1200,13 @@ textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-glow);
 }
+
+/* Dark theme — remove hard borders from inputs for a cleaner, flatter look */
+.dark-theme input,
+.dark-theme select,
+.dark-theme textarea {
+  border-color: transparent;
+}
 .port-row,
 .env-row {
   display: flex;
