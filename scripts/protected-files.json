@@ -1,7 +1,11 @@
 [
   "Dockerfile.consumer",
   "docker-compose.yml",
+  "docker-compose.ci.yml",
+  "Caddyfile",
   ".gitignore",
   ".github/workflows/deploy.yml",
-  "scripts/issue-consumer.mjs"
+  "scripts/issue-consumer.mjs",
+  "scripts/protected-files.json",
+  "scripts/smoke-test-hardening.sh"
 ]
