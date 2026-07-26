@@ -47,6 +47,7 @@ export interface Container {
   sizeRw: number;
   sizeRootFs: number;
   presetId?: string;
+  projectId?: string;
   system?: boolean;
   protected?: boolean;
   description?: string;
@@ -113,6 +114,7 @@ export interface LambdaFunction {
   packages: string;
   entryPoint: string;
   files: LambdaFile[];
+  projectId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -169,6 +171,7 @@ export interface GatewayRoute {
   targetPort: number | null;
   method: string | null;
   pathPattern: string | null;
+  projectId: string | null;
   domain: string | null;
   domainVerified: boolean;
   createdAt: string;
@@ -272,6 +275,7 @@ export interface DatabaseConnectionDetail {
   name: string;
   engine: DatabaseEngine;
   summary: DatabaseConnectionSummary;
+  projectId: string | null;
   createdAt: string;
   updatedAt: string;
   lastTestedAt: string | null;
@@ -422,4 +426,22 @@ export interface AssistantIssue {
   resolution: string | null;
   resolvedBy: string | null;
   engine: string | null;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectDetail extends Project {
+  summary: {
+    containers: number;
+    functions: number;
+    buckets: number;
+    routes: number;
+    databases: number;
+  };
 }

@@ -25,6 +25,7 @@ import type {
   LambdaResult,
   LambdaRuntime,
   Preset,
+  ProjectDetail,
   UsageSnapshot,
 } from './types';
 
@@ -105,6 +106,7 @@ export interface LaunchRequest {
   name?: string;
   description?: string;
   protected?: boolean;
+  projectId?: string;
   command?: string[];
   ports?: { container: string; host: number }[];
   env?: { key: string; value: string }[];
@@ -778,6 +780,47 @@ export const api = {
       lastPoll: string;
       lastError: string | null;
     }>(r)),
+
+  // ── Projects ────────────────────────────────────────────────────────
+
+  projectList: (projectId?: string) => {
+    const query = projectId ? `?projectId=${encodeURIComponent(projectId)}` : '';
+    return fetch(`/api/projects${query}`).then((r) => json<ProjectDetail[]>(r));
+  },
+
+  projectGet: (id: string) =>
+    fetch(`/api/projects/${encodeURIComponent(id)}`).then((r) => json<ProjectDetail>(r)),
+
+  projectCreate: (name: string, description?: string) =>
+    fetch('/api/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description }),
+    }).then((r) => json<ProjectDetail>(r)),
+
+  projectUpdate: (id: string, fields: { name?: string; description?: string }) =>
+    fetch(`/api/projects/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields),
+    }).then((r) => json<ProjectDetail>(r)),
+
+  projectDelete: (id: string) =>
+    fetch(`/api/projects/${encodeURIComponent(id)}`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r)),
+
+  projectAddResource: (projectId: string, resourceTable: string, resourceId: string) =>
+    fetch(`/api/projects/${encodeURIComponent(projectId)}/resources`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resourceTable, resourceId }),
+    }).then((r) => json<{ ok: true; projectId: string }>(r)),
+
+  projectRemoveResource: (projectId: string, resourceTable: string, resourceId: string) =>
+    fetch(`/api/projects/${encodeURIComponent(projectId)}/resources`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resourceTable, resourceId }),
+    }).then((r) => json<{ ok: true }>(r)),
 };
 
 /** A single consumer/issue event surfaced by the notification log. */

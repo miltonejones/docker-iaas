@@ -71,6 +71,7 @@ function toJson(r: import('../db/gateway.js').RouteRow) {
     targetPort: r.target_port,
     method: r.method || null,
     pathPattern: r.path_pattern || null,
+    projectId: r.project_id || null,
     domain: r.domain || null,
     domainVerified: r.domain_verified === 1,
     dnsManaged: r.domain_dns_managed === 1,
@@ -120,7 +121,10 @@ function trafficSummaryJson(r: import('../db/gateway.js').GatewayTrafficSummaryR
 gatewayRouter.get('/', (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
-    res.json(listRoutes(userId).map(toJson));
+    const projectId = typeof req.query.projectId === 'string' && req.query.projectId.trim()
+      ? req.query.projectId.trim()
+      : undefined;
+    res.json(listRoutes(userId, projectId).map(toJson));
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
@@ -268,7 +272,7 @@ gatewayRouter.get('/traffic/timeseries', (req: Request, res: Response) => {
 
 gatewayRouter.post('/', (req: Request, res: Response) => {
   try {
-    const { name, displayName, targetType, targetId, targetPort, method, pathPattern } = req.body as {
+    const { name, displayName, targetType, targetId, targetPort, method, pathPattern, projectId } = req.body as {
       name?: string;
       displayName?: string;
       targetType?: string;
@@ -276,6 +280,7 @@ gatewayRouter.post('/', (req: Request, res: Response) => {
       targetPort?: number;
       method?: string;
       pathPattern?: string;
+      projectId?: string;
     };
 
     if (!name || !NAME_RE.test(name)) {
@@ -330,6 +335,7 @@ gatewayRouter.post('/', (req: Request, res: Response) => {
       pathNorm,
       userId,
       displayName?.trim() || null,
+      projectId?.trim() || null,
     );
     recordAuditLog('gateway.route.create', 'route', row.id, userId, name);
     res.status(201).json(toJson(row));

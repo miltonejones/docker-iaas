@@ -94,7 +94,10 @@ databasesRouter.get('/overview', (_req: Request, res: Response) => {
 databasesRouter.get('/connections', (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
-    res.json(listConnectionDetails(userId));
+    const projectId = typeof req.query.projectId === 'string' && req.query.projectId.trim()
+      ? req.query.projectId.trim()
+      : undefined;
+    res.json(listConnectionDetails(userId, projectId));
   } catch (err) {
     sendError(res, err);
   }

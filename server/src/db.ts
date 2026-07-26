@@ -77,8 +77,26 @@ export function initDb(dbPath?: string): void {
     )
   `);
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS projects (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      user_id TEXT NOT NULL REFERENCES users(id),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
   // Migration: add user_id columns to existing resource tables.
   try { db.exec('ALTER TABLE functions ADD COLUMN user_id TEXT REFERENCES users(id)'); } catch { /* ok */ }
+
+  // Migration: add project_id to resource tables.
+  try { db.exec('ALTER TABLE functions ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL'); } catch { /* ok */ }
+  try { db.exec('ALTER TABLE routes ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL'); } catch { /* ok */ }
+  try { db.exec('ALTER TABLE bucket_owners ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL'); } catch { /* ok */ }
+  try { db.exec('ALTER TABLE database_connections ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL'); } catch { /* ok */ }
+
   initAuditTables(db);
 
   db.exec(`
@@ -195,15 +213,26 @@ export interface LambdaFunctionRow {
   packages: string;
   entry_point: string | null;
   user_id: string | null;
+  project_id: string | null;
   created_at: string;
   updated_at: string;
 }
 
-export function listFunctions(userId?: string): LambdaFunctionRow[] {
+export function listFunctions(userId?: string, projectId?: string): LambdaFunctionRow[] {
+  if (userId && projectId) {
+    return db
+      .prepare('SELECT * FROM functions WHERE (user_id = ? OR user_id IS NULL) AND project_id = ? ORDER BY updated_at DESC')
+      .all(userId, projectId) as LambdaFunctionRow[];
+  }
   if (userId) {
     return db
       .prepare('SELECT * FROM functions WHERE user_id = ? OR user_id IS NULL ORDER BY updated_at DESC')
       .all(userId) as LambdaFunctionRow[];
+  }
+  if (projectId) {
+    return db
+      .prepare('SELECT * FROM functions WHERE project_id = ? ORDER BY updated_at DESC')
+      .all(projectId) as LambdaFunctionRow[];
   }
   return db
     .prepare('SELECT * FROM functions ORDER BY updated_at DESC')
@@ -224,17 +253,18 @@ export function createFunction(
   packages?: string,
   entryPoint?: string | null,
   userId?: string,
+  projectId?: string | null,
 ): LambdaFunctionRow {
   const now = new Date().toISOString();
   db.prepare(
-    'INSERT INTO functions (id, name, runtime, code, packages, entry_point, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-  ).run(id, name, runtime, code, packages || '', entryPoint || null, userId || null, now, now);
+    'INSERT INTO functions (id, name, runtime, code, packages, entry_point, user_id, project_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  ).run(id, name, runtime, code, packages || '', entryPoint || null, userId || null, projectId || null, now, now);
   return getFunction(id)!;
 }
 
 export function updateFunction(
   id: string,
-  fields: { name?: string; runtime?: string; code?: string; packages?: string; entryPoint?: string | null },
+  fields: { name?: string; runtime?: string; code?: string; packages?: string; entryPoint?: string | null; projectId?: string | null },
 ): LambdaFunctionRow | undefined {
   const existing = getFunction(id);
   if (!existing) return undefined;
@@ -247,6 +277,7 @@ export function updateFunction(
       code = ?,
       entry_point = ?,
       packages = ?,
+      project_id = ?,
       updated_at = ?
      WHERE id = ?`,
   ).run(
@@ -255,6 +286,7 @@ export function updateFunction(
     fields.code ?? existing.code,
     fields.entryPoint !== undefined ? fields.entryPoint : existing.entry_point,
     fields.packages ?? existing.packages,
+    fields.projectId !== undefined ? fields.projectId : existing.project_id,
     now,
     id,
   );
@@ -409,4 +441,100 @@ export function createUser(email: string, passwordHash: string): UserRow {
   }
 
   return getUserById(id)!;
+}
+
+// ---------------------------------------------------------------------------
+// Projects — named groupings of related resources
+// ---------------------------------------------------------------------------
+
+export interface ProjectRow {
+  id: string;
+  name: string;
+  description: string;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export function listProjects(userId?: string): ProjectRow[] {
+  if (userId) {
+    return db
+      .prepare('SELECT * FROM projects WHERE user_id = ? ORDER BY created_at DESC')
+      .all(userId) as ProjectRow[];
+  }
+  return db
+    .prepare('SELECT * FROM projects ORDER BY created_at DESC')
+    .all() as ProjectRow[];
+}
+
+export function getProject(id: string, userId?: string): ProjectRow | undefined {
+  const row = db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as ProjectRow | undefined;
+  if (row && userId && row.user_id !== userId) return undefined;
+  return row;
+}
+
+export function createProject(name: string, description: string, userId: string): ProjectRow {
+  const id = `proj-${Math.random().toString(36).slice(2, 8)}`;
+  const now = new Date().toISOString();
+  db.prepare(
+    'INSERT INTO projects (id, name, description, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+  ).run(id, name, description, userId, now, now);
+  return getProject(id)!;
+}
+
+export function updateProject(id: string, fields: { name?: string; description?: string }): ProjectRow | undefined {
+  const existing = getProject(id);
+  if (!existing) return undefined;
+  const now = new Date().toISOString();
+  db.prepare(
+    'UPDATE projects SET name = ?, description = ?, updated_at = ? WHERE id = ?',
+  ).run(fields.name ?? existing.name, fields.description ?? existing.description, now, id);
+  return getProject(id)!;
+}
+
+export function deleteProject(id: string): boolean {
+  // Unlink all resources before deleting the project.
+  db.prepare('UPDATE functions SET project_id = NULL WHERE project_id = ?').run(id);
+  db.prepare('UPDATE routes SET project_id = NULL WHERE project_id = ?').run(id);
+  db.prepare('UPDATE bucket_owners SET project_id = NULL WHERE project_id = ?').run(id);
+  db.prepare('UPDATE database_connections SET project_id = NULL WHERE project_id = ?').run(id);
+  const result = db.prepare('DELETE FROM projects WHERE id = ?').run(id);
+  return result.changes > 0;
+}
+
+/** Set the project for a resource.  The table/column are trusted inputs. */
+export function setResourceProject(
+  table: 'functions' | 'routes' | 'bucket_owners' | 'database_connections',
+  idColumn: string,
+  resourceId: string,
+  projectId: string | null,
+): boolean {
+  const result = db.prepare(
+    `UPDATE ${table} SET project_id = ? WHERE ${idColumn} = ?`,
+  ).run(projectId, resourceId);
+  return result.changes > 0;
+}
+
+/** Summarise all resources currently linked to a project.
+ *  Container count must be resolved by the caller via Docker labels. */
+export function getProjectResourceSummary(projectId: string): {
+  containers: number;
+  functions: number;
+  buckets: number;
+  routes: number;
+  databases: number;
+} {
+  const fnCount = (db.prepare(
+    'SELECT COUNT(*) AS c FROM functions WHERE project_id = ?',
+  ).get(projectId) as { c: number }).c;
+  const routeCount = (db.prepare(
+    'SELECT COUNT(*) AS c FROM routes WHERE project_id = ?',
+  ).get(projectId) as { c: number }).c;
+  const bucketCount = (db.prepare(
+    'SELECT COUNT(*) AS c FROM bucket_owners WHERE project_id = ?',
+  ).get(projectId) as { c: number }).c;
+  const dbCount = (db.prepare(
+    'SELECT COUNT(*) AS c FROM database_connections WHERE project_id = ?',
+  ).get(projectId) as { c: number }).c;
+  return { containers: 0, functions: fnCount, buckets: bucketCount, routes: routeCount, databases: dbCount };
 }

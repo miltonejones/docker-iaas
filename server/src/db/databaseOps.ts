@@ -75,6 +75,7 @@ export interface DatabaseConnectionRow {
   engine: string;
   summary_json: string;
   encrypted_config: string;
+  project_id: string | null;
   created_at: string;
   updated_at: string;
   last_tested_at: string | null;
@@ -82,11 +83,21 @@ export interface DatabaseConnectionRow {
   last_test_error: string | null;
 }
 
-export function listDatabaseConnections(userId?: string): DatabaseConnectionRow[] {
+export function listDatabaseConnections(userId?: string, projectId?: string): DatabaseConnectionRow[] {
+  if (userId && projectId) {
+    return db
+      .prepare('SELECT * FROM database_connections WHERE (user_id = ? OR user_id IS NULL) AND project_id = ? ORDER BY updated_at DESC')
+      .all(userId, projectId) as DatabaseConnectionRow[];
+  }
   if (userId) {
     return db
       .prepare('SELECT * FROM database_connections WHERE user_id = ? OR user_id IS NULL ORDER BY updated_at DESC')
       .all(userId) as DatabaseConnectionRow[];
+  }
+  if (projectId) {
+    return db
+      .prepare('SELECT * FROM database_connections WHERE project_id = ? ORDER BY updated_at DESC')
+      .all(projectId) as DatabaseConnectionRow[];
   }
   return db
     .prepare('SELECT * FROM database_connections ORDER BY updated_at DESC')

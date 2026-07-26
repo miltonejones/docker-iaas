@@ -105,6 +105,7 @@ export interface RouteRow {
   method: string | null;
   path_pattern: string | null;
   user_id: string | null;
+  project_id: string | null;
   domain: string | null;
   domain_verified: number;
   domain_dns_managed: number;
@@ -113,9 +114,15 @@ export interface RouteRow {
   updated_at: string;
 }
 
-export function listRoutes(userId?: string): RouteRow[] {
+export function listRoutes(userId?: string, projectId?: string): RouteRow[] {
+  if (userId && projectId) {
+    return db.prepare('SELECT * FROM routes WHERE (user_id = ? OR user_id IS NULL) AND project_id = ? ORDER BY created_at DESC').all(userId, projectId) as RouteRow[];
+  }
   if (userId) {
     return db.prepare('SELECT * FROM routes WHERE user_id = ? OR user_id IS NULL ORDER BY created_at DESC').all(userId) as RouteRow[];
+  }
+  if (projectId) {
+    return db.prepare('SELECT * FROM routes WHERE project_id = ? ORDER BY created_at DESC').all(projectId) as RouteRow[];
   }
   return db.prepare('SELECT * FROM routes ORDER BY created_at DESC').all() as RouteRow[];
 }
@@ -200,11 +207,12 @@ export function createRoute(
   pathPattern?: string | null,
   userId?: string,
   displayName?: string | null,
+  projectId?: string | null,
 ): RouteRow {
   const now = new Date().toISOString();
   db.prepare(
-    'INSERT INTO routes (id, name, display_name, target_type, target_id, target_port, method, path_pattern, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-  ).run(id, name, displayName || null, targetType, targetId, targetPort, method || null, pathPattern || null, userId || null, now, now);
+    'INSERT INTO routes (id, name, display_name, target_type, target_id, target_port, method, path_pattern, user_id, project_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  ).run(id, name, displayName || null, targetType, targetId, targetPort, method || null, pathPattern || null, userId || null, projectId || null, now, now);
   return getRoute(id)!;
 }
 
