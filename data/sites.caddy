@@ -1,0 +1,13 @@
+
+
+gallery.dockyard-ai.com {
+    reverse_proxy console:4300 {
+        header_up Host gallery.dockyard-ai.com
+    }
+}
+
+storybook.dockyard-ai.com {
+    reverse_proxy console:4300 {
+        header_up Host storybook.dockyard-ai.com
+    }
+}
