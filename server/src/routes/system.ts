@@ -3,28 +3,29 @@ import { pingDocker, docker } from '../docker.js';
 import { PRESETS } from '../presets.js';
 import { getUsageSnapshot } from '../usage.js';
 import { listAuditLogs } from '../db/audit.js';
+import { requireAuth } from '../auth.js';
 
 export const systemRouter = Router();
 
 const POLL_MS = Number(process.env.USAGE_POLL_MS || 5000);
 
-systemRouter.get('/ping', async (_req: Request, res: Response) => {
+systemRouter.get('/ping', requireAuth, async (_req: Request, res: Response) => {
   res.json(await pingDocker());
 });
 
-systemRouter.get('/presets', (_req: Request, res: Response) => {
+systemRouter.get('/presets', requireAuth, (_req: Request, res: Response) => {
   res.json(PRESETS);
 });
 
 // One-shot usage snapshot.
-systemRouter.get('/usage', async (_req: Request, res: Response) => {
+systemRouter.get('/usage', requireAuth, async (_req: Request, res: Response) => {
   res.json(await getUsageSnapshot());
 });
 
 // Return host ports currently published by running containers, so the launch
 // flow can warn about conflicts before creating a new container.
 // Build-cache detail extracted from docker system df.
-systemRouter.get('/build-cache', async (_req: Request, res: Response) => {
+systemRouter.get('/build-cache', requireAuth, async (_req: Request, res: Response) => {
   try {
     const data: any = await new Promise((resolve, reject) => {
       (docker as any).modem.dial(
@@ -48,7 +49,7 @@ systemRouter.get('/build-cache', async (_req: Request, res: Response) => {
 });
 
 // Prune build cache.
-systemRouter.post('/build-cache/prune', async (_req: Request, res: Response) => {
+systemRouter.post('/build-cache/prune', requireAuth, async (_req: Request, res: Response) => {
   try {
     const data: any = await new Promise((resolve, reject) => {
       (docker as any).modem.dial(
@@ -66,7 +67,7 @@ systemRouter.post('/build-cache/prune', async (_req: Request, res: Response) => 
   }
 });
 
-systemRouter.get('/used-ports', async (_req: Request, res: Response) => {
+systemRouter.get('/used-ports', requireAuth, async (_req: Request, res: Response) => {
   try {
     const list = await docker.listContainers({ all: true });
     const used = new Set<number>();
@@ -114,7 +115,7 @@ systemRouter.get('/usage/stream', async (req: Request, res: Response) => {
 });
 
 // GET /api/system/audit?limit=50
-systemRouter.get('/audit', (req: Request, res: Response) => {
+systemRouter.get('/audit', requireAuth, (req: Request, res: Response) => {
   try {
     const raw = req.query.limit;
     const limit = typeof raw === 'string' ? Math.min(Math.max(1, parseInt(raw, 10) || 50), 1000) : 50;

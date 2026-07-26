@@ -131,7 +131,7 @@ export function createApp(): express.Express {
 
   app.use('/api/containers', requireAuth, containersRouter);
   app.use('/api/images', requireAuth, imagesRouter);
-  app.use('/api/system', requireAuth, systemRouter);
+  app.use('/api/system', systemRouter);
   app.use('/api/lambda', requireAuth, lambdaRouter);
   app.use('/api/gateway', requireAuth, gatewayRouter);
   app.use('/api/volumes', requireAuth, volumesRouter);
