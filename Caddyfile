@@ -1,3 +1,6 @@
 dockyard-ai.com {
   reverse_proxy console:4300
 }
+
+# Custom-domain site blocks managed by the console — never edit this line.
+import /data/sites/*.caddy
