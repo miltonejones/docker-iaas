@@ -63,7 +63,7 @@ try {
 function setupGitAuth(cwd, token) {
   const ghToken = token || process.env.GITHUB_TOKEN;
   if (!ghToken) return null;
-  process.env.GIT_ASKPASS = 'true';
+  const savedToken = process.env.GITHUB_TOKEN;
   process.env.GITHUB_TOKEN = ghToken;
   const askpass = path.join(os.tmpdir(), `git-askpass-${Date.now()}`);
   fs.writeFileSync(askpass, `#!/bin/sh\necho "$GITHUB_TOKEN"`, { mode: 0o700 });
@@ -72,13 +72,14 @@ function setupGitAuth(cwd, token) {
     execSync("git remote set-url origin https://github.com/miltonejones/docker-iaas.git",
       { cwd, timeout: 5_000 });
   } catch { /* best-effort */ }
-  return askpass;
+  return { file: askpass, savedToken };
 }
 
-function teardownGitAuth(askpass) {
+function teardownGitAuth(state) {
   delete process.env.GIT_ASKPASS;
-  if (askpass) {
-    try { fs.unlinkSync(askpass); } catch {}
+  if (state?.savedToken !== undefined) process.env.GITHUB_TOKEN = state.savedToken;
+  if (state?.file) {
+    try { fs.unlinkSync(state.file); } catch {}
   }
 }
 
