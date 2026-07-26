@@ -818,6 +818,7 @@ export function toMcpSchema(t: ToolSchema): {
 // Build assistant-native tool definitions, overlaying Claude-optimised descriptions.
 // `descriptions` maps tool name → assistant-specific description.
 // `extra` contains assistant-only tools (wait, issues, consumer, etc).
+// `excludeNames` lists tool names provided by separate modules (DATABASE_ASSISTANT_TOOLS, etc).
 export function buildAssistantTools(
   descriptions: Record<string, string>,
   extra: Array<{
@@ -825,17 +826,20 @@ export function buildAssistantTools(
     description: string;
     input_schema: { type: 'object'; properties: Record<string, unknown>; required?: string[] };
   }>,
+  excludeNames: Set<string> = new Set(),
 ) {
   return [
-    ...COMMON_TOOL_SCHEMAS.map((t) => ({
-      name: t.name,
-      description: descriptions[t.name] || t.description,
-      input_schema: {
-        type: 'object' as const,
-        properties: t.properties as Record<string, unknown>,
-        ...(t.required?.length ? { required: t.required } : {}),
-      },
-    })),
+    ...COMMON_TOOL_SCHEMAS
+      .filter((t) => !excludeNames.has(t.name))
+      .map((t) => ({
+        name: t.name,
+        description: descriptions[t.name] || t.description,
+        input_schema: {
+          type: 'object' as const,
+          properties: t.properties as Record<string, unknown>,
+          ...(t.required?.length ? { required: t.required } : {}),
+        },
+      })),
     ...extra,
   ];
 }
