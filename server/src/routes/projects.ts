@@ -29,7 +29,8 @@ function toJson(r: ProjectRow) {
 projectsRouter.get('/', (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
-    res.json(listProjects(userId).map(toJson));
+    const projects = listProjects(userId);
+    res.json(projects.map((r) => ({ ...toJson(r), summary: getProjectResourceSummary(r.id) })));
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
