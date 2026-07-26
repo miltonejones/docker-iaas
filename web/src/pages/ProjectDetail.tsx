@@ -179,8 +179,12 @@ export function ProjectDetailPage() {
   }
 
   async function addResource(r: UnassignedResource) {
+    // Containers are assigned to projects via labels at launch time — they
+    // can't be linked/unlinked via the DB table API.
+    if (r.kind === 'container') return;
+
     const tableMap: Record<string, string> = {
-      container: 'undefined',
+      container: '', // unreachable
       function: 'functions',
       route: 'routes',
       bucket: 'bucket_owners',
