@@ -8,9 +8,17 @@ pass()  { echo -e "${GREEN}PASS${NC} $*"; }
 fail()  { echo -e "${RED}FAIL${NC} $*"; }
 info()  { echo -e "${YELLOW}INFO${NC} $*"; }
 
+# Use CI override if it exists (remaps missing secret files to /dev/null).
+if [ -f docker-compose.ci.yml ]; then
+  COMPOSE_ARGS="-f docker-compose.yml -f docker-compose.ci.yml"
+  info "Using CI compose override"
+else
+  COMPOSE_ARGS=""
+fi
+
 cleanup() {
   info "Cleaning up…"
-  docker compose down --remove-orphans 2>/dev/null || true
+  docker compose $COMPOSE_ARGS down --remove-orphans 2>/dev/null || true
   [ -n "${SECRET_FILE:-}" ] && rm -f "$SECRET_FILE"
   [ -n "${JWT_SECRET:-}" ] && unset JWT_SECRET
 }
@@ -23,19 +31,22 @@ SECRET_FILE=$(mktemp)
 echo "smoke-test-jwt-secret-$(date +%s)" > "$SECRET_FILE"
 
 info "Building container images (console + consumer)…"
-docker compose build console consumer 2>&1 | tail -5
+docker compose $COMPOSE_ARGS build console consumer 2>&1 | tail -5
 
 # ── Test 1: Consumer JWT boot in Docker ───────────────────────────────────
 info "Test 1: Consumer boots without JWT FATAL error"
 
 # Start both services.  console depends_on nothing, consumer depends_on console.
-# Pass the JWT secret via env var override so both services get it.
-JWT_SECRET_FILE="$SECRET_FILE" docker compose up console consumer -d 2>&1 | tail -3
+# Pass the JWT secret both as a Docker secret AND as an env var fallback.
+# The consumer reads /run/secrets/jwt_secret first, falls back to JWT_SECRET.
+JWT_SECRET="$(cat "$SECRET_FILE")" \
+  JWT_SECRET_FILE="$SECRET_FILE" \
+  docker compose $COMPOSE_ARGS up console consumer -d 2>&1 | tail -3
 
 # Wait for services to be healthy
 sleep 3
 
-CONSUMER_LOGS=$(docker compose logs consumer 2>&1 || true)
+CONSUMER_LOGS=$(docker compose $COMPOSE_ARGS logs consumer 2>&1 || true)
 if echo "$CONSUMER_LOGS" | grep -q "FATAL.*JWT secret not found"; then
   fail "Consumer failed with JWT FATAL error"
 else
