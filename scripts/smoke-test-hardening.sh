@@ -18,10 +18,11 @@ else
 fi
 
 cleanup() {
+  set +e
   info "Cleaning up…"
-  docker compose $COMPOSE_ARGS down --remove-orphans 2>/dev/null || true
-  [ -n "${SECRET_FILE:-}" ] && rm -f "$SECRET_FILE"
-  [ -n "${JWT_SECRET:-}" ] && unset JWT_SECRET
+  timeout 10 docker compose $COMPOSE_ARGS down --remove-orphans 2>/dev/null
+  rm -f "${SECRET_FILE:-}"
+  true
 }
 trap cleanup EXIT
 
