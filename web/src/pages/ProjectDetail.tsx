@@ -152,47 +152,41 @@ export function ProjectDetailPage() {
   if (!project || !pid) return <p className="muted empty">Loading…</p>;
 
   async function removeResource(r: Resource) {
-    const tableMap: Record<string, string> = {
-      container: 'undefined', // containers use Docker labels, not DB
-      function: 'functions',
-      route: 'routes',
-      bucket: 'bucket_owners',
-      database: 'database_connections',
-    };
-    const resourceId: string = r.kind === 'bucket' ? r.data.name : (r.data as any).id;
-
-    // For containers: we can't set project_id via the DB table, but we handle via link/unlink API.
-    // For now, use the generic unlink for everything.
     try {
       if (r.kind === 'container') {
-        // Containers use labels. We'll use the env update endpoint to clear it.
-        // Actually, let's use the generic approach: just reload.
-        // For now: containers can only be added via creation with projectId set.
-        return;
+        await api.containerUpdateEnv(r.data.id, undefined, undefined, undefined, undefined, null);
+      } else {
+        const tableMap: Record<string, string> = {
+          container: '',
+          function: 'functions',
+          route: 'routes',
+          bucket: 'bucket_owners',
+          database: 'database_connections',
+        };
+        const resourceId: string = r.kind === 'bucket' ? r.data.name : (r.data as any).id;
+        await api.projectRemoveResource(pid!, tableMap[r.kind]!, resourceId);
       }
-      await api.projectRemoveResource(pid!, tableMap[r.kind]!, resourceId);
       load();
-      if (selected && getResourceId(selected) === resourceId) setSelected(null);
+      if (selected && getResourceId(selected) === getResourceId(r)) setSelected(null);
     } catch (err) {
       console.error('remove resource', err);
     }
   }
 
   async function addResource(r: UnassignedResource) {
-    // Containers are assigned to projects via labels at launch time — they
-    // can't be linked/unlinked via the DB table API.
-    if (r.kind === 'container') return;
-
-    const tableMap: Record<string, string> = {
-      container: '', // unreachable
-      function: 'functions',
-      route: 'routes',
-      bucket: 'bucket_owners',
-      database: 'database_connections',
-    };
     try {
-      const rid: string = r.id;
-      await api.projectAddResource(pid!, tableMap[r.kind]!, rid);
+      if (r.kind === 'container') {
+        await api.containerUpdateEnv(r.id, undefined, undefined, undefined, undefined, pid!);
+      } else {
+        const tableMap: Record<string, string> = {
+          container: '',
+          function: 'functions',
+          route: 'routes',
+          bucket: 'bucket_owners',
+          database: 'database_connections',
+        };
+        await api.projectAddResource(pid!, tableMap[r.kind]!, r.id as string);
+      }
       load();
       setAddMode(false);
       setSearch('');

@@ -188,11 +188,12 @@ export const api = {
     persist?: boolean,
     description?: string,
     protectedFlag?: boolean,
+    projectId?: string | null,
   ) =>
     fetch(`/api/containers/${id}/env`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ env, persist, description, protected: protectedFlag }),
+      body: JSON.stringify({ env, persist, description, protected: protectedFlag, projectId }),
     }).then((r) =>
       json<{
         id: string;

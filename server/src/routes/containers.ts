@@ -502,17 +502,19 @@ containersRouter.post('/:id/exec/stream', async (req: Request, res: Response) =>
 // running container, so this stops → snapshots config → removes (keeping
 // volumes) → recreates with merged env/labels → starts.
 containersRouter.post('/:id/env', async (req: Request, res: Response) => {
-  const { env: newEnv, persist, description, protected: nextProtected } = req.body as {
+  const { env: newEnv, persist, description, protected: nextProtected, projectId } = req.body as {
     env?: { key: string; value: string }[];
     persist?: boolean;
     description?: string;
     protected?: boolean;
+    projectId?: string | null;
   };
   const hasEnvUpdate = Array.isArray(newEnv) && newEnv.length > 0;
   const hasDescriptionUpdate = typeof description === 'string';
   const hasProtectedUpdate = typeof nextProtected === 'boolean';
-  if (!hasEnvUpdate && !hasDescriptionUpdate && !hasProtectedUpdate) {
-    res.status(400).json({ error: 'Provide a non-empty env array of { key, value }, a description string, and/or a protected boolean.' });
+  const hasProjectIdUpdate = projectId !== undefined;
+  if (!hasEnvUpdate && !hasDescriptionUpdate && !hasProtectedUpdate && !hasProjectIdUpdate) {
+    res.status(400).json({ error: 'Provide a non-empty env array of { key, value }, a description string, a protected boolean, and/or a projectId.' });
     return;
   }
   if (hasEnvUpdate) {
@@ -571,6 +573,10 @@ containersRouter.post('/:id/env', async (req: Request, res: Response) => {
     if (hasProtectedUpdate) {
       if (nextProtected) mergedLabels['iaas.protected'] = 'true';
       else delete mergedLabels['iaas.protected'];
+    }
+    if (hasProjectIdUpdate) {
+      if (projectId) mergedLabels['iaas.project_id'] = projectId;
+      else delete mergedLabels['iaas.project_id'];
     }
 
     // Snapshot the existing config we need to preserve, including the
