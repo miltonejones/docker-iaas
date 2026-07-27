@@ -888,6 +888,8 @@ export function AssistantBar({
           String(input.code ?? ''),
           str(input.packages),
           str(input.entryPoint),
+          parseLambdaFiles(input.files),
+          str(input.projectId),
         );
 
       case 'update_lambda_function':
@@ -898,6 +900,7 @@ export function AssistantBar({
           packages: str(input.packages),
           entryPoint: str(input.entryPoint),
           files: parseLambdaFiles(input.files),
+          projectId: input.projectId !== undefined ? (input.projectId as string | null) : undefined,
         });
 
       case 'replace_lambda_function_files': {
@@ -1122,6 +1125,7 @@ export function AssistantBar({
           name: String(input.name ?? ''),
           engine: input.engine as 'mysql' | 'mongodb',
           config: (input.config ?? {}) as Record<string, unknown>,
+          projectId: str(input.projectId),
         });
 
       case 'update_database_connection': {

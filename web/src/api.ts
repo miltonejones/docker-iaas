@@ -326,11 +326,12 @@ export const api = {
     packages?: string,
     entryPoint?: string,
     files?: LambdaFile[],
+    projectId?: string,
   ) =>
     fetch('/api/lambda/functions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, runtime, code, packages, entryPoint, files }),
+      body: JSON.stringify({ name, runtime, code, packages, entryPoint, files, projectId }),
     }).then((r) => json<LambdaFunction>(r)),
 
   lambdaUpdateFunction: (
@@ -342,6 +343,7 @@ export const api = {
       packages?: string;
       entryPoint?: string;
       files?: LambdaFile[];
+      projectId?: string | null;
     },
   ) =>
     fetch(`/api/lambda/functions/${id}`, {
@@ -543,6 +545,7 @@ export const api = {
     name: string;
     engine: string;
     config: Record<string, unknown>;
+    projectId?: string;
   }) =>
     fetch('/api/databases/connections', {
       method: 'POST',
