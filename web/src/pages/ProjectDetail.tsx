@@ -5,6 +5,7 @@ import { api } from '../api';
 import { AppIcon } from '../icons';
 import { timeAgo } from '../format';
 import { onRefresh } from '../refresh';
+import { emitOpenAssistant } from '../assistant';
 
 type Resource =
   | { kind: 'container'; data: Container }
@@ -207,7 +208,7 @@ export function ProjectDetailPage() {
   function getResourceName(r: Resource): string {
     if (r.kind === 'container') return r.data.name;
     if (r.kind === 'function') return r.data.name;
-    if (r.kind === 'route') return r.data.displayName || r.data.name;
+    if (r.kind === 'route') return (r.data as GatewayRoute).pathPattern || (r.data as GatewayRoute).name;
     if (r.kind === 'bucket') return r.data.name;
     return r.data.name;
   }
@@ -392,6 +393,9 @@ function ResourceDetailPane({ resource, onClose }: { resource: Resource; onClose
         <Link to={detailLink()} className="btn btn--ghost btn--sm">
           <AppIcon name="external" /> View full detail
         </Link>
+        <button className="btn btn--ghost btn--sm" onClick={() => emitOpenAssistant(buildAssistantPrompt(r))}>
+          <AppIcon name="assistant" /> Ask Dockyard
+        </button>
       </div>
     </div>
   );
@@ -479,4 +483,28 @@ function formatBytes(bytes: number): string {
   const units = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(1024));
   return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
+}
+
+function buildAssistantPrompt(r: Resource): string {
+  if (r.kind === 'container') {
+    const c = r.data as Container;
+    return `Explain this Docker container in my project:\n- Name: ${c.name}\n- Image: ${c.image}\n- State: ${c.state}\n${c.description ? `- Description: ${c.description}\n` : ''}What is this container for, and how should I manage it?`;
+  }
+  if (r.kind === 'function') {
+    const f = r.data as LambdaFunction;
+    return `Explain this Lambda function in my project:\n- Name: ${f.name}\n- Runtime: ${f.runtime}\n- Last updated: ${new Date(f.updatedAt).toLocaleString()}\nWhat does this function likely do, and how should I use it?`;
+  }
+  if (r.kind === 'route') {
+    const rt = r.data as GatewayRoute;
+    return `Explain this gateway route in my project:\n- Name: ${rt.name}\n- Target: ${rt.targetType} → ${rt.targetId}${rt.targetPort ? `:${rt.targetPort}` : ''}\n${rt.method ? `- Method: ${rt.method}\n` : ''}${rt.pathPattern ? `- Path: ${rt.pathPattern}\n` : ''}${rt.domain ? `- Domain: ${rt.domain}\n` : ''}What does this route expose, and how is traffic routed?`;
+  }
+  if (r.kind === 'bucket') {
+    const b = r.data as Bucket;
+    return `Explain this storage bucket in my project:\n- Name: ${b.name}\n- Objects: ${b.objectCount ?? 'unknown'}\n- Size: ${b.size != null ? formatBytes(b.size) : 'unknown'}\n- Protected: ${b.protected ? 'Yes' : 'No'}\nWhat is this bucket likely used for, and how should I manage its contents?`;
+  }
+  if (r.kind === 'database') {
+    const db = r.data as DatabaseConnectionDetail;
+    return `Explain this database connection in my project:\n- Name: ${db.name}\n- Engine: ${db.engine}\n- Status: ${db.lastTestStatus || 'untested'}\nWhat is this database for, and how should I interact with it?`;
+  }
+  throw new Error(`Unknown resource kind: ${(r as any).kind}`);
 }
