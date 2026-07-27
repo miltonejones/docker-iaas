@@ -74,7 +74,7 @@ export function ProjectSelector({ value, onChange }: Props) {
         <div className="project-selector__menu">
           <button
             className={`project-selector__item${!value ? ' project-selector__item--active' : ''}`}
-            onClick={() => select(null)}
+            onMouseDown={(e) => { e.preventDefault(); select(null); }}
           >
             <AppIcon name="project" /> All Projects
           </button>
@@ -82,7 +82,7 @@ export function ProjectSelector({ value, onChange }: Props) {
             <button
               key={p.id}
               className={`project-selector__item${p.id === value ? ' project-selector__item--active' : ''}`}
-              onClick={() => select(p.id)}
+              onMouseDown={(e) => { e.preventDefault(); select(p.id); }}
             >
               <AppIcon name="project" /> {p.name}
             </button>
