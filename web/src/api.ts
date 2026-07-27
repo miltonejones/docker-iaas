@@ -654,22 +654,22 @@ export const api = {
    *  conversation so far — pass it on every follow-up prompt in the same
    *  session so the model retains context (e.g. "the function" resolving to
    *  whatever was just discussed), not just the latest message in isolation. */
-  assistantPlanStream: (prompt: string, messages?: unknown[], signal?: AbortSignal) =>
+  assistantPlanStream: (prompt: string, messages?: unknown[], signal?: AbortSignal, assistantId?: string) =>
     fetch('/api/assistant/plan', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, messages }),
+      body: JSON.stringify({ prompt, messages, assistantId }),
       signal,
     }).then((r) => {
       if (!r.ok) throw new Error(`Assistant plan failed: ${r.statusText}`);
       return parseSSE(r);
     }),
 
-  assistantConfirm: (messages: unknown[], results: { toolUseId: string; ok: boolean; content: unknown }[]) =>
+  assistantConfirm: (messages: unknown[], results: { toolUseId: string; ok: boolean; content: unknown }[], assistantId?: string) =>
     fetch('/api/assistant/confirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, results }),
+      body: JSON.stringify({ messages, results, assistantId }),
     }).then((r) => json<AssistantTurn>(r)),
 
   /** Streaming version of assistantConfirm — same SSE protocol as
@@ -678,11 +678,12 @@ export const api = {
     messages: unknown[],
     results: { toolUseId: string; ok: boolean; content: unknown }[],
     signal?: AbortSignal,
+    assistantId?: string,
   ) =>
     fetch('/api/assistant/confirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, results }),
+      body: JSON.stringify({ messages, results, assistantId }),
       signal,
     }).then((r) => {
       if (!r.ok) throw new Error(`Assistant confirm failed: ${r.statusText}`);
