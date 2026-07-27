@@ -170,8 +170,8 @@ const ASSISTANT_ONLY_TOOLS: Array<{
           description: "Issue category",
         },
         details: {
-          type: "string",
-          description: "Detailed description, context, error messages, and reproduction steps",
+          type: "object",
+          description: "Structured details about the issue (messages, context, error data)",
         },
       },
       required: ["summary", "category"],
@@ -207,18 +207,18 @@ const ASSISTANT_ONLY_TOOLS: Array<{
   {
     name: "update_issue",
     description:
-      "Update the summary, status, or details of an issue. The user confirms before the update.",
+      "Update the status, resolution, or resolved-by field of an issue. The user confirms before the update.",
     input_schema: {
       type: "object",
       properties: {
         issueId: { type: "string", description: "Issue id" },
-        summary: { type: "string", description: "Updated summary" },
         status: {
           type: "string",
           enum: ["open", "in_progress", "fixed", "failed", "closed"],
           description: "New status",
         },
-        details: { type: "string", description: "Updated details" },
+        resolution: { type: "string", description: "Resolution description (e.g. fix summary)" },
+        resolvedBy: { type: "string", description: "Who or what resolved the issue" },
       },
       required: ["issueId"],
     },
@@ -282,6 +282,7 @@ const ASSISTANT_ONLY_TOOLS: Array<{
       type: "object",
       properties: {
         id: { type: "string", description: "Function id, e.g. fn-abc123" },
+        entryPoint: { type: "string", description: "Entry point filename (e.g. \"index.js\")" },
         files: {
           type: "array",
           items: {

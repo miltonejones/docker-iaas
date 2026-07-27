@@ -148,10 +148,13 @@ const DESTRUCTIVE = new Set([
   'delete_image',
   'delete_bucket',
   'delete_bucket_object',
+  'delete_database_connection',
+  'delete_project',
   'prune_images',
   'prune_build_cache',
   'delete_issue',
   'clear_issues',
+  'restore_database_backup',
 ]);
 
 /** autoResolved entries only carry a toolUseId — look the tool's name back
@@ -971,7 +974,9 @@ export function AssistantBar({
             : undefined,
           ports: Array.isArray(input.ports) ? (input.ports as { container: string; host: number }[]) : undefined,
           env: Array.isArray(input.env) ? (input.env as { key: string; value: string }[]) : undefined,
-          autoStart: true,
+          volumes: Array.isArray(input.volumes) ? (input.volumes as string[]) : undefined,
+          autoStart: input.autoStart !== false,
+          projectId: str(input.projectId) || undefined,
           assistantManaged: true,
         });
 
