@@ -211,20 +211,21 @@ async function executeReadOnlyTool(
       const containers = await containerService.list(userId, input.projectId as string | undefined);
       return containers.map((c) => ({
         id: c.id, name: c.name, image: c.image, state: c.state,
-        description: c.description, protected: c.protected,
+        description: c.description, protected: c.protected, projectId: c.projectId,
       }));
     }
     case "list_functions":
       return lambdaService.listFunctionsList(userId, input.projectId as string | undefined).map((f) => ({
-        id: f.id, name: f.name, runtime: f.runtime,
+        id: f.id, name: f.name, runtime: f.runtime, projectId: f.projectId,
       }));
     case "list_gateway_routes":
       return gatewayService.list(userId, input.projectId as string | undefined).map((r) => ({
         id: r.id, name: r.name, targetType: r.targetType,
         targetId: r.targetId, method: r.method, pathPattern: r.pathPattern,
+        projectId: r.projectId, domain: r.domain,
       }));
     case "list_buckets":
-      return (await bucketService.list(userId, input.projectId as string | undefined)).map((b) => ({ name: b.name, protected: b.protected }));
+      return (await bucketService.list(userId, input.projectId as string | undefined)).map((b) => ({ name: b.name, protected: b.protected, projectId: b.projectId }));
     case "list_images": {
       const images = await imageService.list();
       return images.map((img) => ({ id: img.id, tags: img.tags }));
