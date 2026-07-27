@@ -173,7 +173,7 @@ export async function enableDomain(id: string, userId?: string) {
     setRouteDomainDnsManaged(route.id, pf.matchedZone.id);
     await appendCaddySite(route.domain);
     await reloadCaddy();
-    verifyRouteDomain(route.id);
+    await verifyRouteDomain(route.id);
     recordAuditLog('gateway.domain.enable', 'route', route.id, userId, route.domain);
 
     const updated = getRoute(route.id, userId);
@@ -183,7 +183,7 @@ export async function enableDomain(id: string, userId?: string) {
   if (await domainResolves(route.domain)) {
     await appendCaddySite(route.domain);
     await reloadCaddy();
-    verifyRouteDomain(route.id);
+    await verifyRouteDomain(route.id);
 
     const updated = getRoute(route.id, userId);
     return { ...toJson(updated!), dnsInstructions: null };
