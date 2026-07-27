@@ -103,10 +103,10 @@ export async function remove(name: string, userId?: string): Promise<void> {
   }
 }
 
-export function setProtected(name: string, protect: boolean, projectId?: string | null): void {
+export function setProtected(name: string, protect: boolean, projectId?: string | null, userId?: string): void {
   setBucketProtected(name, protect);
-  if (projectId !== undefined) {
-    setBucketProjectId(name, projectId);
+  if (projectId !== undefined && userId) {
+    setBucketProjectId(name, projectId, userId);
   }
 }
 
