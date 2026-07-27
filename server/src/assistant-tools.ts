@@ -43,13 +43,13 @@ const ASSISTANT_DESCRIPTIONS: Record<string, string> = {
   prune_images:
     "Prune dangling Docker images and stopped containers to reclaim disk space. The user confirms before pruning.",
   create_bucket:
-    "Create a new storage bucket. Requires a name. Pass protected: true to prevent accidental deletion. The user confirms before creation.",
+    "Create a new storage bucket. Requires a name. Pass protected: true to prevent accidental deletion, and projectId to assign it to a project immediately. The user confirms before creation.",
   delete_bucket:
     "Delete a storage bucket. The bucket must be empty. The user confirms before deletion.",
   delete_bucket_object:
     "Delete a specific object (file) from a bucket by key. The user confirms before deletion.",
   update_bucket:
-    "Toggle the protected flag on a bucket. Pass the bucket name and the new protected value (true/false). The user confirms before the update.",
+    "Toggle the protected flag on a bucket and/or assign it to a project. Pass the bucket name, the new protected value (true/false), and optionally projectId. The user confirms before the update.",
   write_bucket_object:
     "Write a text object (file) to a bucket at the given key. If an object already exists at that key, it is overwritten.",
   copy_host_file_to_bucket:

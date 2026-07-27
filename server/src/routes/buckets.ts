@@ -26,7 +26,8 @@ bucketsRouter.get('/:name', (req: Request, res: Response) => {
 
 bucketsRouter.post('/:name/protected', express.json(), (req: Request, res: Response) => {
   const protect = !!req.body?.protected;
-  bucketService.setProtected(req.params.name, protect);
+  const projectId = typeof req.body?.projectId === 'string' ? req.body.projectId.trim() : undefined;
+  bucketService.setProtected(req.params.name, protect, projectId);
   res.json({ name: req.params.name, protected: protect });
 });
 
@@ -34,8 +35,9 @@ bucketsRouter.post('/', express.json(), async (req: Request, res: Response) => {
   const name = (req.body?.name || '').trim();
   const userId = getAuthUser(req)?.userId;
   const protect = !!req.body?.protected;
+  const projectId = typeof req.body?.projectId === 'string' ? req.body.projectId.trim() : undefined;
   try {
-    const result = await bucketService.create(userId, name, protect);
+    const result = await bucketService.create(userId, name, protect, projectId);
     res.status(201).json(result);
   } catch (err) {
     sendError(res, err);

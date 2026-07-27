@@ -401,10 +401,10 @@ export function getUserByEmail(email: string): UserRow | undefined {
 // separately.
 // ---------------------------------------------------------------------------
 
-export function setBucketOwner(bucketName: string, userId: string, protect = false): void {
+export function setBucketOwner(bucketName: string, userId: string, protect = false, projectId?: string | null): void {
   db.prepare(
-    'INSERT OR REPLACE INTO bucket_owners (bucket_name, user_id, protected, created_at) VALUES (?, ?, ?, ?)',
-  ).run(bucketName, userId, protect ? 1 : 0, new Date().toISOString());
+    'INSERT OR REPLACE INTO bucket_owners (bucket_name, user_id, protected, project_id, created_at) VALUES (?, ?, ?, ?, ?)',
+  ).run(bucketName, userId, protect ? 1 : 0, projectId || null, new Date().toISOString());
 }
 
 export function getBucketOwner(bucketName: string): string | null {
