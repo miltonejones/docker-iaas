@@ -464,6 +464,7 @@ export const api = {
     targetPort?: number;
     method?: string;
     pathPattern?: string;
+    projectId?: string;
   }) =>
     fetch('/api/gateway', {
       method: 'POST',
