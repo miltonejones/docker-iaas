@@ -49,6 +49,7 @@ import * as lambdaService from "../services/lambda.js";
 import * as imageService from "../services/images.js";
 import * as systemService from "../services/system.js";
 import * as projectService from "../services/projects.js";
+import { get as getAssistant } from "../services/assistants.js";
 import * as volumeService from "../services/volumes.js";
 
 export const assistantRouter = Router();
@@ -452,6 +453,7 @@ async function respondStream(
   messages: Anthropic.MessageParam[],
   req: Request,
   res: Response,
+  opts?: { system?: string; tools?: Anthropic.Tool[] },
 ): Promise<void> {
   res.set({
     "Content-Type": "text/event-stream",
@@ -478,22 +480,40 @@ async function respondStream(
 // session — omit it, or send [], to start a fresh conversation).
 assistantRouter.post("/plan", async (req: Request, res: Response) => {
   try {
-    const { prompt, messages: prior } = req.body as {
+    const { prompt, messages: prior, assistantId } = req.body as {
       prompt?: string;
       messages?: Anthropic.MessageParam[];
+      assistantId?: string;
     };
     if (!prompt?.trim()) {
       res.status(400).json({ error: "A prompt is required." });
       return;
     }
+
+    // Resolve custom assistant if requested.
+    let customOpts: { system?: string; tools?: Anthropic.Tool[] } | undefined;
+    if (assistantId) {
+      const userId = getAuthUser(req)?.userId;
+      if (userId) {
+        try {
+          const assistant = getAssistant(assistantId, userId);
+          const allowedTools = new Set<string>(assistant.toolList);
+          customOpts = {
+            system: assistant.systemPrompt || SYSTEM,
+            tools: assistant.toolList.length > 0
+              ? tools.filter((t) => allowedTools.has(t.name))
+              : tools,
+          };
+        } catch { /* assistant not found — fall back to default */ }
+      }
+    }
+
     const messages: Anthropic.MessageParam[] = [
       ...(prior ?? []),
       { role: "user", content: prompt.trim() },
     ];
-    await respondStream(messages, req, res);
+    await respondStream(messages, req, res, customOpts);
   } catch (err) {
-    // If headers haven't been sent yet, this is a pre-stream error (e.g.
-    // body parse failure). Otherwise the error was already sent via SSE.
     if (!res.headersSent) {
       res.status(500).json({ error: (err as Error).message });
     }
@@ -879,6 +899,7 @@ async function streamTurn(
   messages: Anthropic.MessageParam[],
   onEvent: (e: SessionEvent) => void,
   signal?: AbortSignal,
+  opts?: { system?: string; tools?: Anthropic.Tool[] },
 ): Promise<void> {
   let aborted = false;
   const onAbort = () => { aborted = true; };
@@ -894,8 +915,8 @@ async function streamTurn(
       const stream = ac.client.messages.stream({
         model: ac.mainModel,
         max_tokens: 32000,
-        system: SYSTEM,
-        tools,
+        system: opts?.system ?? SYSTEM,
+        tools: opts?.tools ?? tools,
         messages,
       });
 

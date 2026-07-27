@@ -13,6 +13,7 @@ import type {
   AssistantSessionSummary,
   AssistantTurn,
   LambdaFile,
+  UserAssistant,
 } from '../types';
 
 type LogEntry = AssistantLogEntry;
@@ -252,6 +253,9 @@ export function AssistantBar({
   const [error, setError] = useState<string | null>(null);
   /** Live countdown state emitted by the server before a `wait` tool sleep. */
   const [waitState, setWaitState] = useState<{ total: number; remaining: number; reason?: string } | null>(null);
+  /** User-defined assistants for the picker and @name routing. */
+  const [assistants, setAssistants] = useState<UserAssistant[]>([]);
+  const [activeAssistantId, setActiveAssistantId] = useState<string | null>(null);
   // Keep the active conversation on its newest streamed or newly added entry.
   const logRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -767,7 +771,27 @@ export function AssistantBar({
     setBusy(false);
   }
 
+  // Load user-defined assistants for picker + @name routing.
+  useEffect(() => { api.assistantList().then(setAssistants).catch(() => {}); }, []);
+
+  function resolveAssistant(text: string): { text: string; assistantId?: string } {
+    const match = text.match(/^@(\S+)/);
+    if (match) {
+      const name = match[1].toLowerCase();
+      const found = assistants.find((a) => a.name.toLowerCase() === name);
+      if (found) {
+        setActiveAssistantId(found.id);
+        return { text: text.slice(match[0].length).trim(), assistantId: found.id };
+      }
+    }
+    return { text };
+  }
+
   async function askWithText(text: string) {
+    // Resolve @name prefix for user-defined assistants.
+    const { text: cleaned, assistantId } = resolveAssistant(text);
+    if (cleaned) text = cleaned;
+    const effectiveAssistantId = assistantId ?? activeAssistantId ?? undefined;
     setBusy(true);
     setError(null);
     setLog((l) => [...l, { kind: 'user', text }]);
@@ -787,7 +811,7 @@ export function AssistantBar({
       const request = contextPrompt
         ? `${contextPrompt}\n\nUser request: ${text}`
         : text;
-      const stream = await api.assistantPlanStream(request, rawMessages, abortRef.current!.signal);
+      const stream = await api.assistantPlanStream(request, rawMessages, abortRef.current!.signal, effectiveAssistantId);
       await consumeTurnStream(stream);
     } catch (err) {
       if ((err as Error).name === 'AbortError') return;
@@ -1747,6 +1771,22 @@ Ask Dockyard.ai
           </label>
           </div>
         </div>
+
+        {assistants.length > 0 && (
+          <div className="assistant-picker">
+            <select
+              value={activeAssistantId ?? ''}
+              onChange={(e) => setActiveAssistantId(e.target.value || null)}
+              className="input"
+              style={{ fontSize: 12, padding: '4px 6px' }}
+            >
+              <option value="">Dockyard (all tools)</option>
+              {assistants.map((a) => (
+                <option key={a.id} value={a.id}>{a.name} ({a.toolList.length} tools)</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {(pending.length === 0 || busy || pending.length > 0) && (
           <div className="assistant-input">
