@@ -39,7 +39,16 @@ function execInCaddy(cmd: string[]): Promise<string> {
           if (startErr) { reject(startErr); return; }
           let stdout = '';
           stream!.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
-          stream!.on('end', () => resolve(stdout));
+          stream!.on('end', () => {
+            exec!.inspect((inspectErr, data) => {
+              if (inspectErr) { reject(inspectErr); return; }
+              if (data?.ExitCode !== 0) {
+                reject(new Error(`caddy exec failed (exit ${data?.ExitCode}): ${cmd.join(' ')} → ${stdout.trim()}`));
+                return;
+              }
+              resolve(stdout);
+            });
+          });
           stream!.on('error', reject);
         });
       },
@@ -52,7 +61,7 @@ function execInCaddy(cmd: string[]): Promise<string> {
 function writeFileInCaddy(containerPath: string, content: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const encoded = Buffer.from(content, 'utf8').toString('base64');
-    // Ensure the parent directory exists first.
+    // Ensure the parent directory exists first, then decode and write.
     const dir = path.posix.dirname(containerPath);
     const mkdir = `mkdir -p ${dir}`;
     const write = `echo '${encoded}' | base64 -d > ${containerPath}`;
@@ -62,11 +71,17 @@ function writeFileInCaddy(containerPath: string, content: string): Promise<void>
         if (err) { reject(err); return; }
         exec!.start({ Detach: false, Tty: true }, (startErr, stream) => {
           if (startErr) { reject(startErr); return; }
-          let stderr = '';
-          stream!.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
+          let output = '';
+          stream!.on('data', (chunk: Buffer) => { output += chunk.toString(); });
           stream!.on('end', () => {
-            if (stderr.trim()) console.error('caddy write-file stderr:', stderr.trim());
-            resolve();
+            exec!.inspect((inspectErr, data) => {
+              if (inspectErr) { reject(inspectErr); return; }
+              if (data?.ExitCode !== 0) {
+                reject(new Error(`caddy write-file failed (exit ${data?.ExitCode}): ${output.trim()}`));
+                return;
+              }
+              resolve();
+            });
           });
           stream!.on('error', reject);
         });
