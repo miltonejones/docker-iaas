@@ -1105,17 +1105,32 @@ export function AssistantBar({
         return api.pruneBuildCache();
 
       case 'run_function': {
-        // The /run endpoint needs the function's actual code/runtime/entry
-        // (functionId alone only injects env vars), so load the saved function
-        // first, then run it with that id so its env vars apply too.
-        const fn = await api.lambdaGetFunction(String(input.id ?? ''));
+        // If the user passed a functionId, look up the saved function to get its
+        // runtime/code/entry.  If they passed ad-hoc runtime+code, run those directly.
+        const fnId = str(input.functionId);
+        const fn = fnId ? await api.lambdaGetFunction(fnId) : null;
+        if (fn) {
+          return api.lambdaRun(
+            fn.runtime,
+            fn.code,
+            fn.packages || undefined,
+            fn.id,
+            fn.files,
+            fn.entryPoint,
+            input.payload,
+          );
+        }
+        // Ad-hoc run — use runtime + code from input directly.
+        if (!input.runtime || !input.code) {
+          throw new Error('run_function requires either functionId or both runtime and code.');
+        }
         return api.lambdaRun(
-          fn.runtime,
-          fn.code,
-          fn.packages || undefined,
-          fn.id,
-          fn.files,
-          fn.entryPoint,
+          String(input.runtime ?? ''),
+          String(input.code ?? ''),
+          str(input.packages),
+          undefined,
+          parseLambdaFiles(input.files),
+          str(input.entryPoint),
           input.payload,
         );
       }
