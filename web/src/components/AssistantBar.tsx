@@ -323,7 +323,15 @@ export function AssistantBar({
     localStorage.setItem(TTS_GLOBAL_KEY, globalSpeakEnabled ? '1' : '0');
   }, [globalSpeakEnabled]);
 
-  // Close the voice menu on outside click.
+  // Sync the browser TTS voice to the selected assistant's voice.
+  useEffect(() => {
+    if (!activeAssistantId) return;
+    const assistant = assistants.find((a) => a.id === activeAssistantId);
+    if (assistant?.voice) {
+      const match = availableVoices.find((v) => v.name.toLowerCase().includes(assistant.voice.toLowerCase()));
+      if (match) setSelectedVoiceUri(match.voiceURI);
+    }
+  }, [activeAssistantId, availableVoices, assistants]);
   useEffect(() => {
     if (!voiceMenuOpen) return;
     const handler = (e: MouseEvent) => {
