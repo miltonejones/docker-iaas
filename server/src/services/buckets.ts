@@ -105,7 +105,8 @@ export async function remove(name: string, userId?: string): Promise<void> {
 export function setProtected(name: string, protect: boolean, projectId?: string | null): void {
   setBucketProtected(name, protect);
   if (projectId !== undefined) {
-    setBucketOwner(name, '', protect, projectId);
+    const owner = getBucketOwner(name);
+    if (owner) setBucketOwner(name, owner, protect, projectId);
   }
 }
 
