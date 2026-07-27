@@ -421,6 +421,10 @@ export function setBucketProtected(bucketName: string, protect: boolean): void {
   db.prepare('UPDATE bucket_owners SET protected = ? WHERE bucket_name = ?').run(protect ? 1 : 0, bucketName);
 }
 
+export function setBucketProjectId(bucketName: string, projectId: string | null): void {
+  db.prepare('UPDATE bucket_owners SET project_id = ? WHERE bucket_name = ?').run(projectId, bucketName);
+}
+
 export function listUserBuckets(userId: string): string[] {
   const rows = db.prepare('SELECT bucket_name FROM bucket_owners WHERE user_id = ?').all(userId) as { bucket_name: string }[];
   return rows.map((r) => r.bucket_name);

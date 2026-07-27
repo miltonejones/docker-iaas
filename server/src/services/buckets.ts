@@ -14,6 +14,7 @@ import {
   listUserBuckets,
   isBucketProtected,
   setBucketProtected,
+  setBucketProjectId,
   getBucketProjectId,
 } from '../db.js';
 import { HttpError } from './HttpError.js';
@@ -105,8 +106,7 @@ export async function remove(name: string, userId?: string): Promise<void> {
 export function setProtected(name: string, protect: boolean, projectId?: string | null): void {
   setBucketProtected(name, protect);
   if (projectId !== undefined) {
-    const owner = getBucketOwner(name);
-    if (owner) setBucketOwner(name, owner, protect, projectId);
+    setBucketProjectId(name, projectId);
   }
 }
 
