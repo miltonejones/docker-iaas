@@ -22,8 +22,14 @@ const ACTION_LABEL: Record<string, string> = {
   create_lambda_function: 'Create Lambda function',
   create_gateway_route: 'Create Gateway route',
   update_gateway_route: 'Update Gateway route',
-  manage_gateway_domain: 'Manage Gateway domain',
-  manage_dns_records: 'Manage DNS records',
+  check_gateway_domain_status: 'Check gateway domain',
+  set_gateway_domain: 'Set gateway domain',
+  enable_gateway_domain: 'Enable gateway domain',
+  remove_gateway_domain: 'Remove gateway domain',
+  list_dns_zones: 'List DNS zones',
+  list_dns_records: 'List DNS records',
+  create_dns_record: 'Create DNS record',
+  delete_dns_record: 'Delete DNS record',
   update_lambda_function: 'Update Lambda function',
   replace_lambda_function_files: 'Update function files',
   delete_lambda_function: 'Delete Lambda function',
@@ -148,10 +154,13 @@ const DESTRUCTIVE = new Set([
   'delete_image',
   'delete_bucket',
   'delete_bucket_object',
+  'delete_database_connection',
+  'delete_project',
   'prune_images',
   'prune_build_cache',
   'delete_issue',
   'clear_issues',
+  'restore_database_backup',
 ]);
 
 /** autoResolved entries only carry a toolUseId — look the tool's name back
@@ -937,27 +946,29 @@ export function AssistantBar({
       case 'update_gateway_route':
         return api.gatewayUpdate(String(input.id ?? ''), str(input.displayName) ?? null);
 
-      case 'manage_gateway_domain': {
-        const action = String(input.action ?? '');
-        if (action === 'set') {
-          return api.gatewaySetDomain(String(input.id ?? ''), str(input.domain) ?? null);
-        }
-        if (action === 'enable') {
-          return api.gatewayEnableDomain(String(input.id ?? ''));
-        }
-        if (action === 'status') return api.gatewayDomainStatus(String(input.id ?? ''));
-        if (action === 'remove') return api.gatewayRemoveDomain(String(input.id ?? ''));
-        throw new Error(`Unknown domain action: ${action}`);
-      }
+      case 'check_gateway_domain_status':
+        return api.gatewayDomainStatus(String(input.id ?? ''));
 
-      case 'manage_dns_records': {
-        const act = String(input.action ?? '');
-        if (act === 'list_zones') return api.dnsListZones();
-        if (act === 'list_records') return api.dnsListRecords(String(input.zoneId ?? ''), str(input.name) ?? undefined);
-        if (act === 'create_cname') return api.dnsCreateRecord(String(input.zoneId ?? ''), act, String(input.name ?? ''));
-        if (act === 'delete_record') return api.dnsDeleteRecord(String(input.zoneId ?? ''), String(input.name ?? ''));
-        throw new Error(`Unknown DNS action: ${act}`);
-      }
+      case 'set_gateway_domain':
+        return api.gatewaySetDomain(String(input.id ?? ''), String(input.domain ?? ''));
+
+      case 'enable_gateway_domain':
+        return api.gatewayEnableDomain(String(input.id ?? ''));
+
+      case 'remove_gateway_domain':
+        return api.gatewayRemoveDomain(String(input.id ?? ''));
+
+      case 'list_dns_zones':
+        return api.dnsListZones();
+
+      case 'list_dns_records':
+        return api.dnsListRecords(String(input.zoneId ?? ''), str(input.name));
+
+      case 'create_dns_record':
+        return api.dnsCreateRecord(String(input.zoneId ?? ''), 'create_cname', String(input.name ?? ''));
+
+      case 'delete_dns_record':
+        return api.dnsDeleteRecord(String(input.zoneId ?? ''), String(input.name ?? ''));
 
       case 'launch_container':
         return api.launch({
@@ -971,7 +982,9 @@ export function AssistantBar({
             : undefined,
           ports: Array.isArray(input.ports) ? (input.ports as { container: string; host: number }[]) : undefined,
           env: Array.isArray(input.env) ? (input.env as { key: string; value: string }[]) : undefined,
-          autoStart: true,
+          volumes: Array.isArray(input.volumes) ? (input.volumes as string[]) : undefined,
+          autoStart: input.autoStart !== false,
+          projectId: str(input.projectId) || undefined,
           assistantManaged: true,
         });
 
@@ -1105,17 +1118,32 @@ export function AssistantBar({
         return api.pruneBuildCache();
 
       case 'run_function': {
-        // The /run endpoint needs the function's actual code/runtime/entry
-        // (functionId alone only injects env vars), so load the saved function
-        // first, then run it with that id so its env vars apply too.
-        const fn = await api.lambdaGetFunction(String(input.id ?? ''));
+        // If the user passed a functionId, look up the saved function to get its
+        // runtime/code/entry.  If they passed ad-hoc runtime+code, run those directly.
+        const fnId = str(input.functionId);
+        const fn = fnId ? await api.lambdaGetFunction(fnId) : null;
+        if (fn) {
+          return api.lambdaRun(
+            fn.runtime,
+            fn.code,
+            fn.packages || undefined,
+            fn.id,
+            fn.files,
+            fn.entryPoint,
+            input.payload,
+          );
+        }
+        // Ad-hoc run — use runtime + code from input directly.
+        if (!input.runtime || !input.code) {
+          throw new Error('run_function requires either functionId or both runtime and code.');
+        }
         return api.lambdaRun(
-          fn.runtime,
-          fn.code,
-          fn.packages || undefined,
-          fn.id,
-          fn.files,
-          fn.entryPoint,
+          String(input.runtime ?? ''),
+          String(input.code ?? ''),
+          str(input.packages),
+          undefined,
+          parseLambdaFiles(input.files),
+          str(input.entryPoint),
           input.payload,
         );
       }

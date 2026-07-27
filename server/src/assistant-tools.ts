@@ -20,10 +20,22 @@ const ASSISTANT_DESCRIPTIONS: Record<string, string> = {
     "Delete a gateway route by id. The user confirms before deletion.",
   update_gateway_route:
     "Update a gateway route's display name. Pass the route id and the new displayName. The user confirms before the update.",
-  manage_gateway_domain:
-    "Set or clear a custom domain on a gateway route. Pass action 'set' with a domain name to assign a domain, or action 'clear' to remove the existing domain. The user confirms before the domain change.",
-  manage_dns_records:
-    "Create or delete a DNS CNAME record in Route 53. Pass zoneId, action (create or delete), and name. The user confirms before the DNS change.",
+  check_gateway_domain_status:
+    "Check the verification status of a custom domain on a gateway route (read-only, runs automatically).",
+  set_gateway_domain:
+    "Set a custom domain on a gateway route. Pass the route id and domain name. The user confirms before the domain is assigned.",
+  enable_gateway_domain:
+    "Provision TLS certificate and configure DNS for a gateway route that has a domain assigned. The user confirms before enabling.",
+  remove_gateway_domain:
+    "Remove a custom domain from a gateway route, tearing down TLS and DNS config. The user confirms before removal.",
+  list_dns_zones:
+    "List Route 53 hosted zones (read-only, runs automatically).",
+  list_dns_records:
+    "List DNS records in a Route 53 hosted zone (read-only, runs automatically).",
+  create_dns_record:
+    "Create a DNS CNAME record in a Route 53 zone. Pass zoneId and name. The user confirms before creation.",
+  delete_dns_record:
+    "Delete a DNS record from a Route 53 zone. Pass zoneId and name. The user confirms before deletion.",
   launch_container:
     'Launch a new Docker container, either from a named preset or a raw image. Pass command to override the image\'s default CMD — useful for keeping build images alive with ["sleep","infinity"] when they\'d otherwise exit immediately. Use projectId to assign the container to a project (look up IDs with list_projects). Set volumes for persistent data mounts (e.g. ["mydata:/app/data"]). Set autoStart to false to create but not start.',
   container_action:
@@ -170,8 +182,8 @@ const ASSISTANT_ONLY_TOOLS: Array<{
           description: "Issue category",
         },
         details: {
-          type: "string",
-          description: "Detailed description, context, error messages, and reproduction steps",
+          type: "object",
+          description: "Structured details about the issue (messages, context, error data)",
         },
       },
       required: ["summary", "category"],
@@ -207,18 +219,18 @@ const ASSISTANT_ONLY_TOOLS: Array<{
   {
     name: "update_issue",
     description:
-      "Update the summary, status, or details of an issue. The user confirms before the update.",
+      "Update the status, resolution, or resolved-by field of an issue. The user confirms before the update.",
     input_schema: {
       type: "object",
       properties: {
         issueId: { type: "string", description: "Issue id" },
-        summary: { type: "string", description: "Updated summary" },
         status: {
           type: "string",
           enum: ["open", "in_progress", "fixed", "failed", "closed"],
           description: "New status",
         },
-        details: { type: "string", description: "Updated details" },
+        resolution: { type: "string", description: "Resolution description (e.g. fix summary)" },
+        resolvedBy: { type: "string", description: "Who or what resolved the issue" },
       },
       required: ["issueId"],
     },
@@ -282,6 +294,7 @@ const ASSISTANT_ONLY_TOOLS: Array<{
       type: "object",
       properties: {
         id: { type: "string", description: "Function id, e.g. fn-abc123" },
+        entryPoint: { type: "string", description: "Entry point filename (e.g. \"index.js\")" },
         files: {
           type: "array",
           items: {

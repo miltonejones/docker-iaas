@@ -49,6 +49,7 @@ import * as lambdaService from "../services/lambda.js";
 import * as imageService from "../services/images.js";
 import * as systemService from "../services/system.js";
 import * as projectService from "../services/projects.js";
+import * as volumeService from "../services/volumes.js";
 
 export const assistantRouter = Router();
 
@@ -115,7 +116,9 @@ function getAssistantClient(userId: string): AssistantClient | null {
   };
 }
 
-const SYSTEM = `You are the Dockyard.ai assistant. You translate a user's natural-language request into tool calls that manage Lambda functions, Gateway routes, containers, Docker images, storage buckets, and saved MySQL/MongoDB connections.
+const SYSTEM = `You are the Dockyard.ai assistant. You translate a user's natural-language request into tool calls that manage Lambda functions, Gateway routes, containers, Docker images, storage buckets, projects, and saved MySQL/MongoDB connections.
+
+Projects organize resources — containers, functions, gateway routes, and buckets can all be assigned to a project. Use list_projects to see existing projects and their resource counts. When creating a resource, pass projectId to assign it. When listing resources, pass projectId to filter by project. If the user mentions a project by name, call list_projects first to resolve the name to an ID.
 
 A knowledge base bucket named \`dockyard-knowledge\` holds per-resource markdown notes keyed as \`{type}/{id}.md\` (e.g. \`container/ct-abc123.md\`, \`fn/fn-xyz789.md\`). Before operating on any resource, check whether a note exists at the expected key by calling read_bucket_object. If one exists, read it and factor its contents — especially deploy methodology, gotchas, dependencies, and future plans — into every decision you make about that resource. After making meaningful changes to a resource, offer to update its note. If the dockyard-knowledge bucket exists, protect it with update_bucket so it can't be accidentally deleted. When creating a bucket you expect will hold important data, set protected: true on create_bucket or call update_bucket afterwards.
 
@@ -167,6 +170,11 @@ const READ_ONLY_TOOLS = new Set([
   "list_used_ports",
   "list_host_build_presets",
   "list_projects",
+  "system_ping",
+  "list_volumes",
+  "list_dns_zones",
+  "list_dns_records",
+  "check_gateway_domain_status",
   "list_host_directory",
   "read_host_file",
   "list_container_files",
@@ -260,9 +268,19 @@ async function executeReadOnlyTool(
     case "list_presets":
       return systemService.presets();
     case "list_used_ports":
-      return systemService.usedPorts();
+      return await systemService.usedPorts();
     case "list_projects":
       return projectService.list(userId);
+    case "system_ping":
+      return systemService.ping();
+    case "list_volumes":
+      return volumeService.list();
+    case "list_dns_zones":
+      return gatewayService.listDnsZones();
+    case "list_dns_records":
+      return gatewayService.listDnsRecords(String(input.zoneId ?? ""), typeof input.name === 'string' ? input.name : undefined);
+    case "check_gateway_domain_status":
+      return gatewayService.checkDomainStatus(String(input.id ?? ""), userId);
     case "list_host_build_presets": {
       return listHostBuildPresets().map(
         ({ name, cwd, command, args, artifacts }) => ({ name, cwd, command, args, artifacts }),
