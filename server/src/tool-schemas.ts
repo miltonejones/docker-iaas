@@ -350,14 +350,36 @@ const GATEWAY_TOOLS: ToolSchema[] = [
     required: ['id', 'action'],
   },
   {
-    name: 'manage_dns_records',
-    description: 'Create or delete DNS records.',
+    name: 'list_dns_zones',
+    description: 'List Route 53 hosted zones.',
+    properties: {},
+  },
+  {
+    name: 'list_dns_records',
+    description: 'List DNS records in a Route 53 hosted zone.',
     properties: {
       zoneId: { type: 'string', description: 'Route 53 hosted zone ID' },
-      action: { type: 'string', enum: ['create', 'delete'], description: 'Action' },
-      name: { type: 'string', description: 'Record name' },
+      name: { type: 'string', description: 'Optional record name filter' },
     },
-    required: ['zoneId', 'action', 'name'],
+    required: ['zoneId'],
+  },
+  {
+    name: 'create_dns_record',
+    description: 'Create a DNS CNAME record in a Route 53 hosted zone.',
+    properties: {
+      zoneId: { type: 'string', description: 'Route 53 hosted zone ID' },
+      name: { type: 'string', description: 'Record name (e.g. \"www.example.com\")' },
+    },
+    required: ['zoneId', 'name'],
+  },
+  {
+    name: 'delete_dns_record',
+    description: 'Delete a DNS record from a Route 53 hosted zone.',
+    properties: {
+      zoneId: { type: 'string', description: 'Route 53 hosted zone ID' },
+      name: { type: 'string', description: 'Record name to delete' },
+    },
+    required: ['zoneId', 'name'],
   },
 ];
 

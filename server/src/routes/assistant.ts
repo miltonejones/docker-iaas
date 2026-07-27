@@ -172,6 +172,8 @@ const READ_ONLY_TOOLS = new Set([
   "list_projects",
   "system_ping",
   "list_volumes",
+  "list_dns_zones",
+  "list_dns_records",
   "list_host_directory",
   "read_host_file",
   "list_container_files",
@@ -272,6 +274,10 @@ async function executeReadOnlyTool(
       return systemService.ping();
     case "list_volumes":
       return volumeService.list();
+    case "list_dns_zones":
+      return gatewayService.listDnsZones();
+    case "list_dns_records":
+      return gatewayService.listDnsRecords(String(input.zoneId ?? ""), typeof input.name === 'string' ? input.name : undefined);
     case "list_host_build_presets": {
       return listHostBuildPresets().map(
         ({ name, cwd, command, args, artifacts }) => ({ name, cwd, command, args, artifacts }),

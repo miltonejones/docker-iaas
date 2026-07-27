@@ -24,6 +24,14 @@ const ASSISTANT_DESCRIPTIONS: Record<string, string> = {
     "Set or clear a custom domain on a gateway route. Pass action 'set' with a domain name to assign a domain, or action 'clear' to remove the existing domain. The user confirms before the domain change.",
   manage_dns_records:
     "Create or delete a DNS CNAME record in Route 53. Pass zoneId, action (create or delete), and name. The user confirms before the DNS change.",
+  list_dns_zones:
+    "List Route 53 hosted zones (read-only, runs automatically).",
+  list_dns_records:
+    "List DNS records in a Route 53 hosted zone (read-only, runs automatically).",
+  create_dns_record:
+    "Create a DNS CNAME record in a Route 53 zone. Pass zoneId and name. The user confirms before creation.",
+  delete_dns_record:
+    "Delete a DNS record from a Route 53 zone. Pass zoneId and name. The user confirms before deletion.",
   launch_container:
     'Launch a new Docker container, either from a named preset or a raw image. Pass command to override the image\'s default CMD — useful for keeping build images alive with ["sleep","infinity"] when they\'d otherwise exit immediately. Use projectId to assign the container to a project (look up IDs with list_projects). Set volumes for persistent data mounts (e.g. ["mydata:/app/data"]). Set autoStart to false to create but not start.',
   container_action:
