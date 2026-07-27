@@ -10,10 +10,10 @@ function sendError(res: Response, err: unknown): void {
   res.status(status).json({ error: err instanceof Error ? err.message : 'Unknown error.' });
 }
 
-projectsRouter.get('/', (req: Request, res: Response) => {
+projectsRouter.get('/', async (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
-    res.json(projectService.list(userId));
+    res.json(await projectService.list(userId));
   } catch (err) {
     sendError(res, err);
   }

@@ -52,12 +52,27 @@ export async function setContainerLabel(
   }
 }
 
-export function list(userId?: string) {
+export async function list(userId?: string) {
   const projects = listProjects(userId);
-  return projects.map((r) => ({
-    ...toJson(r),
-    summary: getProjectResourceSummary(r.id),
-  }));
+
+  // Count containers per project from Docker labels (containers use labels,
+  // not a DB column, so we query Docker once instead of per-project).
+  const containerCounts = new Map<string, number>();
+  try {
+    const containers = await docker.listContainers({ all: true });
+    for (const c of containers) {
+      const pid = c.Labels?.['iaas.project_id'];
+      if (pid) containerCounts.set(pid, (containerCounts.get(pid) || 0) + 1);
+    }
+  } catch { /* Docker unavailable — counts will be 0 */ }
+
+  return projects.map((r) => {
+    const summary = getProjectResourceSummary(r.id);
+    return {
+      ...toJson(r),
+      summary: { ...summary, containers: containerCounts.get(r.id) || 0 },
+    };
+  });
 }
 
 export function get(id: string, userId?: string) {
