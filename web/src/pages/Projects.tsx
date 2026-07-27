@@ -49,36 +49,35 @@ export function ProjectsPage() {
   }
 
   return (
-    <div>
+    <section className="panel">
       <div className="panel__head">
-        <h2>Projects</h2>
+        <h2>Projects <span className="count">{projects.length}</span></h2>
         <button className="btn btn--primary btn--sm" onClick={() => setCreating(!creating)}>
-          {creating ? 'Cancel' : '+ New Project'}
+          <AppIcon name="plus" />
         </button>
       </div>
 
       {creating && (
-        <div className="panel" style={{ marginBottom: 16 }}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <input
-              className="input"
-              placeholder="Project name"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && create()}
-              autoFocus
-              style={{ flex: 1 }}
-            />
-            <input
-              className="input"
-              placeholder="Description (optional)"
-              value={newDescription}
-              onChange={(e) => setNewDescription(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && create()}
-              style={{ flex: 2 }}
-            />
-            <button className="btn btn--primary" onClick={create}>Create</button>
-          </div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, alignItems: 'center' }}>
+          <input
+            className="input"
+            placeholder="Project name"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && create()}
+            autoFocus
+            style={{ flex: 1 }}
+          />
+          <input
+            className="input"
+            placeholder="Description (optional)"
+            value={newDescription}
+            onChange={(e) => setNewDescription(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && create()}
+            style={{ flex: 2 }}
+          />
+          <button className="btn btn--primary" onClick={create}>Create</button>
+          <button className="btn btn--ghost" onClick={() => { setCreating(false); setNewName(''); setNewDescription(''); }}>Cancel</button>
         </div>
       )}
 
@@ -88,33 +87,51 @@ export function ProjectsPage() {
         <p className="muted empty">No projects yet. Create one to group your resources.</p>
       )}
 
-      <div className="home-cards">
-        {projects.map((p) => (
-          <button key={p.id} className="home-card glow" onClick={() => navigate(`/projects/${p.id}`)}>
-            <span className="home-card__num" style={{ fontSize: 18 }}>
-              {p.name}
-            </span>
-            {p.description && (
-              <span className="home-card__label">{p.description}</span>
-            )}
-            <div style={{ display: 'flex', gap: 12, fontSize: 12, marginTop: 4 }}>
-              <span><AppIcon name="container" /> {p.summary?.containers ?? 0}</span>
-              <span><AppIcon name="function" /> {p.summary?.functions ?? 0}</span>
-              <span><AppIcon name="bucket" /> {p.summary?.buckets ?? 0}</span>
-              <span><AppIcon name="gateway" /> {p.summary?.routes ?? 0}</span>
-              <span><AppIcon name="database" /> {p.summary?.databases ?? 0}</span>
-            </div>
-            <button
-              className="btn btn--ghost btn--sm"
-              style={{ marginTop: 4 }}
-              onClick={(e) => { e.stopPropagation(); deleteProject(p.id, p.name); }}
-              title="Delete project"
-            >
-              ×
-            </button>
-          </button>
-        ))}
-      </div>
-    </div>
+      {!loading && projects.length > 0 && (
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Resources</th>
+                <th>Created</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {projects.map((p) => (
+                <tr key={p.id} onClick={() => navigate(`/projects/${p.id}`)}>
+                  <td>
+                    <div style={{ fontWeight: 500 }}><AppIcon name="project" /> {p.name}</div>
+                    {p.description && (
+                      <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{p.description}</div>
+                    )}
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 10, fontSize: 13 }}>
+                      <span title="Containers"><AppIcon name="container" /> {p.summary?.containers ?? 0}</span>
+                      <span title="Functions"><AppIcon name="function" /> {p.summary?.functions ?? 0}</span>
+                      <span title="Buckets"><AppIcon name="bucket" /> {p.summary?.buckets ?? 0}</span>
+                      <span title="Routes"><AppIcon name="gateway" /> {p.summary?.routes ?? 0}</span>
+                      <span title="Databases"><AppIcon name="database" /> {p.summary?.databases ?? 0}</span>
+                    </div>
+                  </td>
+                  <td className="muted">{new Date(p.createdAt).toLocaleDateString()}</td>
+                  <td>
+                    <button
+                      className="btn btn--ghost btn--sm"
+                      onClick={(e) => { e.stopPropagation(); deleteProject(p.id, p.name); }}
+                      title="Delete project"
+                    >
+                      ×
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
   );
 }

@@ -67,6 +67,9 @@ const ACTION_LABEL: Record<string, string> = {
   clear_issues: 'Clear issues',
   update_issue: 'Update issue',
   retry_issue: 'Retry issue',
+  create_project: 'Create project',
+  update_project: 'Update project',
+  delete_project: 'Delete project',
 };
 
 const LOOKUP_LABEL: Record<string, string> = {
@@ -1217,6 +1220,19 @@ export function AssistantBar({
 
       case 'clear_issues':
         return api.assistantClearIssues(str(input.category));
+
+      // Project tools
+      case 'create_project':
+        return api.projectCreate(String(input.name ?? ''), input.description ? str(input.description) : undefined);
+
+      case 'update_project':
+        return api.projectUpdate(String(input.id ?? ''), {
+          name: input.name ? str(input.name) : undefined,
+          description: input.description !== undefined ? str(input.description) : undefined,
+        });
+
+      case 'delete_project':
+        return api.projectDelete(String(input.id ?? ''));
 
       // Read-only tools — auto-resolved server-side, never reach client.
       // Added as defense-in-depth in case the server sends them as pending.

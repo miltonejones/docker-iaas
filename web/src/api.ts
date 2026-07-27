@@ -120,7 +120,8 @@ export const api = {
 
   usage: () => fetch('/api/system/usage').then((r) => json<UsageSnapshot>(r)),
 
-  containers: () => fetch('/api/containers').then((r) => json<Container[]>(r)),
+  containers: (projectId?: string) =>
+    fetch(`/api/containers${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`).then((r) => json<Container[]>(r)),
 
   launch: (body: LaunchRequest) =>
     fetch('/api/containers', {
@@ -312,8 +313,8 @@ export const api = {
   lambdaHistory: () =>
     fetch('/api/lambda/history').then((r) => json<LambdaResult[]>(r)),
 
-  lambdaListFunctions: () =>
-    fetch('/api/lambda/functions').then((r) => json<LambdaFunction[]>(r)),
+  lambdaListFunctions: (projectId?: string) =>
+    fetch(`/api/lambda/functions${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`).then((r) => json<LambdaFunction[]>(r)),
 
   lambdaGetFunction: (id: string) =>
     fetch(`/api/lambda/functions/${id}`).then((r) => json<LambdaFunction>(r)),
