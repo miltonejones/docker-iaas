@@ -21,7 +21,7 @@ const ASSISTANT_DESCRIPTIONS: Record<string, string> = {
   update_gateway_route:
     "Update a gateway route's display name. Pass the route id and the new displayName. The user confirms before the update.",
   manage_gateway_domain:
-    "Set or clear a custom domain on a gateway route. Pass the route id and a domain name (or null to clear). The user confirms before the domain change.",
+    "Set or clear a custom domain on a gateway route. Pass action 'set' with a domain name to assign a domain, or action 'clear' to remove the existing domain. The user confirms before the domain change.",
   manage_dns_records:
     "Create or delete a DNS CNAME record in Route 53. Pass zoneId, action (create or delete), and name. The user confirms before the DNS change.",
   launch_container:

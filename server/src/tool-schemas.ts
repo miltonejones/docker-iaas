@@ -342,9 +342,10 @@ const GATEWAY_TOOLS: ToolSchema[] = [
     description: 'Set or remove a domain for a gateway route.',
     properties: {
       id: { type: 'string', description: 'Route ID' },
-      domain: { type: 'string', description: 'Domain name (null to remove)' },
+      action: { type: 'string', enum: ['set', 'clear'], description: 'Whether to set a new domain or clear the existing one' },
+      domain: { type: 'string', description: 'Domain name (required for set, ignored for clear)' },
     },
-    required: ['id'],
+    required: ['id', 'action'],
   },
   {
     name: 'manage_dns_records',
