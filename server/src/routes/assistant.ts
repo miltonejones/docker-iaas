@@ -504,7 +504,11 @@ assistantRouter.post("/plan", async (req: Request, res: Response) => {
               ? tools.filter((t) => allowedTools.has(t.name))
               : tools,
           };
-        } catch { /* assistant not found — fall back to default */ }
+        } catch (err) {
+          if ((err as { status?: number }).status !== 404) {
+            console.error("Failed to load assistant:", (err as Error).message);
+          }
+        }
       }
     }
 
@@ -524,9 +528,10 @@ assistantRouter.post("/plan", async (req: Request, res: Response) => {
 // call(s) and (for confirmed ones) the real Dockyard API has been invoked.
 assistantRouter.post("/confirm", async (req: Request, res: Response) => {
   try {
-    const { messages, results } = req.body as {
+    const { messages, results, assistantId } = req.body as {
       messages?: Anthropic.MessageParam[];
       results?: { toolUseId: string; ok: boolean; content: unknown }[];
+      assistantId?: string;
     };
     if (!messages?.length || !results?.length) {
       res.status(400).json({ error: "messages and results are required." });
@@ -544,7 +549,28 @@ assistantRouter.post("/confirm", async (req: Request, res: Response) => {
         is_error: !r.ok,
       })),
     });
-    await respondStream(messages, req, res);
+
+    // Propagate custom assistant config.
+    let customOpts: { system?: string; tools?: Anthropic.Tool[] } | undefined;
+    if (assistantId) {
+      const userId = getAuthUser(req)?.userId;
+      if (userId) {
+        try {
+          const assistant = getAssistant(assistantId, userId);
+          const allowedTools = new Set<string>(assistant.toolList);
+          customOpts = {
+            system: assistant.systemPrompt || SYSTEM,
+            tools: assistant.toolList.length > 0
+              ? tools.filter((t) => allowedTools.has(t.name))
+              : tools,
+          };
+        } catch (err) {
+          console.error("Failed to load assistant for confirm:", (err as Error).message);
+        }
+      }
+    }
+
+    await respondStream(messages, req, res, customOpts);
   } catch (err) {
     if (!res.headersSent) {
       res.status(500).json({ error: (err as Error).message });

@@ -262,8 +262,13 @@ export function AssistantsSettings() {
                   const catSelected = cat.tools.filter((t) => toolList.includes(t)).length;
                   return (
                     <details key={cat.label} className="tool-category">
-                      <summary onClick={(e) => { e.preventDefault(); toggleCategory(cat.tools); }}>
-                        <AppIcon name="check" />
+                      <summary>
+                        <input
+                          type="checkbox"
+                          checked={cat.tools.every((t) => toolList.includes(t))}
+                          onChange={(e) => { e.stopPropagation(); toggleCategory(cat.tools); }}
+                          style={{ margin: 0 }}
+                        />
                         <span>{cat.label}</span>
                         <span className="muted" style={{ fontSize: 11 }}>({catSelected}/{cat.tools.length})</span>
                       </summary>

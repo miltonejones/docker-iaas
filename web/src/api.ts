@@ -665,11 +665,11 @@ export const api = {
       return parseSSE(r);
     }),
 
-  assistantConfirm: (messages: unknown[], results: { toolUseId: string; ok: boolean; content: unknown }[]) =>
+  assistantConfirm: (messages: unknown[], results: { toolUseId: string; ok: boolean; content: unknown }[], assistantId?: string) =>
     fetch('/api/assistant/confirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, results }),
+      body: JSON.stringify({ messages, results, assistantId }),
     }).then((r) => json<AssistantTurn>(r)),
 
   /** Streaming version of assistantConfirm — same SSE protocol as
@@ -678,11 +678,12 @@ export const api = {
     messages: unknown[],
     results: { toolUseId: string; ok: boolean; content: unknown }[],
     signal?: AbortSignal,
+    assistantId?: string,
   ) =>
     fetch('/api/assistant/confirm', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages, results }),
+      body: JSON.stringify({ messages, results, assistantId }),
       signal,
     }).then((r) => {
       if (!r.ok) throw new Error(`Assistant confirm failed: ${r.statusText}`);

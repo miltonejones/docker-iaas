@@ -1399,7 +1399,7 @@ export function AssistantBar({
 
     try {
       if (!abortRef.current) abortRef.current = new AbortController();
-      const stream = await api.assistantConfirmStream(rawMessages, nextResolved, abortRef.current.signal);
+      const stream = await api.assistantConfirmStream(rawMessages, nextResolved, abortRef.current.signal, activeAssistantId ?? undefined);
       await consumeTurnStream(stream);
     } catch (err) {
       if ((err as Error).name === 'AbortError') return;
