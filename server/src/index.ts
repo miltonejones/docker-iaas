@@ -17,9 +17,10 @@ import { hostBuildsRouter } from './routes/hostBuilds.js';
 import { databasesRouter } from './routes/databases.js';
 import { projectsRouter } from './routes/projects.js';
 import { githubRouter } from './routes/github.js';
+import { assistantsRouter } from './routes/assistants.js';
 import { notificationsRouter } from './routes/notifications.js';
 import { authRouter } from './routes/auth.js';
-import { requireAuth, optionalAuth } from './auth.js';
+import { requireAuth, optionalAuth, webhookAuth } from './auth.js';
 import { gatewayProxyRouter } from './gatewayProxy.js';
 import { getAllUserSettings } from './db.js';
 import {
@@ -141,7 +142,8 @@ export function createApp(): express.Express {
   app.use('/api/host-builds', requireAuth, hostBuildsRouter);
   app.use('/api/databases', requireAuth, databasesRouter);
   app.use('/api/projects', requireAuth, projectsRouter);
-  app.use('/api/github', requireAuth, githubRouter);
+  app.use('/api/github', webhookAuth, githubRouter);
+  app.use(`/api/assistants`, requireAuth, assistantsRouter);
   app.use('/api/assistant', requireAuth, assistantRouter);
   app.use('/api/notifications', optionalAuth, notificationsRouter);
   app.use('/api/auth', authRouter);

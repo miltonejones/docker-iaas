@@ -27,6 +27,7 @@ import type {
   Preset,
   ProjectDetail,
   UsageSnapshot,
+  UserAssistant,
 } from './types';
 
 /** Parse a Server-Sent Events stream from a fetch Response into an async
@@ -824,6 +825,24 @@ export const api = {
       `/api/projects/${encodeURIComponent(projectId)}/resources?resourceTable=${encodeURIComponent(resourceTable)}&resourceId=${encodeURIComponent(resourceId)}`,
       { method: 'DELETE' },
     ).then((r) => json<{ ok: true }>(r)),
+
+  // User-defined assistants
+  assistantList: () =>
+    fetch('/api/assistants').then((r) => json<UserAssistant[]>(r)),
+
+  assistantGet: (id: string) =>
+    fetch(`/api/assistants/${encodeURIComponent(id)}`).then((r) => json<UserAssistant>(r)),
+
+  assistantCreate: (body: { name: string; description?: string; systemPrompt?: string; toolList?: string[]; voice?: string; isDefault?: boolean }) =>
+    fetch('/api/assistants', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then((r) => json<UserAssistant>(r)),
+
+  assistantUpdate: (id: string, body: { name?: string; description?: string; systemPrompt?: string; toolList?: string[]; voice?: string; isDefault?: boolean }) =>
+    fetch(`/api/assistants/${encodeURIComponent(id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then((r) => json<UserAssistant>(r)),
+
+  assistantDelete: (id: string) =>
+    fetch(`/api/assistants/${encodeURIComponent(id)}`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r)),
 };
 
 /** A single consumer/issue event surfaced by the notification log. */

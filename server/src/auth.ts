@@ -1,7 +1,19 @@
 import { type Request, type Response, type NextFunction } from 'express';
 import fs from 'node:fs';
+import { timingSafeEqual } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { getUserById } from './db.js';
+
+// Extend Express Request with auth properties so middleware and handlers can
+// access req.authUser / req.webhookAuthenticated without unsafe casts.
+declare global {
+  namespace Express {
+    interface Request {
+      authUser?: AuthUser;
+      webhookAuthenticated?: boolean;
+    }
+  }
+}
 
 let JWT_SECRET: string;
 
@@ -22,6 +34,18 @@ if (!JWT_SECRET) {
   process.exit(1);
 }
 const JWT_EXPIRES_IN = '7d';
+
+/** Load the webhook secret for CI/CD-triggered endpoints.
+ *  Exported so tests can validate the loading logic in isolation. */
+export function loadWebhookSecret(secretPath?: string, envValue?: string): string {
+  const secretFile = secretPath ?? '/run/secrets/github_webhook_secret';
+  try {
+    return fs.readFileSync(secretFile, 'utf8').trim();
+  } catch {
+    return envValue ?? process.env.GITHUB_WEBHOOK_SECRET ?? '';
+  }
+}
+const WEBHOOK_SECRET = loadWebhookSecret();
 
 export interface AuthUser {
   userId: string;
@@ -54,7 +78,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       res.status(401).json({ error: 'User not found.' });
       return;
     }
-    (req as unknown as Record<string, unknown>).authUser = { userId: user.id, email: user.email };
+    req.authUser = { userId: user.id, email: user.email };
     next();
   } catch {
     res.status(401).json({ error: 'Invalid or expired token.' });
@@ -71,7 +95,7 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
       const payload = jwt.verify(header.slice(7), JWT_SECRET!) as unknown as AuthUser;
       const user = getUserById(payload.userId);
       if (user) {
-        (req as unknown as Record<string, unknown>).authUser = { userId: user.id, email: user.email };
+        req.authUser = { userId: user.id, email: user.email };
       }
     } catch {
       /* token invalid — fall through as anonymous */
@@ -80,7 +104,49 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
   next();
 }
 
+/** Express middleware: authenticates via JWT OR webhook secret.
+ *  Populates req.authUser for JWT-based calls; sets req.webhookAuthenticated
+ *  for valid webhook-secret calls. */
+export function webhookAuth(req: Request, res: Response, next: NextFunction): void {
+  // Try JWT first.
+  const header = req.headers.authorization;
+  if (header?.startsWith('Bearer ')) {
+    try {
+      const payload = jwt.verify(header.slice(7), JWT_SECRET!) as unknown as AuthUser;
+      const user = getUserById(payload.userId);
+      if (user) {
+        req.authUser = { userId: user.id, email: user.email };
+        next();
+        return;
+      }
+    } catch {
+      /* fall through to webhook secret */
+    }
+  }
+
+  // Try webhook secret (timing-safe comparison).
+  if (WEBHOOK_SECRET) {
+    const provided = (req.headers['x-webhook-secret'] as string) || '';
+    if (provided) {
+      const a = Buffer.from(provided);
+      const b = Buffer.from(WEBHOOK_SECRET);
+      if (a.length === b.length && timingSafeEqual(a, b)) {
+        req.webhookAuthenticated = true;
+        next();
+        return;
+      }
+    }
+  }
+
+  res.status(401).json({ error: 'Valid JWT or x-webhook-secret required.' });
+}
+
 /** Type helper to extract authUser from a Request. */
 export function getAuthUser(req: Request): AuthUser | undefined {
-  return (req as unknown as Record<string, unknown>).authUser as AuthUser | undefined;
+  return req.authUser;
+}
+
+/** Returns true if the request was authenticated via webhook secret. */
+export function isWebhookAuthenticated(req: Request): boolean {
+  return req.webhookAuthenticated === true;
 }

@@ -146,6 +146,24 @@ export function initDb(dbPath?: string): void {
   // actually executed. NULL means "use the legacy `code` column as-is".
   try { db.exec("ALTER TABLE functions ADD COLUMN entry_point TEXT"); } catch { /* ok */ }
 
+  // User-defined assistants — each user can create assistants with a custom
+  // system prompt and a subset of available tools.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_assistants (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      system_prompt TEXT NOT NULL DEFAULT '',
+      tool_list TEXT NOT NULL DEFAULT '[]',
+      voice TEXT NOT NULL DEFAULT 'alloy',
+      is_default INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+
   initAssistantSessionTables(db);
   initDatabaseOpsTables(db);
   initAssistantIssueTables(db);
@@ -563,4 +581,102 @@ export function getProjectResourceSummary(projectId: string): {
     'SELECT COUNT(*) AS c FROM database_connections WHERE project_id = ?',
   ).get(projectId) as { c: number }).c;
   return { containers: 0, functions: fnCount, buckets: bucketCount, routes: routeCount, databases: dbCount };
+}
+
+// ---------------------------------------------------------------------------
+// User-defined assistants
+// ---------------------------------------------------------------------------
+
+export interface UserAssistantRow {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string;
+  system_prompt: string;
+  tool_list: string;
+  voice: string;
+  is_default: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export function listUserAssistants(userId: string): UserAssistantRow[] {
+  return db.prepare(
+    'SELECT * FROM user_assistants WHERE user_id = ? ORDER BY created_at ASC',
+  ).all(userId) as UserAssistantRow[];
+}
+
+export function getUserAssistant(id: string, userId: string): UserAssistantRow | undefined {
+  return db.prepare(
+    'SELECT * FROM user_assistants WHERE id = ? AND user_id = ?',
+  ).get(id, userId) as UserAssistantRow | undefined;
+}
+
+export function createUserAssistant(input: {
+  userId: string;
+  name: string;
+  description?: string;
+  systemPrompt?: string;
+  toolList?: string;
+  voice?: string;
+  isDefault?: boolean;
+}): UserAssistantRow {
+  const now = new Date().toISOString();
+  db.prepare(`
+    INSERT INTO user_assistants (id, user_id, name, description, system_prompt, tool_list, voice, is_default, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    `ast-${crypto.randomBytes(8).toString('hex')}`,
+    input.userId,
+    input.name.trim(),
+    (input.description || '').trim(),
+    (input.systemPrompt || '').trim(),
+    input.toolList || '[]',
+    input.voice || 'alloy',
+    input.isDefault ? 1 : 0,
+    now,
+    now,
+  );
+  return db.prepare(
+    'SELECT * FROM user_assistants WHERE user_id = ? ORDER BY rowid DESC LIMIT 1',
+  ).get(input.userId) as UserAssistantRow;
+}
+
+export function updateUserAssistant(
+  id: string,
+  userId: string,
+  fields: {
+    name?: string;
+    description?: string;
+    systemPrompt?: string;
+    toolList?: string;
+    voice?: string;
+    isDefault?: boolean;
+  },
+): UserAssistantRow | undefined {
+  const existing = getUserAssistant(id, userId);
+  if (!existing) return undefined;
+
+  const name = fields.name !== undefined ? fields.name.trim() : existing.name;
+  const description = fields.description !== undefined ? fields.description.trim() : existing.description;
+  const systemPrompt = fields.systemPrompt !== undefined ? fields.systemPrompt.trim() : existing.system_prompt;
+  const toolList = fields.toolList ?? existing.tool_list;
+  const voice = fields.voice ?? existing.voice;
+  const isDefault = fields.isDefault !== undefined ? (fields.isDefault ? 1 : 0) : existing.is_default;
+  const now = new Date().toISOString();
+
+  db.prepare(`
+    UPDATE user_assistants
+    SET name = ?, description = ?, system_prompt = ?, tool_list = ?, voice = ?, is_default = ?, updated_at = ?
+    WHERE id = ? AND user_id = ?
+  `).run(name, description, systemPrompt, toolList, voice, isDefault, now, id, userId);
+
+  return getUserAssistant(id, userId);
+}
+
+export function deleteUserAssistant(id: string, userId: string): boolean {
+  const result = db.prepare(
+    'DELETE FROM user_assistants WHERE id = ? AND user_id = ?',
+  ).run(id, userId);
+  return result.changes > 0;
 }
