@@ -446,3 +446,15 @@ export interface ProjectDetail extends Project {
     databases: number;
   };
 }
+
+export interface UserAssistant {
+  id: string;
+  name: string;
+  description: string;
+  systemPrompt: string;
+  toolList: string[];
+  voice: string;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}

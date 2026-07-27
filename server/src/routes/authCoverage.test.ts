@@ -1,8 +1,8 @@
-import { describe, it } from 'node:test';
+import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import request from 'supertest';
-import { requireAuth, optionalAuth } from '../auth.js';
+import { requireAuth, optionalAuth, webhookAuth } from '../auth.js';
 
 // ---------------------------------------------------------------------------
 // Dummy routers — return 200 so we can verify auth middleware blocks them
@@ -39,7 +39,7 @@ function createTestApp() {
   app.use('/api/host-files', requireAuth, dummy('host-files'));
   app.use('/api/host-builds', requireAuth, dummy('host-builds'));
   app.use('/api/databases', requireAuth, dummy('databases'));
-  app.use('/api/github', requireAuth, dummy('github'));
+  app.use('/api/github', webhookAuth, dummy('github'));
   app.use('/api/assistant', requireAuth, dummy('assistant'));
   app.use('/api/notifications', optionalAuth, dummy('notifications'));
   app.use('/api/auth', dummy('auth'));
@@ -87,6 +87,7 @@ const routes: RouteCase[] = [
   { method: 'get',  path: '/api/host-files',             expectUnauthenticated: 401 },
   { method: 'get',  path: '/api/host-builds',            expectUnauthenticated: 401 },
   { method: 'get',  path: '/api/databases/overview',     expectUnauthenticated: 401 },
+  // ── Protected (webhookAuth) — MUST return 401 without token or secret ─
   { method: 'get',  path: '/api/github/pull-to-bucket',  expectUnauthenticated: 401 },
   { method: 'post', path: '/api/github/commit-and-push', expectUnauthenticated: 401 },
   { method: 'get',  path: '/api/assistant/sessions',     expectUnauthenticated: 401 },
@@ -101,4 +102,45 @@ describe('auth coverage', () => {
         `Expected ${expectUnauthenticated} for unauthenticated ${method.toUpperCase()} ${path}, got ${res.status}`);
     });
   }
+});
+
+// ---------------------------------------------------------------------------
+// webhookAuth-specific tests
+// ---------------------------------------------------------------------------
+
+describe('webhookAuth', () => {
+  it('rejects requests with no auth (no JWT, no webhook secret)', async () => {
+    const res = await request(app).get('/api/github/pull-to-bucket');
+    assert.equal(res.status, 401);
+  });
+
+  it('rejects requests with an invalid webhook secret', async () => {
+    const res = await request(app)
+      .get('/api/github/pull-to-bucket')
+      .set('x-webhook-secret', 'wrong-secret');
+    assert.equal(res.status, 401);
+  });
+
+  it('accepts requests with a valid webhook secret', async () => {
+    // GITHUB_WEBHOOK_SECRET is set via env in the test environment
+    // or via Docker secret; we test with whatever is configured.
+    // This test only passes if GITHUB_WEBHOOK_SECRET is set.
+    const secret = process.env.GITHUB_WEBHOOK_SECRET;
+    if (!secret) {
+      // Skip if no webhook secret is configured (e.g., CI without Docker secrets)
+      return;
+    }
+    const res = await request(app)
+      .get('/api/github/pull-to-bucket')
+      .set('x-webhook-secret', secret);
+    assert.equal(res.status, 200);
+  });
+
+  it('rejects an invalid JWT even when webhook secret is wrong', async () => {
+    const res = await request(app)
+      .get('/api/github/pull-to-bucket')
+      .set('Authorization', 'Bearer invalid-token')
+      .set('x-webhook-secret', 'wrong-secret');
+    assert.equal(res.status, 401);
+  });
 });
