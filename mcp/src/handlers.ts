@@ -200,7 +200,7 @@ export async function handleCallTool(request: CallToolRequest) {
         lambdaService.removeFunc(args.id as string);
         result = { ok: true };
         break;
-      case 'run_lambda_function':
+      case 'run_function':
         result = await lambdaService.runCode(args as any);
         break;
 
