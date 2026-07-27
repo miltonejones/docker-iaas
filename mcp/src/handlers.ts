@@ -12,6 +12,7 @@ import * as volumeService from '../../server/src/services/volumes.js';
 import { resolveUserId } from './auth.js';
 import { runSavedConnectionRead } from '../../server/src/databaseManagement.js';
 import {
+  getGithubWorkflowStatus,
   executeGithubAssistantReadOnlyTool,
   pullGithubRepoToBucket,
   pullGithubRepoToContainer,
@@ -351,6 +352,10 @@ export async function handleCallTool(request: CallToolRequest) {
         break;
       case 'commit_and_push_github_files':
         result = await commitAndPushGithubFiles(args);
+        break;
+
+      case 'get_github_workflow_status':
+        result = await getGithubWorkflowStatus(args);
         break;
 
       default:
