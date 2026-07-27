@@ -521,7 +521,7 @@ async function git(cwd: string, args: string[]): Promise<{ stdout: string; stder
 /** Clones on first use, or fetches + hard-resets to the requested ref on
  *  every subsequent call — so a stale local checkout never silently diverges
  *  from what's actually on GitHub before a commit is built on top of it. */
-async function ensureCloneReady(owner: string, repo: string, ref: string | undefined): Promise<string> {
+async function ensureCloneReady(owner: string, repo: string, ref: string | undefined, baseBranch?: string): Promise<string> {
   requireToken('Cloning/committing to a repository');
   const dir = cloneDirFor(owner, repo);
   const url = authenticatedCloneUrl(owner, repo);
@@ -537,8 +537,22 @@ async function ensureCloneReady(owner: string, repo: string, ref: string | undef
   }
 
   const branch = ref || (await git(dir, ['remote', 'show', 'origin'])).stdout.match(/HEAD branch: (\S+)/)?.[1] || 'main';
-  await git(dir, ['checkout', branch]);
-  await git(dir, ['reset', '--hard', `origin/${branch}`]);
+
+  // Check whether the target branch exists on the remote.
+  const remoteBranches = (await git(dir, ['branch', '-r'])).stdout;
+  const existsRemotely = remoteBranches.includes(`origin/${branch}`);
+
+  if (existsRemotely) {
+    await git(dir, ['checkout', branch]);
+    await git(dir, ['reset', '--hard', `origin/${branch}`]);
+  } else {
+    // Branch doesn't exist on remote — create it from the specified base or default branch.
+    const defaultBranch = baseBranch || (await git(dir, ['remote', 'show', 'origin'])).stdout.match(/HEAD branch: (\S+)/)?.[1] || 'main';
+    await git(dir, ['checkout', defaultBranch]);
+    await git(dir, ['reset', '--hard', `origin/${defaultBranch}`]);
+    await git(dir, ['checkout', '-b', branch]);
+  }
+
   return dir;
 }
 
@@ -582,9 +596,10 @@ export async function commitAndPushGithubFiles(input: Record<string, unknown>) {
   const ref = refOrDefault(input.branch ?? input.ref);
   const message = String(input.message ?? '').trim();
   if (!message) throw new Error('message (commit message) is required.');
+  const baseBranch = refOrDefault(input.baseBranch);
   const files = commitFileList(input.files);
 
-  const dir = await ensureCloneReady(owner, repo, ref);
+  const dir = await ensureCloneReady(owner, repo, ref, baseBranch);
 
   for (const file of files) {
     const target = path.join(dir, file.path);
@@ -704,7 +719,8 @@ export const GITHUB_ASSISTANT_TOOLS: Anthropic.Tool[] = [
       properties: {
         owner: { type: 'string', description: 'Repository owner (user or organization)' },
         repo: { type: 'string', description: 'Repository name' },
-        branch: { type: 'string', description: 'Branch to commit to; omit for the default branch' },
+        branch: { type: 'string', description: 'Branch to commit to; omit for the default branch. If the branch does not exist, it will be created from the default branch (or baseBranch if specified).' },
+        baseBranch: { type: 'string', description: 'Base branch to create target branch from when it does not exist; defaults to the repo default branch' },
         message: { type: 'string', description: 'Commit message' },
         files: {
           type: 'array',
