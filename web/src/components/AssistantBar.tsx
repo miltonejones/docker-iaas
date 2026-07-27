@@ -925,6 +925,7 @@ export function AssistantBar({
           targetPort: input.targetPort != null && input.targetPort !== '' ? Number(input.targetPort) : undefined,
           method: str(input.method),
           pathPattern: str(input.pathPattern),
+          projectId: str(input.projectId),
         });
 
       case 'delete_gateway_route':
@@ -1004,16 +1005,16 @@ export function AssistantBar({
         if (input.env != null && (!Array.isArray(input.env) || input.env.some((e) => typeof (e as { key: string }).key !== 'string'))) {
           throw new Error('update_container_env env, if provided, must be an array of { key, value }.');
         }
-        if (!Array.isArray(input.env) && typeof input.description !== 'string' && typeof input.protected !== 'boolean') {
-          throw new Error('update_container_env requires an env array, a description string, and/or a protected boolean.');
+        if (!Array.isArray(input.env) && typeof input.description !== 'string' && typeof input.protected !== 'boolean' && input.projectId === undefined) {
+          throw new Error('update_container_env requires an env array, a description string, a protected boolean, and/or a projectId.');
         }
         return api.containerUpdateEnv(
           String(input.id ?? ''),
           Array.isArray(input.env) ? (input.env as { key: string; value: string }[]) : undefined,
           bool(input.persist),
-          // Preserve an empty string here (unlike str()) so it can clear the label.
           typeof input.description === 'string' ? input.description : undefined,
           typeof input.protected === 'boolean' ? input.protected : undefined,
+          input.projectId !== undefined ? (input.projectId as string | null) : undefined,
         );
 
       case 'replace_in_container_file':
