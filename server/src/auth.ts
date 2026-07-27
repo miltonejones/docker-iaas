@@ -23,6 +23,16 @@ if (!JWT_SECRET) {
 }
 const JWT_EXPIRES_IN = '7d';
 
+/** Load the webhook secret for CI/CD-triggered endpoints. */
+function loadWebhookSecret(): string {
+  try {
+    return fs.readFileSync('/run/secrets/github_webhook_secret', 'utf8').trim();
+  } catch {
+    return process.env.GITHUB_WEBHOOK_SECRET ?? '';
+  }
+}
+const WEBHOOK_SECRET = loadWebhookSecret();
+
 export interface AuthUser {
   userId: string;
   email: string;
@@ -78,6 +88,39 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
     }
   }
   next();
+}
+
+/** Express middleware: authenticates via JWT OR webhook secret.
+ *  Populates req.authUser for JWT-based calls; sets req.webhookAuthenticated
+ *  for valid webhook-secret calls. */
+export function webhookAuth(req: Request, res: Response, next: NextFunction): void {
+  // Try JWT first.
+  const header = req.headers.authorization;
+  if (header?.startsWith('Bearer ')) {
+    try {
+      const payload = jwt.verify(header.slice(7), JWT_SECRET!) as unknown as AuthUser;
+      const user = getUserById(payload.userId);
+      if (user) {
+        (req as unknown as Record<string, unknown>).authUser = { userId: user.id, email: user.email };
+        next();
+        return;
+      }
+    } catch {
+      /* fall through to webhook secret */
+    }
+  }
+
+  // Try webhook secret.
+  if (WEBHOOK_SECRET) {
+    const provided = (req.headers['x-webhook-secret'] as string) || '';
+    if (provided === WEBHOOK_SECRET) {
+      (req as unknown as Record<string, unknown>).webhookAuthenticated = true;
+      next();
+      return;
+    }
+  }
+
+  res.status(401).json({ error: 'Valid JWT or x-webhook-secret required.' });
 }
 
 /** Type helper to extract authUser from a Request. */
