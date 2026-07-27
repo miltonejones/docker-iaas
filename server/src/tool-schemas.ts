@@ -819,6 +819,8 @@ const GITHUB_TOOLS: ToolSchema[] = [
       owner: { type: 'string', description: 'Repository owner' },
       repo: { type: 'string', description: 'Repository name' },
       ref: { type: 'string', description: 'Git ref (branch, tag, or commit SHA)' },
+      branch: { type: 'string', description: 'Branch to commit to. If it does not exist, it will be created from the default branch or baseBranch.' },
+      baseBranch: { type: 'string', description: 'Base branch to create the target branch from when it does not exist on the remote' },
       message: { type: 'string', description: 'Commit message' },
       files: {
         type: 'array',
@@ -830,7 +832,7 @@ const GITHUB_TOOLS: ToolSchema[] = [
         description: 'Files to commit',
       },
     },
-    required: ['owner', 'repo', 'ref', 'message', 'files'],
+    required: ['owner', 'repo', 'message', 'files'],
   },
   {
     name: 'get_github_workflow_status',
