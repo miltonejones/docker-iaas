@@ -39,7 +39,16 @@ function execInCaddy(cmd: string[]): Promise<string> {
           if (startErr) { reject(startErr); return; }
           let stdout = '';
           stream!.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
-          stream!.on('end', () => resolve(stdout));
+          stream!.on('end', () => {
+            exec!.inspect((inspectErr, data) => {
+              if (inspectErr) { reject(inspectErr); return; }
+              if (data?.ExitCode !== 0) {
+                reject(new Error(`caddy exec failed (exit ${data?.ExitCode}): ${cmd.join(' ')} → ${stdout.trim()}`));
+                return;
+              }
+              resolve(stdout);
+            });
+          });
           stream!.on('error', reject);
         });
       },
