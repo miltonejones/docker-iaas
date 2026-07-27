@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import type { Project } from '../types';
 import { AppIcon } from '../icons';
@@ -15,6 +16,7 @@ export function getStoredProjectId(): string | null {
 }
 
 export function ProjectSelector({ value, onChange }: Props) {
+  const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -40,6 +42,7 @@ export function ProjectSelector({ value, onChange }: Props) {
     onChange(id);
     try { if (id) localStorage.setItem(STORAGE_KEY, id); else localStorage.removeItem(STORAGE_KEY); } catch {}
     setOpen(false);
+    if (id) navigate(`/projects/${id}`);
   }
 
   async function create() {
@@ -74,7 +77,7 @@ export function ProjectSelector({ value, onChange }: Props) {
         <div className="project-selector__menu">
           <button
             className={`project-selector__item${!value ? ' project-selector__item--active' : ''}`}
-            onClick={() => select(null)}
+            onMouseDown={(e) => { e.preventDefault(); select(null); }}
           >
             <AppIcon name="project" /> All Projects
           </button>
@@ -82,7 +85,7 @@ export function ProjectSelector({ value, onChange }: Props) {
             <button
               key={p.id}
               className={`project-selector__item${p.id === value ? ' project-selector__item--active' : ''}`}
-              onClick={() => select(p.id)}
+              onMouseDown={(e) => { e.preventDefault(); select(p.id); }}
             >
               <AppIcon name="project" /> {p.name}
             </button>
