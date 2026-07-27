@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AssistantsSettings } from '../components/AssistantsSettings';
 
 interface SettingStatus {
   configured: boolean;
@@ -111,6 +112,7 @@ export function SettingsPage() {
           {saving ? 'Saving…' : 'Save settings'}
         </button>
       </form>
+      <AssistantsSettings />
     </div>
   );
 }
