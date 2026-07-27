@@ -469,11 +469,11 @@ export function App() {
 
   const refreshContainers = useCallback(async () => {
     try {
-      setContainers(await api.containers());
+      setContainers(await api.containers(projectId ?? undefined));
     } catch (err) {
       console.error('containers', err);
     }
-  }, []);
+  }, [projectId]);
 
   // Initial load.
   useEffect(() => {
