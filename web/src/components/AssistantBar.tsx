@@ -1044,7 +1044,7 @@ export function AssistantBar({
         return api.prune();
 
       case 'create_bucket':
-        return api.bucketCreate(String(input.name ?? ''), bool(input.protected));
+        return api.bucketCreate(String(input.name ?? ''), bool(input.protected), str(input.projectId));
 
       case 'delete_bucket':
         return api.bucketDelete(String(input.name ?? ''));
@@ -1053,7 +1053,7 @@ export function AssistantBar({
         return api.bucketDeleteObject(String(input.name ?? ''), String(input.key ?? ''));
 
       case 'update_bucket':
-        return api.bucketUpdateProtected(String(input.name ?? ''), bool(input.protected));
+        return api.bucketUpdateProtected(String(input.name ?? ''), bool(input.protected), str(input.projectId));
 
       case 'write_bucket_object':
         return api.bucketWriteObject(

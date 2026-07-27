@@ -77,11 +77,11 @@ export function get(name: string): BucketView {
   return { name, protected: isBucketProtected(name), creationDate: undefined, size: 0, objectCount: 0, projectId: getBucketProjectId(name) };
 }
 
-export async function create(userId: string | undefined, name: string, protect?: boolean): Promise<{ name: string; protected: boolean }> {
+export async function create(userId: string | undefined, name: string, protect?: boolean, projectId?: string): Promise<{ name: string; protected: boolean }> {
   if (!name.trim()) throw new HttpError(400, 'A bucket name is required.');
   await getS3Client().send(new CreateBucketCommand({ Bucket: name }));
   const p = !!protect;
-  if (userId) setBucketOwner(name, userId, p);
+  if (userId) setBucketOwner(name, userId, p, projectId || null);
   return { name, protected: p };
 }
 
@@ -102,8 +102,11 @@ export async function remove(name: string, userId?: string): Promise<void> {
   }
 }
 
-export function setProtected(name: string, protect: boolean): void {
+export function setProtected(name: string, protect: boolean, projectId?: string | null): void {
   setBucketProtected(name, protect);
+  if (projectId !== undefined) {
+    setBucketOwner(name, '', protect, projectId);
+  }
 }
 
 export async function listObjects(name: string, prefix?: string): Promise<ObjectList> {

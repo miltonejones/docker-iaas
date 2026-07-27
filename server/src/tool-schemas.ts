@@ -209,6 +209,7 @@ const BUCKET_TOOLS: ToolSchema[] = [
     properties: {
       name: { type: 'string', description: 'Bucket name' },
       protected: { type: 'boolean', description: 'Prevent accidental deletion' },
+      projectId: { type: 'string', description: 'Project ID to assign this bucket to' },
     },
     required: ['name'],
   },
@@ -224,6 +225,7 @@ const BUCKET_TOOLS: ToolSchema[] = [
     properties: {
       name: { type: 'string', description: 'Bucket name' },
       protected: { type: 'boolean', description: 'Protected flag' },
+      projectId: { type: 'string', description: 'Project ID to assign (omit or pass null to leave unchanged)' },
     },
     required: ['name', 'protected'],
   },

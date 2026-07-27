@@ -388,11 +388,11 @@ export const api = {
 
   bucketList: () => fetch('/api/buckets').then((r) => json<Bucket[]>(r)),
 
-  bucketCreate: (name: string, protect = false) =>
+  bucketCreate: (name: string, protect = false, projectId?: string) =>
     fetch('/api/buckets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, protected: protect }),
+      body: JSON.stringify({ name, protected: protect, projectId }),
     }).then((r) => json<{ name: string; protected: boolean }>(r)),
 
   bucketDelete: (name: string) =>
@@ -403,11 +403,11 @@ export const api = {
   bucketGet: (name: string) =>
     fetch(`/api/buckets/${encodeURIComponent(name)}`).then((r) => json<{ name: string; protected: boolean }>(r)),
 
-  bucketUpdateProtected: (name: string, protect: boolean) =>
+  bucketUpdateProtected: (name: string, protect: boolean, projectId?: string) =>
     fetch(`/api/buckets/${encodeURIComponent(name)}/protected`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ protected: protect }),
+      body: JSON.stringify({ protected: protect, projectId }),
     }).then((r) => json<{ name: string; protected: boolean }>(r)),
 
   bucketObjects: (name: string, prefix = '') =>
