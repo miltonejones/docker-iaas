@@ -540,7 +540,10 @@ async function ensureCloneReady(owner: string, repo: string, ref: string | undef
 
   // Check whether the target branch exists on the remote.
   const remoteBranches = (await git(dir, ['branch', '-r'])).stdout;
-  const existsRemotely = remoteBranches.includes(`origin/${branch}`);
+  const remoteBranchSet = new Set(
+    remoteBranches.split('\n').map((l) => l.trim()).filter(Boolean),
+  );
+  const existsRemotely = remoteBranchSet.has(`origin/${branch}`);
 
   if (existsRemotely) {
     await git(dir, ['checkout', branch]);
@@ -550,7 +553,7 @@ async function ensureCloneReady(owner: string, repo: string, ref: string | undef
     const defaultBranch = baseBranch || (await git(dir, ['remote', 'show', 'origin'])).stdout.match(/HEAD branch: (\S+)/)?.[1] || 'main';
     await git(dir, ['checkout', defaultBranch]);
     await git(dir, ['reset', '--hard', `origin/${defaultBranch}`]);
-    await git(dir, ['checkout', '-b', branch]);
+    await git(dir, ['checkout', '-B', branch]);
   }
 
   return dir;
