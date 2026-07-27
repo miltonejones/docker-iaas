@@ -194,6 +194,7 @@ export function GatewayList() {
                 <th>Name</th>
                 <th>Route</th>
                 <th>EP</th>
+                <th>Domain</th>
                 <th>Targets</th>
                 <th className="num">Req (24h)</th>
               </tr>
@@ -234,6 +235,13 @@ export function GatewayList() {
                     </a>
                   </td>
                   <td className="muted">{group.length}</td>
+                  <td className="muted mono">
+                    {group[0].domain ? (
+                      <span title={group[0].domainVerified ? 'Verified' : 'Pending verification'}>
+                        {group[0].domain} {group[0].domainVerified ? '✅' : '⏳'}
+                      </span>
+                    ) : '—'}
+                  </td>
                   <td className="muted">
                     {group.map((r, i) => (
                       <span key={r.id} title={targetLabel(r)}>
