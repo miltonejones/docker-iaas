@@ -174,6 +174,7 @@ const READ_ONLY_TOOLS = new Set([
   "list_volumes",
   "list_dns_zones",
   "list_dns_records",
+  "check_gateway_domain_status",
   "list_host_directory",
   "read_host_file",
   "list_container_files",
@@ -278,6 +279,8 @@ async function executeReadOnlyTool(
       return gatewayService.listDnsZones();
     case "list_dns_records":
       return gatewayService.listDnsRecords(String(input.zoneId ?? ""), typeof input.name === 'string' ? input.name : undefined);
+    case "check_gateway_domain_status":
+      return gatewayService.checkDomainStatus(String(input.id ?? ""), userId);
     case "list_host_build_presets": {
       return listHostBuildPresets().map(
         ({ name, cwd, command, args, artifacts }) => ({ name, cwd, command, args, artifacts }),

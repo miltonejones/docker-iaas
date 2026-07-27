@@ -22,7 +22,10 @@ const ACTION_LABEL: Record<string, string> = {
   create_lambda_function: 'Create Lambda function',
   create_gateway_route: 'Create Gateway route',
   update_gateway_route: 'Update Gateway route',
-  manage_gateway_domain: 'Manage Gateway domain',
+  check_gateway_domain_status: 'Check gateway domain',
+  set_gateway_domain: 'Set gateway domain',
+  enable_gateway_domain: 'Enable gateway domain',
+  remove_gateway_domain: 'Remove gateway domain',
   list_dns_zones: 'List DNS zones',
   list_dns_records: 'List DNS records',
   create_dns_record: 'Create DNS record',
@@ -943,18 +946,17 @@ export function AssistantBar({
       case 'update_gateway_route':
         return api.gatewayUpdate(String(input.id ?? ''), str(input.displayName) ?? null);
 
-      case 'manage_gateway_domain': {
-        const action = String(input.action ?? '');
-        if (action === 'set') {
-          return api.gatewaySetDomain(String(input.id ?? ''), str(input.domain) ?? null);
-        }
-        if (action === 'enable') {
-          return api.gatewayEnableDomain(String(input.id ?? ''));
-        }
-        if (action === 'status') return api.gatewayDomainStatus(String(input.id ?? ''));
-        if (action === 'remove') return api.gatewayRemoveDomain(String(input.id ?? ''));
-        throw new Error(`Unknown domain action: ${action}`);
-      }
+      case 'check_gateway_domain_status':
+        return api.gatewayDomainStatus(String(input.id ?? ''));
+
+      case 'set_gateway_domain':
+        return api.gatewaySetDomain(String(input.id ?? ''), String(input.domain ?? ''));
+
+      case 'enable_gateway_domain':
+        return api.gatewayEnableDomain(String(input.id ?? ''));
+
+      case 'remove_gateway_domain':
+        return api.gatewayRemoveDomain(String(input.id ?? ''));
 
       case 'list_dns_zones':
         return api.dnsListZones();
@@ -1116,17 +1118,32 @@ export function AssistantBar({
         return api.pruneBuildCache();
 
       case 'run_function': {
-        // The /run endpoint needs the function's actual code/runtime/entry
-        // (functionId alone only injects env vars), so load the saved function
-        // first, then run it with that id so its env vars apply too.
-        const fn = await api.lambdaGetFunction(String(input.id ?? ''));
+        // If the user passed a functionId, look up the saved function to get its
+        // runtime/code/entry.  If they passed ad-hoc runtime+code, run those directly.
+        const fnId = str(input.functionId);
+        const fn = fnId ? await api.lambdaGetFunction(fnId) : null;
+        if (fn) {
+          return api.lambdaRun(
+            fn.runtime,
+            fn.code,
+            fn.packages || undefined,
+            fn.id,
+            fn.files,
+            fn.entryPoint,
+            input.payload,
+          );
+        }
+        // Ad-hoc run — use runtime + code from input directly.
+        if (!input.runtime || !input.code) {
+          throw new Error('run_function requires either functionId or both runtime and code.');
+        }
         return api.lambdaRun(
-          fn.runtime,
-          fn.code,
-          fn.packages || undefined,
-          fn.id,
-          fn.files,
-          fn.entryPoint,
+          String(input.runtime ?? ''),
+          String(input.code ?? ''),
+          str(input.packages),
+          undefined,
+          parseLambdaFiles(input.files),
+          str(input.entryPoint),
           input.payload,
         );
       }

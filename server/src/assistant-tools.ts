@@ -20,10 +20,14 @@ const ASSISTANT_DESCRIPTIONS: Record<string, string> = {
     "Delete a gateway route by id. The user confirms before deletion.",
   update_gateway_route:
     "Update a gateway route's display name. Pass the route id and the new displayName. The user confirms before the update.",
-  manage_gateway_domain:
-    "Set or clear a custom domain on a gateway route. Pass action 'set' with a domain name to assign a domain, or action 'clear' to remove the existing domain. The user confirms before the domain change.",
-  manage_dns_records:
-    "Create or delete a DNS CNAME record in Route 53. Pass zoneId, action (create or delete), and name. The user confirms before the DNS change.",
+  check_gateway_domain_status:
+    "Check the verification status of a custom domain on a gateway route (read-only, runs automatically).",
+  set_gateway_domain:
+    "Set a custom domain on a gateway route. Pass the route id and domain name. The user confirms before the domain is assigned.",
+  enable_gateway_domain:
+    "Provision TLS certificate and configure DNS for a gateway route that has a domain assigned. The user confirms before enabling.",
+  remove_gateway_domain:
+    "Remove a custom domain from a gateway route, tearing down TLS and DNS config. The user confirms before removal.",
   list_dns_zones:
     "List Route 53 hosted zones (read-only, runs automatically).",
   list_dns_records:

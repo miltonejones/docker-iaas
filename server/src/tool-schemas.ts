@@ -340,14 +340,31 @@ const GATEWAY_TOOLS: ToolSchema[] = [
     required: ['id'],
   },
   {
-    name: 'manage_gateway_domain',
-    description: 'Set or remove a domain for a gateway route.',
+    name: 'check_gateway_domain_status',
+    description: 'Check verification status of a custom domain on a gateway route. Read-only.',
+    properties: { id: { type: 'string', description: 'Gateway route ID' } },
+    required: ['id'],
+  },
+  {
+    name: 'set_gateway_domain',
+    description: 'Set a custom domain on a gateway route.',
     properties: {
-      id: { type: 'string', description: 'Route ID' },
-      action: { type: 'string', enum: ['set', 'clear'], description: 'Whether to set a new domain or clear the existing one' },
-      domain: { type: 'string', description: 'Domain name (required for set, ignored for clear)' },
+      id: { type: 'string', description: 'Gateway route ID' },
+      domain: { type: 'string', description: 'Domain name to assign' },
     },
-    required: ['id', 'action'],
+    required: ['id', 'domain'],
+  },
+  {
+    name: 'enable_gateway_domain',
+    description: 'Provision TLS certificate and configure DNS for a gateway route.',
+    properties: { id: { type: 'string', description: 'Gateway route ID' } },
+    required: ['id'],
+  },
+  {
+    name: 'remove_gateway_domain',
+    description: 'Remove a custom domain from a gateway route.',
+    properties: { id: { type: 'string', description: 'Gateway route ID' } },
+    required: ['id'],
   },
   {
     name: 'list_dns_zones',
