@@ -300,8 +300,14 @@ const ASSISTANT_ONLY_TOOLS: Array<{
   },
 ];
 
+// Tools provided by separate modules — excluded from buildAssistantTools to avoid duplicates.
+const SEPARATE_MODULE_NAMES = new Set([
+  ...DATABASE_ASSISTANT_TOOLS.map((t: { name: string }) => t.name),
+  ...GITHUB_ASSISTANT_TOOLS.map((t: { name: string }) => t.name),
+]);
+
 export const tools: Anthropic.Tool[] = [
-  ...buildAssistantTools(ASSISTANT_DESCRIPTIONS, ASSISTANT_ONLY_TOOLS),
+  ...buildAssistantTools(ASSISTANT_DESCRIPTIONS, ASSISTANT_ONLY_TOOLS, SEPARATE_MODULE_NAMES),
   ...DATABASE_ASSISTANT_TOOLS,
   ...GITHUB_ASSISTANT_TOOLS,
 ];
