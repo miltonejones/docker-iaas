@@ -421,10 +421,10 @@ export function setBucketProtected(bucketName: string, protect: boolean): void {
   db.prepare('UPDATE bucket_owners SET protected = ? WHERE bucket_name = ?').run(protect ? 1 : 0, bucketName);
 }
 
-export function setBucketProjectId(bucketName: string, projectId: string | null): void {
+export function setBucketProjectId(bucketName: string, projectId: string | null, userId: string): void {
   db.prepare(
-    'INSERT INTO bucket_owners (bucket_name, user_id, project_id, created_at) VALUES (?, \'\', ?, ?) ON CONFLICT(bucket_name) DO UPDATE SET project_id = excluded.project_id',
-  ).run(bucketName, projectId, new Date().toISOString());
+    'INSERT INTO bucket_owners (bucket_name, user_id, project_id, created_at) VALUES (?, ?, ?, ?) ON CONFLICT(bucket_name) DO UPDATE SET project_id = excluded.project_id',
+  ).run(bucketName, userId, projectId, new Date().toISOString());
 }
 
 export function listUserBuckets(userId: string): string[] {

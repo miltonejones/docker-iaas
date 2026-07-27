@@ -27,7 +27,8 @@ bucketsRouter.get('/:name', (req: Request, res: Response) => {
 bucketsRouter.post('/:name/protected', express.json(), (req: Request, res: Response) => {
   const protect = !!req.body?.protected;
   const projectId = typeof req.body?.projectId === 'string' ? req.body.projectId.trim() : undefined;
-  bucketService.setProtected(req.params.name, protect, projectId);
+  const userId = getAuthUser(req)?.userId;
+  bucketService.setProtected(req.params.name, protect, projectId, userId);
   res.json({ name: req.params.name, protected: protect });
 });
 
