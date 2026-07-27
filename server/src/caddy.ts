@@ -145,11 +145,7 @@ export async function removeCaddySite(domain: string): Promise<void> {
  *  Outside Docker: reload the local Caddy instance. */
 export async function reloadCaddy(): Promise<void> {
   if (fs.existsSync('/.dockerenv')) {
-    try {
-      await execInCaddy(['caddy', 'reload', '--config', '/etc/caddy/Caddyfile']);
-    } catch (err) {
-      console.error('caddy reload via Docker API failed:', (err as Error).message);
-    }
+    await execInCaddy(['caddy', 'reload', '--config', '/etc/caddy/Caddyfile']);
     return;
   }
 
