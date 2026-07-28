@@ -87,6 +87,14 @@ const TOOL_CATEGORIES: { label: string; tools: string[] }[] = [
 
 const VOICES = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'onyx', 'nova', 'sage', 'shimmer', 'verse'];
 
+const ASSISTANT_ICONS = [
+  '🛠️', '🔧', '⚙️', '🚀', '🐳', '☁️', '🌐', '💻', '🖥️', '📱',
+  '🔒', '🔑', '📊', '📈', '🔍', '📋', '📦', '🏷️', '🎯', '⚡',
+  '🔥', '❄️', '💾', '🗄️', '🏗️', '🧱', '🚦', '🛡️', '🤖', '🧠',
+  '🧪', '🔬', '📡', '🌍', '🚢', '✈️', '🔔', '❤️', '💵', '🎉',
+  '🧹', '🗂️', '📁', '🧰', '🏭', '🛳️', '🪝', '🔗', '🎨', '💡',
+];
+
 export function AssistantsSettings() {
   const [assistants, setAssistants] = useState<UserAssistant[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -98,9 +106,11 @@ export function AssistantsSettings() {
   const [systemPrompt, setSystemPrompt] = useState('');
   const [toolList, setToolList] = useState<string[]>([]);
   const [voice, setVoice] = useState('alloy');
+  const [icon, setIcon] = useState<string | null>(null);
   const [isDefault, setIsDefault] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [iconPickerOpen, setIconPickerOpen] = useState(false);
 
   function load() {
     api.assistantList().then(setAssistants).catch(() => {}).finally(() => setLoading(false));
@@ -114,8 +124,10 @@ export function AssistantsSettings() {
     setSystemPrompt('');
     setToolList([]);
     setVoice('alloy');
+    setIcon(null);
     setIsDefault(false);
     setEditingId(null);
+    setIconPickerOpen(false);
     setError('');
   }
 
@@ -125,8 +137,10 @@ export function AssistantsSettings() {
     setSystemPrompt(a.systemPrompt);
     setToolList(a.toolList);
     setVoice(a.voice);
+    setIcon(a.icon);
     setIsDefault(a.isDefault);
     setEditingId(a.id);
+    setIconPickerOpen(false);
     setError('');
   }
 
@@ -150,7 +164,7 @@ export function AssistantsSettings() {
     setSaving(true);
     setError('');
     try {
-      const body = { name: name.trim(), description: description.trim(), systemPrompt: systemPrompt.trim(), toolList, voice, isDefault };
+      const body = { name: name.trim(), description: description.trim(), systemPrompt: systemPrompt.trim(), toolList, voice, icon: icon || undefined, isDefault };
       if (editingId) {
         await api.assistantUpdate(editingId, body);
       } else {
@@ -207,6 +221,7 @@ export function AssistantsSettings() {
                   {assistants.map((a) => (
                     <tr key={a.id} className={editingId === a.id ? 'row--active' : ''} onClick={() => startEdit(a)}>
                       <td>
+                        {a.icon && <span style={{ marginRight: 6 }}>{a.icon}</span>}
                         <strong>{a.name}</strong>
                         {a.isDefault && <span className="badge badge--ok" style={{ marginLeft: 6 }}>default</span>}
                         <br /><span className="muted" style={{ fontSize: 12 }}>{a.description || 'No description'}</span>
@@ -234,6 +249,30 @@ export function AssistantsSettings() {
             <label className="settings-field">
               <span className="settings-field__label">Name</span>
               <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. DevOps, UI Designer" autoFocus />
+            </label>
+            <label className="settings-field">
+              <span className="settings-field__label">Icon</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input className="input" value={icon ?? ''} onChange={(e) => setIcon(e.target.value || null)} placeholder="🛠️" style={{ width: 48, textAlign: 'center', fontSize: 18 }} />
+                <button type="button" className="btn btn--ghost btn--sm" onClick={() => setIconPickerOpen(!iconPickerOpen)}>
+                  {icon ? icon : 'Pick'}
+                </button>
+                {icon && <button type="button" className="btn btn--ghost btn--sm" onClick={() => setIcon(null)} style={{ fontSize: 12 }}>✕</button>}
+              </div>
+              {iconPickerOpen && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6, maxWidth: 320, background: 'var(--bg-alt)', padding: 8, borderRadius: 6 }}>
+                  {ASSISTANT_ICONS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => { setIcon(emoji); setIconPickerOpen(false); }}
+                      style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', border: icon === emoji ? '2px solid var(--accent)' : '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', cursor: 'pointer', fontSize: 16 }}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              )}
             </label>
             <label className="settings-field">
               <span className="settings-field__label">Description (used for auto-routing)</span>

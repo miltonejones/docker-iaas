@@ -385,11 +385,13 @@ export interface AssistantSessionState {
   log: AssistantLogEntry[];
   pending: AssistantPendingAction[];
   resolved: AssistantResolvedResult[];
+  assistantId?: string | null;
 }
 
 export interface AssistantSessionSummary {
   id: string;
   name: string;
+  assistantId?: string | null;
   createdAt: string;
   updatedAt: string;
   running?: boolean;
@@ -454,6 +456,7 @@ export interface UserAssistant {
   systemPrompt: string;
   toolList: string[];
   voice: string;
+  icon: string | null;
   isDefault: boolean;
   createdAt: string;
   updatedAt: string;

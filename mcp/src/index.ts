@@ -3,8 +3,9 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { TOOL_DEFINITIONS } from './tools.js';
 import { handleCallTool } from './handlers.js';
-import { initAuth } from './auth.js';
+import { initAuth, resolveUserId, resolveAssistantId } from './auth.js';
 import { initDb } from '../../server/src/db.js';
+import { getUserAssistant } from '../../server/src/db.js';
 import { ensureNetwork } from '../../server/src/docker.js';
 import { ensureMinio } from '../../server/src/minio.js';
 
@@ -20,7 +21,21 @@ async function main() {
     { capabilities: { tools: {} } },
   );
 
-  server.setRequestHandler(ListToolsRequestSchema, () => ({ tools: TOOL_DEFINITIONS }));
+  server.setRequestHandler(ListToolsRequestSchema, () => {
+    const assistantId = resolveAssistantId();
+    let tools = TOOL_DEFINITIONS;
+    if (assistantId) {
+      const userId = resolveUserId();
+      const assistant = getUserAssistant(assistantId, userId!);
+      if (assistant) {
+        const allowed = new Set(JSON.parse(assistant.tool_list || '[]'));
+        if (allowed.size > 0) {
+          tools = tools.filter((t) => allowed.has(t.name));
+        }
+      }
+    }
+    return { tools };
+  });
   server.setRequestHandler(CallToolRequestSchema, handleCallTool);
 
   const transport = new StdioServerTransport();

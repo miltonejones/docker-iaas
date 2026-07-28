@@ -707,14 +707,14 @@ export const api = {
   assistantGetSession: (id: string) =>
     fetch(`/api/assistant/sessions/${id}`).then((r) => json<AssistantSession>(r)),
 
-  assistantCreateSession: (name: string, state: AssistantSessionState) =>
+  assistantCreateSession: (name: string, state: AssistantSessionState, assistantId?: string) =>
     fetch('/api/assistant/sessions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, state }),
+      body: JSON.stringify({ name, state, assistantId }),
     }).then((r) => json<AssistantSession>(r)),
 
-  assistantUpdateSession: (id: string, fields: { name?: string; state?: AssistantSessionState }) =>
+  assistantUpdateSession: (id: string, fields: { name?: string; state?: AssistantSessionState; assistantId?: string | null }) =>
     fetch(`/api/assistant/sessions/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -834,11 +834,11 @@ export const api = {
   assistantGet: (id: string) =>
     fetch(`/api/assistants/${encodeURIComponent(id)}`).then((r) => json<UserAssistant>(r)),
 
-  assistantCreate: (body: { name: string; description?: string; systemPrompt?: string; toolList?: string[]; voice?: string; isDefault?: boolean }) =>
+  assistantCreate: (body: { name: string; description?: string; systemPrompt?: string; toolList?: string[]; voice?: string; icon?: string; isDefault?: boolean }) =>
     fetch('/api/assistants', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       .then((r) => json<UserAssistant>(r)),
 
-  assistantUpdate: (id: string, body: { name?: string; description?: string; systemPrompt?: string; toolList?: string[]; voice?: string; isDefault?: boolean }) =>
+  assistantUpdate: (id: string, body: { name?: string; description?: string; systemPrompt?: string; toolList?: string[]; voice?: string; icon?: string | null; isDefault?: boolean }) =>
     fetch(`/api/assistants/${encodeURIComponent(id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
       .then((r) => json<UserAssistant>(r)),
 

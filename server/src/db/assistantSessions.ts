@@ -19,6 +19,8 @@ export function initAssistantSessionTables(database: Database.Database): void {
 
   // Migration: add user_id — this table is created after the bulk user_id block.
   try { db.exec('ALTER TABLE assistant_sessions ADD COLUMN user_id TEXT REFERENCES users(id)'); } catch { /* ok */ }
+  // Migration: add assistant_id — persists which user-defined assistant a session belongs to.
+  try { db.exec('ALTER TABLE assistant_sessions ADD COLUMN assistant_id TEXT REFERENCES user_assistants(id)'); } catch { /* ok */ }
 }
 
 // ---------------------------------------------------------------------------
@@ -29,6 +31,8 @@ export interface AssistantSessionRow {
   id: string;
   name: string;
   state: string;
+  user_id: string | null;
+  assistant_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -36,6 +40,7 @@ export interface AssistantSessionRow {
 export interface AssistantSessionSummaryRow {
   id: string;
   name: string;
+  assistant_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -52,23 +57,23 @@ export function listAssistantSessions(userId?: string, query?: string): Assistan
     if (like) {
       return db
         .prepare(
-          'SELECT id, name, created_at, updated_at FROM assistant_sessions WHERE (user_id = ? OR user_id IS NULL) AND (name LIKE ? OR state LIKE ?) ORDER BY updated_at DESC',
+          'SELECT id, name, assistant_id, created_at, updated_at FROM assistant_sessions WHERE (user_id = ? OR user_id IS NULL) AND (name LIKE ? OR state LIKE ?) ORDER BY updated_at DESC',
         )
         .all(userId, like, like) as AssistantSessionSummaryRow[];
     }
     return db
-      .prepare('SELECT id, name, created_at, updated_at FROM assistant_sessions WHERE user_id = ? OR user_id IS NULL ORDER BY updated_at DESC')
+      .prepare('SELECT id, name, assistant_id, created_at, updated_at FROM assistant_sessions WHERE user_id = ? OR user_id IS NULL ORDER BY updated_at DESC')
       .all(userId) as AssistantSessionSummaryRow[];
   }
   if (like) {
     return db
       .prepare(
-        'SELECT id, name, created_at, updated_at FROM assistant_sessions WHERE name LIKE ? OR state LIKE ? ORDER BY updated_at DESC',
+        'SELECT id, name, assistant_id, created_at, updated_at FROM assistant_sessions WHERE name LIKE ? OR state LIKE ? ORDER BY updated_at DESC',
       )
       .all(like, like) as AssistantSessionSummaryRow[];
   }
   return db
-    .prepare('SELECT id, name, created_at, updated_at FROM assistant_sessions ORDER BY updated_at DESC')
+    .prepare('SELECT id, name, assistant_id, created_at, updated_at FROM assistant_sessions ORDER BY updated_at DESC')
     .all() as AssistantSessionSummaryRow[];
 }
 
@@ -78,28 +83,44 @@ export function getAssistantSession(id: string, userId?: string): AssistantSessi
   return row;
 }
 
-export function createAssistantSession(id: string, name: string, state: string, userId?: string): AssistantSessionRow {
+export function createAssistantSession(id: string, name: string, state: string, userId?: string, assistantId?: string): AssistantSessionRow {
   const now = new Date().toISOString();
   db.prepare(
-    'INSERT INTO assistant_sessions (id, name, state, user_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-  ).run(id, name, state, userId || null, now, now);
+    'INSERT INTO assistant_sessions (id, name, state, user_id, assistant_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+  ).run(id, name, state, userId || null, assistantId || null, now, now);
   return getAssistantSession(id)!;
 }
 
 export function updateAssistantSession(
   id: string,
-  fields: { name?: string; state?: string },
+  fields: { name?: string; state?: string; assistantId?: string | null },
 ): AssistantSessionRow | undefined {
   const existing = getAssistantSession(id);
   if (!existing) return undefined;
 
-  const now = new Date().toISOString();
-  db.prepare('UPDATE assistant_sessions SET name = ?, state = ?, updated_at = ? WHERE id = ?').run(
-    fields.name ?? existing.name,
-    fields.state ?? existing.state,
-    now,
-    id,
-  );
+  const updates: string[] = [];
+  const params: (string | null)[] = [];
+
+  if (fields.name !== undefined) {
+    updates.push('name = ?');
+    params.push(fields.name);
+  }
+  if (fields.state !== undefined) {
+    updates.push('state = ?');
+    params.push(fields.state);
+  }
+  if (fields.assistantId !== undefined) {
+    updates.push('assistant_id = ?');
+    params.push(fields.assistantId);
+  }
+
+  if (updates.length === 0) return existing;
+
+  updates.push('updated_at = ?');
+  params.push(new Date().toISOString());
+  params.push(id);
+
+  db.prepare(`UPDATE assistant_sessions SET ${updates.join(', ')} WHERE id = ?`).run(...params);
   return getAssistantSession(id)!;
 }
 

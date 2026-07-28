@@ -16,6 +16,7 @@ function toJson(r: UserAssistantRow) {
     systemPrompt: r.system_prompt,
     toolList: JSON.parse(r.tool_list || '[]') as string[],
     voice: r.voice,
+    icon: r.icon ?? null,
     isDefault: r.is_default === 1,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -42,6 +43,7 @@ export function create(
     systemPrompt?: string;
     toolList?: string[];
     voice?: string;
+    icon?: string;
     isDefault?: boolean;
   },
 ) {
@@ -53,6 +55,7 @@ export function create(
     systemPrompt: input.systemPrompt,
     toolList: input.toolList ? JSON.stringify(input.toolList) : undefined,
     voice: input.voice,
+    icon: input.icon,
     isDefault: input.isDefault,
   });
   return toJson(row);
@@ -67,6 +70,7 @@ export function update(
     systemPrompt?: string;
     toolList?: string[];
     voice?: string;
+    icon?: string | null;
     isDefault?: boolean;
   },
 ) {
@@ -76,6 +80,7 @@ export function update(
     systemPrompt: fields.systemPrompt,
     toolList: fields.toolList ? JSON.stringify(fields.toolList) : undefined,
     voice: fields.voice,
+    icon: fields.icon,
     isDefault: fields.isDefault,
   });
   if (!row) throw new HttpError(404, 'Assistant not found.');
