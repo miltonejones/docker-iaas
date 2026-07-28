@@ -9,7 +9,8 @@ import * as databaseService from '../../server/src/services/databases.js';
 import * as hostFileService from '../../server/src/services/host-files.js';
 import * as hostBuildService from '../../server/src/services/host-builds.js';
 import * as volumeService from '../../server/src/services/volumes.js';
-import { resolveUserId } from './auth.js';
+import { resolveUserId, resolveAssistantId } from './auth.js';
+import { getUserAssistant } from '../../server/src/db.js';
 import { runSavedConnectionRead } from '../../server/src/databaseManagement.js';
 import {
   getGithubWorkflowStatus,
@@ -35,6 +36,18 @@ function toError(err: unknown) {
 export async function handleCallTool(request: CallToolRequest) {
   const { name, arguments: args = {} } = request.params;
   const userId = resolveUserId();
+
+  // If an assistant is configured, only allow tools in its tool_list.
+  const assistantId = resolveAssistantId();
+  if (assistantId) {
+    const assistant = getUserAssistant(assistantId, userId!);
+    if (assistant) {
+      const allowed = new Set(JSON.parse(assistant.tool_list || '[]'));
+      if (allowed.size > 0 && !allowed.has(name)) {
+        return toResult({ error: `Tool "${name}" is not available for this assistant.` });
+      }
+    }
+  }
 
   try {
     let result: unknown;

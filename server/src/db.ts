@@ -157,12 +157,15 @@ export function initDb(dbPath?: string): void {
       system_prompt TEXT NOT NULL DEFAULT '',
       tool_list TEXT NOT NULL DEFAULT '[]',
       voice TEXT NOT NULL DEFAULT 'alloy',
+      icon TEXT,
       is_default INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id)
     )
   `);
+  // Migration: add icon column for assistant emoji.
+  try { db.exec("ALTER TABLE user_assistants ADD COLUMN icon TEXT"); } catch { /* ok */ }
 
   initAssistantSessionTables(db);
   initDatabaseOpsTables(db);
@@ -595,6 +598,7 @@ export interface UserAssistantRow {
   system_prompt: string;
   tool_list: string;
   voice: string;
+  icon: string | null;
   is_default: number;
   created_at: string;
   updated_at: string;
@@ -619,12 +623,13 @@ export function createUserAssistant(input: {
   systemPrompt?: string;
   toolList?: string;
   voice?: string;
+  icon?: string;
   isDefault?: boolean;
 }): UserAssistantRow {
   const now = new Date().toISOString();
   db.prepare(`
-    INSERT INTO user_assistants (id, user_id, name, description, system_prompt, tool_list, voice, is_default, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO user_assistants (id, user_id, name, description, system_prompt, tool_list, voice, icon, is_default, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     `ast-${crypto.randomBytes(8).toString('hex')}`,
     input.userId,
@@ -633,6 +638,7 @@ export function createUserAssistant(input: {
     (input.systemPrompt || '').trim(),
     input.toolList || '[]',
     input.voice || 'alloy',
+    input.icon || null,
     input.isDefault ? 1 : 0,
     now,
     now,
@@ -651,6 +657,7 @@ export function updateUserAssistant(
     systemPrompt?: string;
     toolList?: string;
     voice?: string;
+    icon?: string | null;
     isDefault?: boolean;
   },
 ): UserAssistantRow | undefined {
@@ -662,14 +669,15 @@ export function updateUserAssistant(
   const systemPrompt = fields.systemPrompt !== undefined ? fields.systemPrompt.trim() : existing.system_prompt;
   const toolList = fields.toolList ?? existing.tool_list;
   const voice = fields.voice ?? existing.voice;
+  const icon = fields.icon !== undefined ? fields.icon : existing.icon;
   const isDefault = fields.isDefault !== undefined ? (fields.isDefault ? 1 : 0) : existing.is_default;
   const now = new Date().toISOString();
 
   db.prepare(`
     UPDATE user_assistants
-    SET name = ?, description = ?, system_prompt = ?, tool_list = ?, voice = ?, is_default = ?, updated_at = ?
+    SET name = ?, description = ?, system_prompt = ?, tool_list = ?, voice = ?, icon = ?, is_default = ?, updated_at = ?
     WHERE id = ? AND user_id = ?
-  `).run(name, description, systemPrompt, toolList, voice, isDefault, now, id, userId);
+  `).run(name, description, systemPrompt, toolList, voice, icon, isDefault, now, id, userId);
 
   return getUserAssistant(id, userId);
 }

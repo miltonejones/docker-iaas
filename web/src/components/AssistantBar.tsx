@@ -348,7 +348,7 @@ export function AssistantBar({
    *  via the effect below whenever state settles after busy→false.  Falls back
    *  to localStorage so a transient save failure doesn't lose the session. */
   function saveSession(snapshot?: AssistantSessionState) {
-    const state = snapshot ?? { messages: rawMessages, log, pending, resolved };
+    const state = snapshot ?? { messages: rawMessages, log, pending, resolved, assistantId: activeAssistantId ?? null };
     if (state.log.length === 0 && state.messages.length === 0) return;
     if (saveInFlightRef.current) return; // serialise saves
 
@@ -360,7 +360,7 @@ export function AssistantBar({
         if (!sessionIdRef.current) {
           const custom = sessionName.trim();
           const name = custom || deriveSessionName(state.log);
-          const created = await api.assistantCreateSession(name, state);
+          const created = await api.assistantCreateSession(name, state, state.assistantId ?? undefined);
           sessionIdRef.current = created.id;
           setSessionId(created.id);
           setSessionName(created.name);
@@ -381,7 +381,7 @@ export function AssistantBar({
               .catch(() => { /* best-effort */ });
           }
         } else {
-          await api.assistantUpdateSession(sessionIdRef.current, { state });
+          await api.assistantUpdateSession(sessionIdRef.current, { state, assistantId: state.assistantId ?? null });
           localStorage.removeItem(fallbackKey());
         }
       } catch (_err) {
@@ -493,6 +493,9 @@ export function AssistantBar({
       setPending(session.state.pending ?? []);
       setEdits(Object.fromEntries((session.state.pending ?? []).map((p) => [p.id, { ...p.input }])));
       setResolved(session.state.resolved ?? []);
+      // Restore the assistant that was active when this session was last saved.
+      if (session.assistantId) setActiveAssistantId(session.assistantId);
+      else if (session.state.assistantId) setActiveAssistantId(session.state.assistantId);
       setSessionsOpen(false);
       localStorage.removeItem(fallbackKey());
     } catch (err) {
@@ -530,6 +533,8 @@ export function AssistantBar({
         setPending(fb.state.pending ?? []);
         setEdits(Object.fromEntries((fb.state.pending ?? []).map((p) => [p.id, { ...p.input }])));
         setResolved(fb.state.resolved ?? []);
+        // Restore the assistant from the fallback state.
+        if (fb.state.assistantId) setActiveAssistantId(fb.state.assistantId);
         if (fb.id && sessionStorageKey) localStorage.setItem(sessionStorageKey, fb.id);
         return true;
       } catch {
@@ -734,6 +739,7 @@ export function AssistantBar({
           log: [...log, { kind: 'assistant', text: streamedText || turn.text }],
           pending: turn.pending,
           resolved: turn.autoResolved ?? [],
+          assistantId: activeAssistantId ?? null,
         });
         if (turn.autoResolved?.length) {
           const labels = Array.from(
@@ -812,6 +818,7 @@ export function AssistantBar({
       log: [...log, { kind: 'user', text }],
       pending,
       resolved,
+      assistantId: activeAssistantId ?? null,
     });
     try {
       const aborter = new AbortController();
@@ -1392,7 +1399,7 @@ export function AssistantBar({
       setPending(remaining);
       setActiveActionName(null);
       // Persist partial progress so a reload doesn't lose confirmed actions.
-      saveSession({ messages: rawMessages, log, pending: remaining, resolved: nextResolved });
+      saveSession({ messages: rawMessages, log, pending: remaining, resolved: nextResolved, assistantId: activeAssistantId ?? null });
       setBusy(false);
       return;
     }
@@ -1474,8 +1481,10 @@ export function AssistantBar({
       >
         <div className={embedded ? 'assistant-panel__head' : 'modal__head'}>
           <h3>
-            <span className="assistant-panel__badge"><AppIcon name="assistant" /></span>
-Ask Dockyard.ai
+            <span className="assistant-panel__badge">{activeAssistantId && assistants.find(a => a.id === activeAssistantId)?.icon
+              ? <span>{assistants.find(a => a.id === activeAssistantId)!.icon}</span>
+              : <AppIcon name="assistant" />}</span>
+            {activeAssistantId ? (assistants.find(a => a.id === activeAssistantId)?.name ?? 'Ask Dockyard.ai') : 'Ask Dockyard.ai'}
           </h3>
           {embedded && (
             <button className="btn btn--ghost btn--sm" onClick={resetToNewSession}>
@@ -1790,7 +1799,7 @@ Ask Dockyard.ai
             >
               <option value="">Dockyard (all tools)</option>
               {assistants.map((a) => (
-                <option key={a.id} value={a.id}>{a.name} ({a.toolList.length} tools)</option>
+                <option key={a.id} value={a.id}>{a.icon ? `${a.icon} ` : ''}{a.name} ({a.toolList.length} tools)</option>
               ))}
             </select>
           </div>

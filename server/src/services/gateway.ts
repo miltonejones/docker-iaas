@@ -61,7 +61,7 @@ export function createRoute(userId: string | undefined, input: CreateRouteInput)
   if (!input.targetId?.trim()) {
     throw new HttpError(400, 'A targetId is required.');
   }
-  if (input.targetType === 'container' && !input.targetPort) {
+  if (input.targetType === 'container' && input.targetPort == null) {
     throw new HttpError(400, 'A targetPort is required for container routes.');
   }
 
@@ -104,11 +104,36 @@ export function createRoute(userId: string | undefined, input: CreateRouteInput)
     input.projectId?.trim() || null,
   );
   recordAuditLog('gateway.route.create', 'route', row.id, userId, input.name);
-  return toJson(row);
+
+  // If a domain was provided at creation time, assign it immediately.
+  const domain = (typeof input.domain === 'string' && input.domain.trim()) || null;
+  if (domain) {
+    if (!DOMAIN_RE.test(domain)) throw new HttpError(400, 'Invalid domain format.');
+    const claimant = getRouteByDomainAnyStatus(domain);
+    if (claimant && claimant.id !== id) {
+      throw new HttpError(409, `Domain "${domain}" is already claimed by route "${claimant.name}".`);
+    }
+    setRouteDomain(id, domain);
+  }
+
+  return toJson(getRoute(id)!);
 }
 
 export function updateRoute(id: string, userId: string | undefined, input: UpdateRouteInput) {
-  const row = updateRouteRow(id, { displayName: input.displayName });
+  const existing = getRoute(id, userId);
+  if (!existing) throw new HttpError(404, 'Route not found.');
+
+  if (input.targetPort != null && isNaN(Number(input.targetPort))) {
+    throw new HttpError(400, 'targetPort must be a number.');
+  }
+
+  const row = updateRouteRow(id, {
+    displayName: input.displayName,
+    targetPort: input.targetPort != null ? Number(input.targetPort) : undefined,
+    method: input.method,
+    pathPattern: input.pathPattern,
+    domain: input.domain,
+  });
   if (!row) throw new HttpError(404, 'Route not found.');
   return toJson(row);
 }

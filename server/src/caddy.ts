@@ -98,7 +98,7 @@ function deleteFileInCaddy(containerPath: string): Promise<void> {
 // ── Site block management ─────────────────────────────────────────────────
 
 function makeBlock(domain: string): string {
-  const upstream = fs.existsSync('/.dockerenv') ? 'console:4300' : 'localhost:4300';
+  const upstream = process.env.CADDY_UPSTREAM || (fs.existsSync('/.dockerenv') ? 'console:4300' : 'localhost:4300');
   return [
     `${domain} {`,
     `    reverse_proxy ${upstream} {`,

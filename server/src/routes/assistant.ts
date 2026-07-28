@@ -662,12 +662,14 @@ function toIssueSummary(r: import("../db/assistantIssues.js").AssistantIssueRow)
 function toSessionSummary(r: {
   id: string;
   name: string;
+  assistant_id: string | null;
   created_at: string;
   updated_at: string;
 }) {
   return {
     id: r.id,
     name: r.name,
+    assistantId: r.assistant_id,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     running: sessionRegistry.has(r.id) && (sessionRegistry.get(r.id)?.isRunning ?? false),
@@ -711,7 +713,7 @@ assistantRouter.get("/sessions/:id", (req: Request, res: Response) => {
 assistantRouter.post("/sessions", (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
-    const { name, state } = req.body as { name?: string; state?: unknown };
+    const { name, state, assistantId } = req.body as { name?: string; state?: unknown; assistantId?: string };
     if (!name?.trim()) {
       res.status(400).json({ error: "A session name is required." });
       return;
@@ -722,6 +724,7 @@ assistantRouter.post("/sessions", (req: Request, res: Response) => {
       name.trim(),
       JSON.stringify(state ?? {}),
       userId,
+      assistantId || undefined,
     );
     res.status(201).json(toSessionFull(row));
   } catch (err) {
@@ -731,10 +734,11 @@ assistantRouter.post("/sessions", (req: Request, res: Response) => {
 
 assistantRouter.put("/sessions/:id", (req: Request, res: Response) => {
   try {
-    const { name, state } = req.body as { name?: string; state?: unknown };
+    const { name, state, assistantId } = req.body as { name?: string; state?: unknown; assistantId?: string | null };
     const row = updateAssistantSession(req.params.id, {
       name: name?.trim() || undefined,
       state: state !== undefined ? JSON.stringify(state) : undefined,
+      assistantId: assistantId === null ? null : assistantId || undefined,
     });
     if (!row) {
       res.status(404).json({ error: "Session not found." });

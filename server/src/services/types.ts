@@ -129,12 +129,15 @@ export interface CreateRouteInput {
   method?: string;
   pathPattern?: string;
   projectId?: string;
+  domain?: string;
 }
 
 export interface UpdateRouteInput {
   displayName?: string;
+  targetPort?: number;
   method?: string;
   pathPattern?: string | null;
+  domain?: string | null;
 }
 
 // ── Project types ──────────────────────────────────────────

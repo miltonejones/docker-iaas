@@ -11,7 +11,7 @@ const ASSISTANT_DESCRIPTIONS: Record<string, string> = {
   create_lambda_function:
     "Create a new Lambda function with a name, runtime (node, python, sh), and source code. Optionally specify packages to install (space-separated list), an entry point filename, additional files (an array of {path, content}), a description, and a projectId. The user confirms before the function is created.",
   create_gateway_route:
-    "Create a gateway route to expose a bucket, container, or Lambda function via a public URL. Requires a name (URL segment), targetType, and targetId. For containers, targetPort is also required. Optional: method filter, pathPattern, projectId, displayName. The user confirms before the route is created.",
+    "Create a gateway route to expose a bucket, container, or Lambda function via a public URL. Requires a name (URL segment), targetType, and targetId. For containers, targetPort is also required. Optional: method filter, pathPattern, projectId, displayName, domain (assigns a custom domain at creation time). The user confirms before the route is created.",
   update_lambda_function:
     "Update a saved Lambda function. Pass the function id and any fields you want to change (name, runtime, code, packages, entryPoint, files, description, projectId). Omit fields to keep their current value. The user confirms before the update.",
   delete_lambda_function:
@@ -19,7 +19,7 @@ const ASSISTANT_DESCRIPTIONS: Record<string, string> = {
   delete_gateway_route:
     "Delete a gateway route by id. The user confirms before deletion.",
   update_gateway_route:
-    "Update a gateway route's display name. Pass the route id and the new displayName. The user confirms before the update.",
+    "Update a gateway route's configuration. Pass the route id and any fields to change: displayName, targetPort, method, pathPattern, or domain (set to null to clear). Omit fields to keep their current value. The user confirms before the update.",
   check_gateway_domain_status:
     "Check the verification status of a custom domain on a gateway route (read-only, runs automatically).",
   set_gateway_domain:

@@ -1,16 +1,25 @@
-import { describe, it } from 'node:test';
+import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 import jwt from 'jsonwebtoken';
-import { signToken } from './auth.js';
+
+// Ensure JWT_SECRET is set before auth.js loads — it reads the secret at
+// module level from /run/secrets/jwt_secret (Docker) or process.env.JWT_SECRET.
+// In test environments without Docker secrets, this env var is the source.
+process.env.JWT_SECRET = process.env.JWT_SECRET || 'dockyard-auth-test-secret';
+
+import { signToken, loadJwtSecret } from './auth.js';
+import { initDb } from './db.js';
+
+before(() => { initDb(':memory:'); });
 
 // ---------------------------------------------------------------------------
 // signToken — pure JWT creation without touching the DB or Express
 // ---------------------------------------------------------------------------
 
 describe('signToken', () => {
-  it('produces a verifiable JWT', () => {
+  it('produces a JWT with the expected payload fields', () => {
     const token = signToken({ id: 'usr-abc123', email: 'test@dockyard.test' });
-    const payload = jwt.verify(token, process.env.JWT_SECRET || 'dockyard-dev-secret-change-in-production') as { userId: string; email: string };
+    const payload = jwt.decode(token) as Record<string, unknown>;
     assert.equal(payload.userId, 'usr-abc123');
     assert.equal(payload.email, 'test@dockyard.test');
   });
@@ -47,7 +56,11 @@ describe('signToken', () => {
 // ---------------------------------------------------------------------------
 
 describe('token verification edge cases', () => {
-  const SECRET = process.env.JWT_SECRET || 'dockyard-dev-secret-change-in-production';
+  // Use the same secret that auth.js loaded from file/env at import time.
+  // loadJwtSecret() checks /run/secrets/jwt_secret first, then env.
+  // In Docker environments the file takes priority; in dev/test, env is used.
+  // We must verify against the *actual* secret, not just the env var.
+  const SECRET = loadJwtSecret();
 
   it('rejects a tampered token', () => {
     const token = signToken({ id: 'usr-a', email: 'a@dockyard.test' });

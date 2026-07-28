@@ -30,13 +30,42 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
+  const [webhookCopied, setWebhookCopied] = useState(false);
 
   useEffect(() => {
     fetch('/api/auth/settings')
       .then((r) => r.json())
       .then(setStatus)
       .catch(() => setError('Failed to load settings.'));
+
+    fetch('/api/system/webhook-secret')
+      .then((r) => r.json())
+      .then((d) => setWebhookSecret(d.secret || ''))
+      .catch(() => {
+        setWebhookSecret('');
+        setError('Failed to load webhook secret.');
+      });
   }, []);
+
+  async function rotateWebhook() {
+    if (!confirm('This will invalidate the current webhook secret and break any CI/CD pipeline using it. Continue?')) return;
+    try {
+      const res = await fetch('/api/system/webhook-secret/rotate', { method: 'POST' });
+      if (!res.ok) throw new Error('Rotate failed');
+      const data = await res.json();
+      setWebhookSecret(data.secret);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  function copyWebhook() {
+    if (!webhookSecret) return;
+    navigator.clipboard.writeText(webhookSecret);
+    setWebhookCopied(true);
+    setTimeout(() => setWebhookCopied(false), 2000);
+  }
 
   async function handleSave(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -112,6 +141,36 @@ export function SettingsPage() {
           {saving ? 'Saving…' : 'Save settings'}
         </button>
       </form>
+
+      <section className="settings-section" style={{ marginTop: '2rem' }}>
+        <h2>Webhook Secret</h2>
+        <p className="muted">
+          Used by CI/CD pipelines to authenticate requests to Dockyard's GitHub API endpoints.
+          Include this value in the <code>x-webhook-secret</code> header.
+        </p>
+        {webhookSecret === null ? (
+          <p className="empty-sm">Loading…</p>
+        ) : webhookSecret ? (
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '0.5rem' }}>
+            <input
+              type="text"
+              readOnly
+              value={webhookSecret}
+              className="input mono"
+              style={{ flex: 1, fontFamily: 'monospace', fontSize: '13px' }}
+            />
+            <button type="button" className="btn btn--sm" onClick={copyWebhook}>
+              {webhookCopied ? 'Copied!' : 'Copy'}
+            </button>
+            <button type="button" className="btn btn--sm btn--danger" onClick={rotateWebhook}>
+              Rotate
+            </button>
+          </div>
+        ) : (
+          <p className="empty-sm">Loading…</p>
+        )}
+      </section>
+
       <AssistantsSettings />
     </div>
   );

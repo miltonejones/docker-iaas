@@ -221,11 +221,46 @@ export function deleteRoute(id: string): boolean {
   return result.changes > 0;
 }
 
-export function updateRoute(id: string, fields: { displayName?: string | null }): RouteRow | undefined {
+export function updateRoute(id: string, fields: { displayName?: string | null; targetPort?: number | null; method?: string | null; pathPattern?: string | null; domain?: string | null }): RouteRow | undefined {
   const existing = getRoute(id);
   if (!existing) return undefined;
-  db.prepare('UPDATE routes SET display_name = ?, updated_at = ? WHERE id = ?')
-    .run(fields.displayName !== undefined ? fields.displayName : existing.display_name, new Date().toISOString(), id);
+
+  const updates: string[] = [];
+  const params: (string | number | null)[] = [];
+
+  if (fields.displayName !== undefined) {
+    updates.push('display_name = ?');
+    params.push(fields.displayName);
+  }
+  if (fields.targetPort !== undefined) {
+    updates.push('target_port = ?');
+    params.push(fields.targetPort);
+  }
+  if (fields.method !== undefined) {
+    updates.push('method = ?');
+    params.push(fields.method || null);
+  }
+  if (fields.pathPattern !== undefined) {
+    updates.push('path_pattern = ?');
+    params.push(fields.pathPattern || null);
+  }
+  if (fields.domain !== undefined) {
+    updates.push('domain = ?');
+    params.push(fields.domain || null);
+    updates.push('domain_verified = 0');
+    if (fields.domain === null) {
+      updates.push('domain_dns_managed = 0');
+      updates.push('domain_hosted_zone_id = NULL');
+    }
+  }
+
+  if (updates.length === 0) return existing;
+
+  updates.push('updated_at = ?');
+  params.push(new Date().toISOString());
+  params.push(id);
+
+  db.prepare(`UPDATE routes SET ${updates.join(', ')} WHERE id = ?`).run(...params);
   return getRoute(id)!;
 }
 

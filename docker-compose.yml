@@ -25,6 +25,9 @@ services:
       AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-}"
       AWS_REGION: "${AWS_REGION:-us-east-1}"
       DOCKYARD_EDGE_HOST: "${DOCKYARD_EDGE_HOST:-dockyard-ai.com}"
+      # Override the Caddy upstream hostname for custom-domain reverse-proxy blocks.
+      # Defaults to console:4300. Change if you rename the console service.
+      CADDY_UPSTREAM: "${CADDY_UPSTREAM:-console:4300}"
     labels:
       iaas.system: 'true'
     volumes:
