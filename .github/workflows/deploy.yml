@@ -111,6 +111,9 @@ jobs:
             # depend on the compose file matching running containers, and
             # guarantees port bindings are released before up -d.
             docker rm -f dockyard dockyard-consumer-ctr 2>/dev/null || true
+            # Brief pause to let Docker fully release port bindings from
+            # the removed containers before pulling and recreating.
+            sleep 2
             docker compose pull console consumer
             docker compose up -d --remove-orphans console consumer caddy
             # Cleanup is best-effort only — stale images shouldn't block a deploy.
