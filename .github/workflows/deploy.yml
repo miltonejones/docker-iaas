@@ -64,7 +64,13 @@ jobs:
           context: .
           file: ${{ matrix.image.file }}
           platforms: linux/arm64
-          push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+          # Push on: direct pushes to main, manual dispatches, and same-repo PRs.
+          # Fork PRs are excluded (head.repo.full_name != repository) so they cannot
+          # trigger a push using the repo's GITHUB_TOKEN/registry credentials.
+          # NOTE: this condition intentionally mirrors the deploy job's `if:` below —
+          # both must be kept in sync so deploy never tries to pull an image that
+          # was not pushed.
+          push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
           tags: |
             ghcr.io/${{ github.repository }}-${{ matrix.image.name }}:${{ github.sha }}
             ghcr.io/${{ github.repository }}-${{ matrix.image.name }}:latest
@@ -73,7 +79,13 @@ jobs:
 
   deploy:
     needs: [verify, smoke-test, build-images]
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    # Run on direct pushes to main, manual dispatches, and same-repo PRs.
+    # NOTE: keep this condition in sync with the build-images `push:` parameter
+    # above so deploy never tries to pull an image that was not pushed to ghcr.io.
+    if: >-
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -110,6 +122,21 @@ jobs:
             # them, and cleans up networks — this is the only reliable way to
             # guarantee port bindings are fully released before recreating.
             docker compose down --remove-orphans || true
+            # Dockyard dynamically creates containers (e.g. MinIO, user-deployed
+            # apps) that share dockyard-net but are not defined in compose.
+            # If any survive compose-down the network stays alive and Docker's
+            # internal port-allocation table retains the 127.0.0.1:4300 entry,
+            # causing "port is already allocated" on the next compose-up.
+            # Evict those containers and delete the network explicitly so Docker
+            # fully releases all port reservations before we recreate the stack.
+            LEFTOVER=$(docker network inspect dockyard-net \
+              --format '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null || true)
+            # Read space-separated container names into an array to avoid word-splitting issues.
+            read -ra LEFTOVER_ARR <<< "$LEFTOVER"
+            for c in "${LEFTOVER_ARR[@]}"; do
+              [ -n "$c" ] && docker rm -f "$c" 2>/dev/null || true
+            done
+            docker network rm dockyard-net 2>/dev/null || true
             docker compose pull console consumer
             docker compose up -d --remove-orphans
             # Cleanup is best-effort only — stale images shouldn't block a deploy.
