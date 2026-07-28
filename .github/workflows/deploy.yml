@@ -106,6 +106,8 @@ jobs:
             # that haven't been pushed yet. GitHub is the source of truth.
             git fetch origin main
             git reset --hard origin/main
+            # Stop old containers so they release their ports before new ones start.
+            docker compose stop console consumer || true
             # Pull pre-built images from GHCR instead of building on EC2.
             docker compose pull console consumer
             docker compose up -d --remove-orphans console consumer caddy
