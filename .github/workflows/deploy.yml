@@ -107,10 +107,9 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             # Stop and remove old containers so they fully release their ports
-            # before new ones start.  Plain "stop" leaves the network endpoint
-            # allocated, which can cause "port is already allocated" on fast
-            # restarts.  "rm -fs" stops AND tears down the endpoint completely.
-            docker compose rm -fs console consumer || true
+            # before new ones start.  "down" stops + removes + cleans up
+            # networks, guaranteeing ports are released before up -d.
+            docker compose down console consumer || true
             # Pull pre-built images from GHCR instead of building on EC2.
             docker compose pull console consumer
             docker compose up -d --remove-orphans console consumer caddy
