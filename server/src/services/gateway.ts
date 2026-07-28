@@ -61,7 +61,7 @@ export function createRoute(userId: string | undefined, input: CreateRouteInput)
   if (!input.targetId?.trim()) {
     throw new HttpError(400, 'A targetId is required.');
   }
-  if (input.targetType === 'container' && !input.targetPort) {
+  if (input.targetType === 'container' && input.targetPort == null) {
     throw new HttpError(400, 'A targetPort is required for container routes.');
   }
 
@@ -122,6 +122,10 @@ export function createRoute(userId: string | undefined, input: CreateRouteInput)
 export function updateRoute(id: string, userId: string | undefined, input: UpdateRouteInput) {
   const existing = getRoute(id, userId);
   if (!existing) throw new HttpError(404, 'Route not found.');
+
+  if (input.targetPort != null && isNaN(Number(input.targetPort))) {
+    throw new HttpError(400, 'targetPort must be a number.');
+  }
 
   const row = updateRouteRow(id, {
     displayName: input.displayName,

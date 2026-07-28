@@ -78,7 +78,9 @@ export function rotateWebhookSecret(): string {
   return generated;
 }
 
-const WEBHOOK_SECRET = loadWebhookSecret();
+// Ensure webhook secret is loaded into DB on startup (side-effect only —
+// webhookAuth middleware reads the live DB value via getWebhookSecret()).
+loadWebhookSecret();
 
 export interface AuthUser {
   userId: string;

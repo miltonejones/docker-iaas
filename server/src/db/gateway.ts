@@ -247,10 +247,8 @@ export function updateRoute(id: string, fields: { displayName?: string | null; t
   if (fields.domain !== undefined) {
     updates.push('domain = ?');
     params.push(fields.domain || null);
-    if (fields.domain !== null) {
-      updates.push('domain_verified = 0');
-    } else {
-      updates.push('domain_verified = 0');
+    updates.push('domain_verified = 0');
+    if (fields.domain === null) {
       updates.push('domain_dns_managed = 0');
       updates.push('domain_hosted_zone_id = NULL');
     }
