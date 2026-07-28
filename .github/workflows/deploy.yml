@@ -110,6 +110,17 @@ jobs:
             # them, and cleans up networks — this is the only reliable way to
             # guarantee port bindings are fully released before recreating.
             docker compose down --remove-orphans || true
+            # Dockyard dynamically creates containers (e.g. MinIO, user-deployed
+            # apps) that share dockyard-net but are not defined in compose.
+            # If any survive compose-down the network stays alive and Docker's
+            # internal port-allocation table retains the 127.0.0.1:4300 entry,
+            # causing "port is already allocated" on the next compose-up.
+            # Evict those containers and delete the network explicitly so Docker
+            # fully releases all port reservations before we recreate the stack.
+            docker network inspect dockyard-net \
+              --format '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null \
+              | xargs -r docker rm -f 2>/dev/null || true
+            docker network rm dockyard-net 2>/dev/null || true
             docker compose pull console consumer
             docker compose up -d --remove-orphans
             # Cleanup is best-effort only — stale images shouldn't block a deploy.
