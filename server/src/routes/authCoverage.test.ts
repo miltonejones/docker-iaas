@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import request from 'supertest';
 import { requireAuth, optionalAuth, webhookAuth } from '../auth.js';
+import { initDb } from '../db.js';
+
+// Ensure the DB is initialized so getSetting/getWebhookSecret don't crash.
+before(() => { initDb(':memory:'); });
 
 // ---------------------------------------------------------------------------
 // Dummy routers — return 200 so we can verify auth middleware blocks them

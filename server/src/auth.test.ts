@@ -1,7 +1,17 @@
-import { describe, it } from 'node:test';
+import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
 import jwt from 'jsonwebtoken';
-import { signToken } from './auth.js';
+
+// Must set before importing auth.js, which reads JWT_SECRET at module level.
+process.env.JWT_SECRET = 'dockyard-webhook-test-secret';
+
+import { signToken, loadJwtSecret } from './auth.js';
+import { initDb } from './db.js';
+
+// Use the actual secret that auth.js loaded (it reads from env/file at import time).
+const JWT_SECRET = loadJwtSecret();
+
+before(() => { initDb(':memory:'); });
 
 // ---------------------------------------------------------------------------
 // signToken — pure JWT creation without touching the DB or Express
@@ -10,7 +20,7 @@ import { signToken } from './auth.js';
 describe('signToken', () => {
   it('produces a verifiable JWT', () => {
     const token = signToken({ id: 'usr-abc123', email: 'test@dockyard.test' });
-    const payload = jwt.verify(token, process.env.JWT_SECRET || 'dockyard-dev-secret-change-in-production') as { userId: string; email: string };
+    const payload = jwt.verify(token, JWT_SECRET) as { userId: string; email: string };
     assert.equal(payload.userId, 'usr-abc123');
     assert.equal(payload.email, 'test@dockyard.test');
   });
@@ -47,7 +57,7 @@ describe('signToken', () => {
 // ---------------------------------------------------------------------------
 
 describe('token verification edge cases', () => {
-  const SECRET = process.env.JWT_SECRET || 'dockyard-dev-secret-change-in-production';
+  const SECRET = JWT_SECRET;
 
   it('rejects a tampered token', () => {
     const token = signToken({ id: 'usr-a', email: 'a@dockyard.test' });

@@ -80,7 +80,8 @@ export function rotateWebhookSecret(): string {
 
 // Ensure webhook secret is loaded into DB on startup (side-effect only —
 // webhookAuth middleware reads the live DB value via getWebhookSecret()).
-loadWebhookSecret();
+// Safe to skip if DB isn't initialized yet (e.g. during tests that init later).
+try { loadWebhookSecret(); } catch { /* DB not ready yet — will run on first request */ }
 
 export interface AuthUser {
   userId: string;
