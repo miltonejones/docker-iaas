@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { requireAuth } from '../auth.js';
+import { getWebhookSecret, rotateWebhookSecret } from '../auth.js';
 import { HttpError } from '../services/HttpError.js';
 import * as systemService from '../services/system.js';
 
@@ -97,4 +98,17 @@ systemRouter.get('/audit', requireAuth, (req: Request, res: Response) => {
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
+});
+
+// GET /api/system/webhook-secret
+systemRouter.get('/webhook-secret', requireAuth, (_req: Request, res: Response) => {
+  const secret = getWebhookSecret();
+  if (!secret) return res.status(404).json({ error: 'No webhook secret configured.' });
+  res.json({ secret });
+});
+
+// POST /api/system/webhook-secret/rotate
+systemRouter.post('/webhook-secret/rotate', requireAuth, (_req: Request, res: Response) => {
+  const secret = rotateWebhookSecret();
+  res.json({ secret });
 });

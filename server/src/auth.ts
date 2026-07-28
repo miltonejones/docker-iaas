@@ -1,8 +1,8 @@
 import { type Request, type Response, type NextFunction } from 'express';
 import fs from 'node:fs';
-import { timingSafeEqual } from 'node:crypto';
+import { timingSafeEqual, randomBytes } from 'node:crypto';
 import jwt from 'jsonwebtoken';
-import { getUserById } from './db.js';
+import { getUserById, getSetting, setSetting } from './db.js';
 
 // Extend Express Request with auth properties so middleware and handlers can
 // access req.authUser / req.webhookAuthenticated without unsafe casts.
@@ -36,15 +36,48 @@ if (!JWT_SECRET) {
 const JWT_EXPIRES_IN = '7d';
 
 /** Load the webhook secret for CI/CD-triggered endpoints.
+ *  Priority: DB setting → file → env → auto-generate.
  *  Exported so tests can validate the loading logic in isolation. */
 export function loadWebhookSecret(secretPath?: string, envValue?: string): string {
+  // 1. DB setting (set by auto-gen on first start or manual rotate).
+  const dbSecret = getSetting('webhook_secret');
+  if (dbSecret) return dbSecret;
+
+  // 2. Docker secret file.
   const secretFile = secretPath ?? '/run/secrets/github_webhook_secret';
   try {
-    return fs.readFileSync(secretFile, 'utf8').trim();
-  } catch {
-    return envValue ?? process.env.GITHUB_WEBHOOK_SECRET ?? '';
+    const fileSecret = fs.readFileSync(secretFile, 'utf8').trim();
+    if (fileSecret) {
+      setSetting('webhook_secret', fileSecret);
+      return fileSecret;
+    }
+  } catch { /* no file */ }
+
+  // 3. Environment variable.
+  const envSecret = envValue ?? process.env.GITHUB_WEBHOOK_SECRET ?? '';
+  if (envSecret) {
+    setSetting('webhook_secret', envSecret);
+    return envSecret;
   }
+
+  // 4. Auto-generate and persist.
+  const generated = randomBytes(32).toString('base64url');
+  setSetting('webhook_secret', generated);
+  return generated;
 }
+
+/** Return the current webhook secret (or empty string if not configured). */
+export function getWebhookSecret(): string {
+  return getSetting('webhook_secret') || '';
+}
+
+/** Generate a new webhook secret, replacing the old one. */
+export function rotateWebhookSecret(): string {
+  const generated = randomBytes(32).toString('base64url');
+  setSetting('webhook_secret', generated);
+  return generated;
+}
+
 const WEBHOOK_SECRET = loadWebhookSecret();
 
 export interface AuthUser {
@@ -125,11 +158,12 @@ export function webhookAuth(req: Request, res: Response, next: NextFunction): vo
   }
 
   // Try webhook secret (timing-safe comparison).
-  if (WEBHOOK_SECRET) {
+  const secret = getWebhookSecret();
+  if (secret) {
     const provided = (req.headers['x-webhook-secret'] as string) || '';
     if (provided) {
       const a = Buffer.from(provided);
-      const b = Buffer.from(WEBHOOK_SECRET);
+      const b = Buffer.from(secret);
       if (a.length === b.length && timingSafeEqual(a, b)) {
         req.webhookAuthenticated = true;
         next();

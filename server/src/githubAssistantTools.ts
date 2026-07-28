@@ -468,23 +468,57 @@ export async function pullGithubRepoToContainer(input: Record<string, unknown>) 
   }
 
   const clean = Boolean(input.clean);
-
-  // When clean is requested, empty the destination directory first.
-  if (clean && destPrefix) {
-    const exec = await container.exec({
-      Cmd: ['sh', '-c', `rm -rf /${destPrefix}/*`],
-      AttachStdout: true,
-      AttachStderr: true,
-    });
-    await exec.start({ hijack: false, stdin: false });
-  }
+  const strategy = (typeof input.strategy === 'string' && input.strategy === 'atomic') ? 'atomic' : 'direct';
 
   const tarball = await downloadRepoTarball(owner, repo, ref);
   const files = await extractTarballFiles(tarball);
-  const archive = await tarFilesForContainer(files, destPrefix);
-  await container.putArchive(archive, { path: '/' });
 
-  return { owner, repo, ref: ref ?? null, id, path: `/${destPrefix}`, filesWritten: files.length, clean };
+  if (strategy === 'atomic' && destPrefix) {
+    // Atomic swap: write files to a timestamped staging directory, then mv
+    // the old dir aside and rename staging into place. Same-filesystem mv
+    // is atomic on Linux — eliminates the 502 gap during deploys.
+    const ts = Date.now();
+    const stagingPrefix = `${destPrefix}-staging-${ts}`;
+    const archive = await tarFilesForContainer(files, stagingPrefix);
+    await container.putArchive(archive, { path: '/' });
+
+    // Clean up old staging/backup dirs, keeping the last 2.
+    await container.exec({
+      Cmd: ['sh', '-c',
+        `for d in /${destPrefix}-old-*; do [ -d "$$d" ] && rm -rf "$$d"; done`],
+      AttachStdout: true, AttachStderr: true,
+    }).then((exec) => exec.start({ hijack: false, stdin: false }));
+
+    await container.exec({
+      Cmd: ['sh', '-c',
+        `for d in /${destPrefix}-staging-*; do [ -d "$$d" ] && echo "$$d"; done ` +
+        `| sort | head -n -2 | xargs -r rm -rf`],
+      AttachStdout: true, AttachStderr: true,
+    }).then((exec) => exec.start({ hijack: false, stdin: false }));
+
+    // Atomic swap: current dir → old, staging → current, clean old.
+    const oldPath = `/${destPrefix}-old-${ts}`;
+    await container.exec({
+      Cmd: ['sh', '-c',
+        `mv /${destPrefix} ${oldPath} 2>/dev/null; ` +
+        `mv /${stagingPrefix} /${destPrefix}; ` +
+        `rm -rf ${oldPath}`],
+      AttachStdout: true, AttachStderr: true,
+    }).then((exec) => exec.start({ hijack: false, stdin: false }));
+  } else {
+    // Direct strategy.
+    if (clean && destPrefix) {
+      const exec = await container.exec({
+        Cmd: ['sh', '-c', `rm -rf /${destPrefix}/*`],
+        AttachStdout: true, AttachStderr: true,
+      });
+      await exec.start({ hijack: false, stdin: false });
+    }
+    const archive = await tarFilesForContainer(files, destPrefix);
+    await container.putArchive(archive, { path: '/' });
+  }
+
+  return { owner, repo, ref: ref ?? null, id, path: `/${destPrefix}`, filesWritten: files.length, clean, strategy };
 }
 
 // ---------------------------------------------------------------------------
@@ -699,7 +733,7 @@ export const GITHUB_ASSISTANT_TOOLS: Anthropic.Tool[] = [
   {
     name: 'pull_github_repo_to_container',
     description:
-      "Download a GitHub repository's full contents (as of a branch/tag/commit) and write every file into a running, non-system container's filesystem, preserving the repo's folder structure under the given destination directory. When clean is true, the destination directory is emptied first so stale files from a previous pull don't linger. Use this when the user wants to deploy a whole GitHub repo onto a container. Requires confirmation.",
+      "Download a GitHub repository's full contents (as of a branch/tag/commit) and write every file into a running, non-system container's filesystem, preserving the repo's folder structure under the given destination directory. When strategy is \"atomic\", files are written to a timestamped staging directory and atomically swapped into place via mv — this eliminates the 502 gap that occurs when files are deleted before new ones are written. When clean is true and strategy is \"direct\", the destination directory is emptied first so stale files from a previous pull don't linger. Use this when the user wants to deploy a whole GitHub repo onto a container. Requires confirmation.",
     input_schema: {
       type: 'object',
       properties: {
@@ -708,7 +742,8 @@ export const GITHUB_ASSISTANT_TOOLS: Anthropic.Tool[] = [
         ref: { type: 'string', description: 'Branch, tag, or commit SHA; omit for the default branch' },
         id: { type: 'string', description: 'Target container id' },
         path: { type: 'string', description: 'Absolute destination directory inside the container, e.g. "/usr/share/nginx/html"' },
-        clean: { type: 'boolean', description: 'If true, delete the destination directory contents before pulling, ensuring a clean slate.' },
+        clean: { type: 'boolean', description: 'If true, delete the destination directory contents before pulling, ensuring a clean slate (direct strategy only — atomic replaces atomically, no clean needed).' },
+        strategy: { type: 'string', enum: ['direct', 'atomic'], description: 'Deployment strategy: "direct" writes files directly to the destination path (current behavior); "atomic" writes to a staging directory and swaps into place atomically, eliminating the deploy-time 502 gap. Defaults to "direct".' },
       },
       required: ['owner', 'repo', 'id', 'path'],
     },
