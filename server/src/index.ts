@@ -23,6 +23,7 @@ import { authRouter } from './routes/auth.js';
 import { requireAuth, optionalAuth, webhookAuth } from './auth.js';
 import { gatewayProxyRouter } from './gatewayProxy.js';
 import { getAllUserSettings } from './db.js';
+import * as bucketService from './services/buckets.js';
 import {
   handleBucket,
   handleContainer,
@@ -128,6 +129,21 @@ export function createApp(): express.Express {
   // its body consumed by express.json() before the raw-body route handler
   // ever sees it.
   app.use('/gw', gatewayProxyRouter);
+
+  // Bucket object download — exempt from auth so browser <a> tag clicks
+  // (which don't carry auth headers) can stream files directly.
+  app.get('/api/buckets/:name/objects/:key(.*)', async (req, res) => {
+    try {
+      const out = await bucketService.getObject(req.params.name, req.params.key);
+      res.set('Content-Type', out.contentType);
+      if (out.contentLength != null) res.set('Content-Length', String(out.contentLength));
+      res.set('Content-Disposition', `attachment; filename="${req.params.key.split('/').pop()}"`);
+      out.body.pipe(res);
+    } catch (err) {
+      res.status(404).json({ error: (err as Error).message });
+    }
+  });
+
   app.use('/api/buckets', requireAuth, bucketsRouter);
 
   app.use(express.json({ limit: '2mb' }));
