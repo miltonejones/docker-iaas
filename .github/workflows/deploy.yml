@@ -106,16 +106,12 @@ jobs:
             # that haven't been pushed yet. GitHub is the source of truth.
             git fetch origin main
             git reset --hard origin/main
-            # Force-remove old containers by name before pulling new images.
-            # This is more reliable than compose commands because it doesn't
-            # depend on the compose file matching running containers, and
-            # guarantees port bindings are released before up -d.
-            docker rm -f dockyard dockyard-consumer-ctr 2>/dev/null || true
-            # Brief pause to let Docker fully release port bindings from
-            # the removed containers before pulling and recreating.
-            sleep 2
+            # Tear down the entire stack.  'down' stops containers, removes
+            # them, and cleans up networks — this is the only reliable way to
+            # guarantee port bindings are fully released before recreating.
+            docker compose down --remove-orphans || true
             docker compose pull console consumer
-            docker compose up -d --remove-orphans console consumer caddy
+            docker compose up -d --remove-orphans
             # Cleanup is best-effort only — stale images shouldn't block a deploy.
             docker image prune -f || true
             # Append success notification for the local notify-watcher
