@@ -210,8 +210,81 @@ fs.mkdirSync(LOG_DIR, { recursive: true });
 const NOTIFY_LOG = path.join(LOG_DIR, "notifications.jsonl");
 const STATUS_FILE = path.join(LOG_DIR, "consumer-status.json");
 
+/** Probe the local environment for Claude Code CLI availability.
+ *  Uses whichever command the consumer is configured to invoke.
+ *  For absolute paths (the common case in containers), verifies the file
+ *  directly — avoids shell-portability quirks of `command -v` on busybox/ash
+ *  which can return the string "true" instead of the resolved path. */
+function probeClaude() {
+  const cmd = DEEPSEEK_CMD;
+  // If cmd is an absolute path, verify it directly — no shell quirks.
+  if (path.isAbsolute(cmd)) {
+    try {
+      fs.accessSync(cmd, fs.constants.X_OK);
+      return { path: cmd, ok: true };
+    } catch {
+      return { path: null, ok: false, detail: `${cmd} not found or not executable` };
+    }
+  }
+  // Relative command name — resolve via PATH.
+  try {
+    const out = execSync(`which "${cmd}" 2>/dev/null`, {
+      encoding: "utf8",
+      timeout: 3000,
+    }).trim();
+    if (out && out !== "true" && !out.includes("not found") && out.startsWith("/")) {
+      return { path: out, ok: true };
+    }
+  } catch { /* not found */ }
+  return { path: null, ok: false, detail: `${cmd} not found on PATH` };
+}
+
+/** Probe local git.  Checks that .git exists and git can read history.
+ *  On failure, captures stderr and gathers diagnostics (version, safe.directory,
+ *  .git ownership) so the health check surface explains what went wrong. */
+function probeGit() {
+  try {
+    execSync("git log --oneline -1", {
+      cwd: CODEBASE_PATH,
+      encoding: "utf8",
+      timeout: 3000,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return { ok: true };
+  } catch (err) {
+    const reasons = [];
+    if (!fs.existsSync(path.join(CODEBASE_PATH, ".git"))) {
+      reasons.push(".git directory missing");
+    }
+    // Capture stderr from the failed git command for diagnostics.
+    const stderr = typeof err.stderr === "string" ? err.stderr.trim() : "";
+    if (stderr) reasons.push(stderr);
+    // Additional diagnostics to surface why git failed.
+    try {
+      reasons.push(`git version: ${execSync("git --version", { encoding: "utf8", timeout: 3000 }).trim()}`);
+    } catch { reasons.push("git not installed"); }
+    try {
+      const safeDir = execSync("git config --system --get-all safe.directory 2>&1", { encoding: "utf8", timeout: 3000 }).trim();
+      reasons.push(`safe.directory: ${safeDir || "(none)"}`);
+    } catch { /* skip */ }
+    try {
+      const stat = fs.statSync(path.join(CODEBASE_PATH, ".git"));
+      reasons.push(`.git uid=${stat.uid} gid=${stat.gid}`);
+    } catch { /* skip */ }
+    return { ok: false, detail: reasons.join("; ") };
+  }
+}
+
+// Cache health probes — successful probes are cached for the lifetime of
+// the process.  Failed probes are re-run on every writeStatus call so that
+// recovery is possible (e.g. .git volume mounted after startup).
+let cachedClaude = null;
+let cachedGit = null;
+
 /** Write consumer status so the assistant can report it. */
 function writeStatus(state, currentIssue = null, lastError = null) {
+  cachedClaude = (cachedClaude?.ok !== false) ? (cachedClaude ?? probeClaude()) : probeClaude();
+  cachedGit = (cachedGit?.ok !== false) ? (cachedGit ?? probeGit()) : probeGit();
   const status = {
     state,
     currentIssue,
@@ -219,6 +292,8 @@ function writeStatus(state, currentIssue = null, lastError = null) {
     lastPoll: new Date().toISOString(),
     lastError,
     updatedAt: new Date().toISOString(),
+    claude: cachedClaude,
+    git: cachedGit,
   };
   try { fs.writeFileSync(STATUS_FILE, JSON.stringify(status), "utf8"); } catch {}
 }
@@ -1243,7 +1318,10 @@ async function consumeOne() {
   }
 
   // Fetch the issue owner's credentials so the LLM and git push use
-  // their keys, not shared system secrets.
+  // their keys, not shared system secrets.  Fall back to system env vars
+  // (ANTHROPIC_AUTH_TOKEN, GITHUB_TOKEN) when per-user credentials
+  // aren't available — this avoids skipping issues when the owner hasn't
+  // configured personal keys yet.
   const creds = await fetchCredentials(issue.ownerId);
   const extraEnv = {};
   let githubToken;
@@ -1257,15 +1335,10 @@ async function consumeOne() {
       extraEnv.ANTHROPIC_AUTH_TOKEN = creds.anthropic_api_key;
     }
     if (creds.github_token) githubToken = creds.github_token;
-    if (Object.keys(extraEnv).length === 0 && !githubToken) {
-      log(`Issue owner ${issue.ownerId} has no credentials configured — skipping.`);
-      writeStatus("idle");
-      return false;
-    }
-  } else if (issue.ownerId) {
-    log(`Issue owner ${issue.ownerId} has no credentials — skipping.`);
-    writeStatus("idle");
-    return false;
+  }
+  if (Object.keys(extraEnv).length === 0 && !githubToken) {
+    // No per-user credentials — fall back to system env vars.
+    log(`No per-user credentials for ${issue.ownerId || 'anonymous'} — using system secrets.`);
   }
 
   const result = await runEngine(engineName, prompt, extraEnv);

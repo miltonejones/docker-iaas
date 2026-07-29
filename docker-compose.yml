@@ -86,6 +86,7 @@ services:
     environment:
       DOCKYARD_API: http://console:4300
       DEEPSEEK_CMD: /usr/local/bin/claude
+      CONSUMER_API_KEY: "${CONSUMER_API_KEY:-}"
       JWT_SECRET: "${JWT_SECRET:-}"
       ANTHROPIC_AUTH_TOKEN: "${ANTHROPIC_AUTH_TOKEN:-}"
       ANTHROPIC_BASE_URL: "${ANTHROPIC_BASE_URL:-}"
