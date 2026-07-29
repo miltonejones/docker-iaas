@@ -1634,7 +1634,13 @@ export function AssistantBar({
                 <div key={i} className={`assistant-log__entry assistant-log__entry--${entry.kind}`}>
                   {(entry.kind === 'user' || entry.kind === 'assistant') && (
                     <span className="assistant-log__avatar">
-                      <AppIcon name={entry.kind === 'user' ? 'user' : 'assistant'} />
+                      {entry.kind === 'user' ? (
+                        <AppIcon name="user" />
+                      ) : activeAssistantId && assistants.find(a => a.id === activeAssistantId)?.icon ? (
+                        <span>{assistants.find(a => a.id === activeAssistantId)!.icon}</span>
+                      ) : (
+                        <AppIcon name="assistant" />
+                      )}
                     </span>
                   )}
                   <div className="assistant-log__body">
