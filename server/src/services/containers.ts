@@ -5,7 +5,7 @@ import { findPreset } from '../presets.js';
 import { recordAuditLog } from '../db/audit.js';
 import { getProject } from '../db.js';
 import { HttpError } from './HttpError.js';
-import type { ContainerView, LaunchInput, EnvUpdateInput, ExecInput, ExecResult, BackgroundExecResult, ProbeResult, WriteFileInput, ReplaceInput, ReplaceResult } from './types.js';
+import type { ContainerView, LaunchInput, EnvUpdateInput, ExecInput, ExecResult, BackgroundExecResult, ProbeResult, WriteFileInput, ReplaceInput, ReplaceResult, CopyToContainerInput } from './types.js';
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -641,4 +641,204 @@ export async function probeContainerEndpoint(
     hreq.on('error', reject);
     hreq.end();
   });
+}
+
+// ── Read file from container ─────────────────────────────────
+
+const MAX_READ_BYTES = 256 * 1024; // 256 KiB cap (matches replaceInFile)
+
+/** Read a text file from a running container at the given absolute path.
+ *  Uses getArchive to pull the file as a tar stream, extracts the content,
+ *  and returns it as a UTF-8 string capped at 256 KiB.
+ *  Streams and caps during reading to avoid buffering huge files. */
+export async function readFile(
+  containerId: string,
+  filePath: string,
+): Promise<{ content: string; truncated: boolean; size: number }> {
+  if (!filePath.startsWith('/') || filePath.includes('..')) {
+    throw new HttpError(400, 'path must be an absolute file path (no "..").');
+  }
+
+  const container = docker.getContainer(containerId);
+  const info = await container.inspect();
+  if (info.Config?.Labels?.['iaas.system']) {
+    throw new HttpError(403, 'System-managed containers cannot be read by the assistant.');
+  }
+  if (info.Config?.Labels?.['iaas.assistant-managed'] !== 'true') {
+    throw new HttpError(403, 'File reads are limited to containers created by the assistant.');
+  }
+  if (!info.State?.Running) throw new HttpError(409, 'Container is not running.');
+
+  const archive = await container.getArchive({ path: filePath });
+  let totalBytes = 0;
+  let content = '';
+  let truncated = false;
+  let found = false;
+
+  await new Promise<void>((resolve, reject) => {
+    const extract = tar.extract();
+    extract.on('entry', (_header, stream, next) => {
+      found = true;
+      stream.on('data', (d: Buffer) => {
+        totalBytes += d.length;
+        if (!truncated) {
+          const room = MAX_READ_BYTES - Buffer.byteLength(content, 'utf8');
+          if (room <= 0) { truncated = true; return; }
+          const piece = d.toString('utf8');
+          if (Buffer.byteLength(piece, 'utf8') <= room) {
+            content += piece;
+          } else {
+            truncated = true;
+            // Take as many complete characters as fit.
+            let added = 0;
+            for (const ch of piece) {
+              const charBytes = Buffer.byteLength(ch, 'utf8');
+              if (added + charBytes > room) { truncated = true; break; }
+              content += ch;
+              added += charBytes;
+            }
+          }
+        }
+      });
+      stream.on('end', () => next());
+      stream.on('error', reject);
+    });
+    extract.on('finish', resolve);
+    extract.on('error', reject);
+    archive.pipe(extract);
+  });
+
+  if (!found) {
+    throw new HttpError(404, `File not found: ${filePath}`);
+  }
+
+  return { content, truncated, size: totalBytes };
+}
+
+// ── Copy to container (from container or bucket) ─────────────
+
+/** Stream an archive (tar) from one container into another, rewriting the
+ *  top-level entry name to `destRel`.  Used for both single-file and
+ *  directory copies — the tar entries are re-rooted under destRel. */
+async function streamArchiveBetweenContainers(
+  srcId: string,
+  srcPath: string,
+  destId: string,
+  destPath: string,
+): Promise<void> {
+  const srcContainer = docker.getContainer(srcId);
+  const srcInfo = await srcContainer.inspect();
+  if (srcInfo.Config?.Labels?.['iaas.system']) {
+    throw new HttpError(403, 'Cannot copy from a system-managed container.');
+  }
+  if (!srcInfo.State?.Running) throw new HttpError(409, 'Source container is not running.');
+
+  const destContainer = docker.getContainer(destId);
+  const destInfo = await destContainer.inspect();
+  if (!destInfo.State?.Running) throw new HttpError(409, 'Destination container is not running.');
+
+  const archive = await srcContainer.getArchive({ path: srcPath });
+
+  // Determine the source name (last component of srcPath) so we can strip it
+  // when re-rooting into destPath.
+  const srcName = srcPath.replace(/\/+$/, '').split('/').pop() || '';
+  const destBase = destPath.replace(/\/$/, '');
+
+  const tarBuffer = await new Promise<Buffer>((resolve, reject) => {
+    const pack = tar.pack();
+    const packChunks: Buffer[] = [];
+    pack.on('data', (c: Buffer) => packChunks.push(c));
+    pack.on('end', () => resolve(Buffer.concat(packChunks)));
+    pack.on('error', reject);
+
+    const extract = tar.extract();
+    extract.on('entry', (header, stream, next) => {
+      const entryChunks: Buffer[] = [];
+      stream.on('data', (d: Buffer) => entryChunks.push(d));
+      stream.on('end', () => {
+        // Rewrite the entry name: strip the src root prefix, prepend dest.
+        const oldName = header.name.replace(/^\.?\//, '');
+        const relative = oldName === srcName || oldName.startsWith(srcName + '/')
+          ? oldName.slice(srcName.length).replace(/^\//, '')
+          : oldName;
+        const newName = relative
+          ? `${destBase.replace(/^\//, '')}/${relative}`
+          : destBase.replace(/^\//, '');
+        pack.entry({ name: newName, size: header.size || 0, mode: header.mode || 0o644 }, Buffer.concat(entryChunks));
+        next();
+      });
+      stream.on('error', reject);
+    });
+    extract.on('finish', () => pack.finalize());
+    extract.on('error', reject);
+    archive.pipe(extract);
+  });
+
+  await destContainer.putArchive(tarBuffer, { path: '/' });
+}
+
+/** Copy a file or directory from a source (container or bucket) into a
+ *  destination container.  For buckets, the object content is read and
+ *  written as a single file via tar + putArchive. */
+export async function copyToContainer(
+  input: CopyToContainerInput,
+  userId?: string,
+): Promise<{ ok: true; destPath: string }> {
+  const { source, destId, destPath } = input;
+
+  if (!destPath.startsWith('/') || destPath.includes('..')) {
+    throw new HttpError(400, 'destPath must be an absolute path (no "..").');
+  }
+
+  const destContainer = docker.getContainer(destId);
+  const destInfo = await destContainer.inspect();
+  if (destInfo.Config?.Labels?.['iaas.system']) {
+    throw new HttpError(403, 'Destination container is system-managed and cannot be written to.');
+  }
+  if (!destInfo.State?.Running) {
+    throw new HttpError(409, 'Destination container is not running.');
+  }
+
+  if (source.type === 'container') {
+    if (!source.containerId) throw new HttpError(400, 'source.containerId is required for type=container.');
+    if (!source.path || !source.path.startsWith('/') || source.path.includes('..')) {
+      throw new HttpError(400, 'source.path must be an absolute path (no "..").');
+    }
+    await streamArchiveBetweenContainers(
+      source.containerId, source.path, destId, destPath,
+    );
+    recordAuditLog('container.files.copy_to_container', 'container', destId, userId, `src=${source.containerId}:${source.path} → ${destPath}`);
+    return { ok: true, destPath };
+  }
+
+  if (source.type === 'bucket') {
+    if (!source.bucket) throw new HttpError(400, 'source.bucket is required for type=bucket.');
+    if (!source.key) throw new HttpError(400, 'source.key is required for type=bucket.');
+
+    // Read the bucket object via MinIO.
+    const { getObject } = await import('./buckets.js');
+    const obj = await getObject(source.bucket, source.key);
+    const chunks: Buffer[] = [];
+    for await (const chunk of obj.body as AsyncIterable<Buffer>) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    const content = Buffer.concat(chunks);
+
+    // Write as a single file via tar.
+    const destRel = destPath.replace(/^\//, '');
+    const tarBuffer = await new Promise<Buffer>((resolve, reject) => {
+      const pack = tar.pack();
+      const packChunks: Buffer[] = [];
+      pack.on('data', (c: Buffer) => packChunks.push(c));
+      pack.on('end', () => resolve(Buffer.concat(packChunks)));
+      pack.on('error', reject);
+      pack.entry({ name: destRel, size: content.length, mode: 0o644 }, content);
+      pack.finalize();
+    });
+    await destContainer.putArchive(tarBuffer, { path: '/' });
+    recordAuditLog('container.files.copy_from_bucket', 'container', destId, userId, `bucket=${source.bucket}/${source.key} → ${destPath}`);
+    return { ok: true, destPath };
+  }
+
+  throw new HttpError(400, `Unsupported source type: "${(source as any).type}".`);
 }

@@ -21,15 +21,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV NODE_ENV=production
-# Install Chromium BEFORE the COPY-from-build layers.  Chromium only
-# depends on the base image + apt deps above — it shouldn't re-download
-# on every code change.  (Previously it ran after COPY dist, making the
-# most expensive layer essentially uncacheable.)
-RUN npx playwright install chromium --with-deps 2>&1 | tail -3
 COPY --from=build /app/package.json ./
 COPY --from=build /app/server/package.json server/
 COPY --from=build /app/web/package.json web/
 COPY --from=build /app/node_modules node_modules
+# Install Chromium *after* node_modules so the installed playwright
+# (from package.json) drives which browser revision to download.
+# Running it before caused a version-mismatch: npx pulled the latest
+# playwright, but node_modules had a different (pinned) version.
+# --with-deps installs any additional system libraries Chromium needs
+# beyond the manual apt list above (e.g. libatspi2.0-0 on version bumps).
+RUN npx playwright install chromium --with-deps
 COPY --from=build /app/server/dist server/dist
 COPY --from=build /app/web/dist web/dist
 EXPOSE 4300

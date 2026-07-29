@@ -224,6 +224,14 @@ export const api = {
       body: JSON.stringify({ files }),
     }).then((r) => json<{ ok: true; filesWritten: number }>(r)),
 
+  /** Copy a file or directory into a container from another container or bucket. */
+  containerCopyTo: (id: string, source: Record<string, unknown>, destPath: string) =>
+    fetch(`/api/containers/${id}/files/copy`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source, destPath }),
+    }).then((r) => json<{ ok: true; destPath: string }>(r)),
+
   /** List files recursively inside a container directory using find. */
   containerListFiles: (id: string, path = '/', maxDepth = 4) =>
     fetch(`/api/containers/${id}/files/list`, {

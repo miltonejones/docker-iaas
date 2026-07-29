@@ -106,6 +106,10 @@ const ASSISTANT_DESCRIPTIONS: Record<string, string> = {
     "Update environment variables, the description label, and/or the protected flag on a container. Docker requires recreating a container to change env or labels, so your files are safe (named volumes survive). Pass the container id and the new env array, new description, and/or new protected boolean. The user confirms before the update.",
   replace_in_container_file:
     "Search-and-replace literal text in a file inside a running container. Reads the file, applies the replacement, and writes it back.",
+  read_container_file:
+    "Read a text file from a running container and return its content (capped at 256 KiB). Use this to inspect config files, build output, logs written to disk, or any other text file inside a container without running a shell command.",
+  copy_to_container:
+    "Copy a file or directory into a container from another container or from a bucket. For container-to-container copies: sourceType='container', sourceContainerId, sourcePath, dest container id, destPath. For bucket-to-container: sourceType='bucket', sourceBucket, sourceKey, dest container id, destPath. Uses tar streaming under the hood so it handles binaries and large files efficiently. When copying a directory, the contents land inside destPath. The user confirms before the copy executes.",
   replace_in_bucket_object:
     "Search-and-replace literal text in an object stored in a bucket, overwriting it in place. Use this for quick targeted edits to a hosted site file.",
   list_container_files:
