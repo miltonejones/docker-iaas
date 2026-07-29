@@ -346,7 +346,6 @@ async function executeReadOnlyTool(
     }
     case "check_consumer_health": {
       const results: Record<string, unknown> = {};
-      const { execSync } = await import("node:child_process");
       // status file
       const sp = path.join(process.cwd(), "scripts", "issue-logs", "consumer-status.json");
       try { results.status = JSON.parse(fs.readFileSync(sp, "utf8")); } catch { results.status = { state: "unknown" }; }
@@ -361,15 +360,12 @@ async function executeReadOnlyTool(
         const r = await fetch(`http://127.0.0.1:${process.env.PORT || 4300}/api/auth/me`, { signal: AbortSignal.timeout(3000) });
         results.api = { reachable: true, status: r.status };
       } catch { results.api = { reachable: false }; }
-      // claude
-      try {
-        results.claude = { path: execSync("command -v claude || which claude 2>/dev/null || echo not-found", { encoding: "utf8", timeout: 3000 }).trim() };
-      } catch { results.claude = { path: "not-found" }; }
-      // git
-      try {
-        execSync("git -C . log --oneline -1 2>/dev/null", { encoding: "utf8", timeout: 3000 });
-        results.git = { ok: true };
-      } catch { results.git = { ok: false }; }
+      // claude — read from the consumer's self-reported status file.
+      // The consumer probes its own environment where the CLI actually lives.
+      const consumerStatus = results.status as Record<string, unknown> | undefined;
+      results.claude = consumerStatus?.claude ?? { path: "unknown (no consumer report)" };
+      // git — also from the consumer's self-report.
+      results.git = consumerStatus?.git ?? { ok: null, detail: "unknown (no consumer report)" };
       return results;
     }
     case "list_container_files":
