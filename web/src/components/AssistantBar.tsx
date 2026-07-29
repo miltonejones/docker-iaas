@@ -66,6 +66,7 @@ const ACTION_LABEL: Record<string, string> = {
   commit_and_push_github_files: 'Commit and push to GitHub',
   update_container_env: 'Update container env/description',
   replace_in_container_file: 'Replace text in container file',
+  copy_to_container: 'Copy to container',
   replace_in_bucket_object: 'Replace text in bucket file',
   write_container_files: 'Write container files',
   write_bucket_objects: 'Write bucket files',
@@ -1088,6 +1089,26 @@ export function AssistantBar({
           String(input.id ?? ''),
           input.files as { path: string; content: string }[],
         );
+
+      case 'copy_to_container': {
+        const sourceType = String(input.sourceType ?? '');
+        if (!['container', 'bucket'].includes(sourceType)) {
+          throw new Error('copy_to_container requires sourceType "container" or "bucket".');
+        }
+        const source: Record<string, unknown> = { type: sourceType };
+        if (sourceType === 'container') {
+          source.containerId = String(input.sourceContainerId ?? '');
+          source.path = String(input.sourcePath ?? '');
+        } else {
+          source.bucket = String(input.sourceBucket ?? '');
+          source.key = String(input.sourceKey ?? '');
+        }
+        return api.containerCopyTo(
+          String(input.id ?? ''),
+          source,
+          String(input.destPath ?? ''),
+        );
+      }
 
       case 'delete_container':
         return api.remove(String(input.id ?? ''), bool(input.force));

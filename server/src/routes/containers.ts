@@ -6,7 +6,7 @@ import * as containerService from '../services/containers.js';
 export const containersRouter = Router();
 
 // Re-export for backward compatibility.
-export { listContainerFiles, probeContainerEndpoint, stripLogHeaders, backgroundExecOutputs } from '../services/containers.js';
+export { listContainerFiles, probeContainerEndpoint, stripLogHeaders, backgroundExecOutputs, readFile, copyToContainer } from '../services/containers.js';
 
 function sendError(res: Response, err: unknown): void {
   const status = err instanceof HttpError ? err.status : 502;
@@ -292,6 +292,41 @@ containersRouter.post('/:id/probe', async (req: Request, res: Response) => {
       typeof req.body.path === 'string' ? req.body.path : '/',
       typeof req.body.method === 'string' ? req.body.method.toUpperCase() : 'GET',
     ));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// ── Read file from container ─────────────────────────────────
+
+containersRouter.post('/:id/files/read', async (req: Request, res: Response) => {
+  try {
+    const path = String(req.body.path ?? '');
+    res.json(await containerService.readFile(req.params.id, path));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+// ── Copy to container ────────────────────────────────────────
+
+containersRouter.post('/:id/files/copy', async (req: Request, res: Response) => {
+  try {
+    const body = req.body as Record<string, unknown>;
+    // Accept both nested { source: {...} } (direct API) and flat params (tool call).
+    const source = (body.source as Record<string, unknown>) ?? {
+      type: body.sourceType,
+      containerId: body.sourceContainerId,
+      path: body.sourcePath,
+      bucket: body.sourceBucket,
+      key: body.sourceKey,
+    };
+    const destPath = String((body.destPath ?? body.path ?? ''));
+    res.json(await containerService.copyToContainer({
+      source: source as any,
+      destId: req.params.id,
+      destPath,
+    }));
   } catch (err) {
     sendError(res, err);
   }

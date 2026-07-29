@@ -193,6 +193,29 @@ const CONTAINER_TOOLS: ToolSchema[] = [
     },
     required: ['id', 'port'],
   },
+  {
+    name: 'read_container_file',
+    description: 'Read a text file from a running container.',
+    properties: {
+      id: { type: 'string', description: 'Container ID' },
+      path: { type: 'string', description: 'Absolute path inside the container' },
+    },
+    required: ['id', 'path'],
+  },
+  {
+    name: 'copy_to_container',
+    description: 'Copy a file or directory from another container or bucket into this container.',
+    properties: {
+      id: { type: 'string', description: 'Destination container ID' },
+      sourceType: { type: 'string', description: 'Source type: "container" or "bucket"' },
+      sourceContainerId: { type: 'string', description: 'Source container ID (required when sourceType=container)' },
+      sourcePath: { type: 'string', description: 'Absolute path in source container (required when sourceType=container)' },
+      sourceBucket: { type: 'string', description: 'Bucket name (required when sourceType=bucket)' },
+      sourceKey: { type: 'string', description: 'Object key in bucket (required when sourceType=bucket)' },
+      destPath: { type: 'string', description: 'Destination path inside this container' },
+    },
+    required: ['id', 'sourceType', 'destPath'],
+  },
 ];
 
 // ── Buckets (10) ────────────────────────────────────────────────

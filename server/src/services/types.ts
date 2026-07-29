@@ -92,6 +92,28 @@ export interface ReplaceResult {
   content: string;
 }
 
+export interface CopyToContainerSource {
+  /** Source type: "container" or "bucket". */
+  type: "container" | "bucket";
+  /** For type=container: the source container id. */
+  containerId?: string;
+  /** Absolute path inside the source container (file or directory). */
+  path?: string;
+  /** For type=bucket: the bucket name. */
+  bucket?: string;
+  /** For type=bucket: the object key. */
+  key?: string;
+}
+
+export interface CopyToContainerInput {
+  source: CopyToContainerSource;
+  /** Destination container id. */
+  destId: string;
+  /** Destination path inside the dest container.  For a single file copy this is
+   *  the file path; for a directory it's the target directory. */
+  destPath: string;
+}
+
 // ── Bucket types ───────────────────────────────────────────
 
 export interface BucketView {
