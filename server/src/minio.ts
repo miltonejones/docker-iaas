@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { S3Client } from '@aws-sdk/client-s3';
-import { docker, dockyardNetworkConfig, ensureImage, isSelfContainerized, remoteDockerHost } from './docker.js';
+import { docker, dockyardNetworkConfig, ensureImage, isSelfContainerized, remoteDockerHost, DOCKYARD_NET } from './docker.js';
 import { getSetting, setSetting } from './db.js';
 
 const CONTAINER_NAME = 'dockyard-minio';
@@ -39,6 +39,15 @@ export async function ensureMinio(): Promise<void> {
     }
     if (existing[0].State !== 'running') {
       await docker.getContainer(existing[0].Id).start();
+    }
+    // Reconnect MinIO to dockyard-net if it lost the attachment (e.g. after
+    // docker compose down recreates the network).
+    const netInfo = info.NetworkSettings?.Networks?.[DOCKYARD_NET];
+    if (!netInfo) {
+      try {
+        await docker.getNetwork(DOCKYARD_NET).connect({ Container: existing[0].Id });
+        console.log(`  reconcileNetwork: reconnected ${CONTAINER_NAME} to ${DOCKYARD_NET}`);
+      } catch { /* already connected — safe to skip */ }
     }
     return;
   }

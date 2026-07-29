@@ -549,3 +549,11 @@ export function listGatewayTrafficEvents(
 
   return { totalMatched, events };
 }
+
+/** Get all routes with a verified custom domain — used to rebuild Caddy site
+ *  files on startup after a volume loss or redeploy. */
+export function getVerifiedDomainRoutes(): { id: string; name: string; domain: string }[] {
+  return db.prepare(
+    "SELECT id, name, domain FROM routes WHERE domain IS NOT NULL AND domain_verified = 1",
+  ).all() as { id: string; name: string; domain: string }[];
+}

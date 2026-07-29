@@ -37,7 +37,7 @@ export interface DockerReachability {
   error?: string;
 }
 
-const DOCKYARD_NET = 'dockyard-net';
+export const DOCKYARD_NET = 'dockyard-net';
 
 /** Ensure the shared dockyard network exists so containers and lambda
  *  functions can address each other by container name. */
@@ -45,6 +45,37 @@ export async function ensureNetwork(): Promise<void> {
   const nets = await docker.listNetworks();
   if (nets.some((n) => n.Name === DOCKYARD_NET)) return;
   await docker.createNetwork({ Name: DOCKYARD_NET, Driver: 'bridge' });
+}
+
+/** Reconnect containers that lost their dockyard-net attachment (e.g. after
+ *  `docker compose down` recreates the network).  Scans for containers with
+ *  `iaas.owner` or `iaas.system` labels and re-attaches any that are missing
+ *  from the network.  Safe to call on every startup — no-op when nothing needs
+ *  reconnecting. */
+export async function reconcileNetwork(): Promise<number> {
+  const containers = await docker.listContainers({ all: true });
+  const net = docker.getNetwork(DOCKYARD_NET);
+  let reconnected = 0;
+  for (const c of containers) {
+    // Skip ephemeral lambda containers and compose-managed system containers.
+    if (c.Labels?.['iaas.ephemeral']) continue;
+    if (!c.Labels?.['iaas.owner'] && !c.Labels?.['iaas.system']) continue;
+    if (c.Names?.[0]?.startsWith('/dockyard')) continue;
+
+    const onNet = c.NetworkSettings?.Networks?.[DOCKYARD_NET];
+    if (!onNet) {
+      try {
+        await net.connect({ Container: c.Id });
+        reconnected++;
+      } catch {
+        // Already connected or container removed — safe to skip.
+      }
+    }
+  }
+  if (reconnected) {
+    console.log(`  reconcileNetwork: reconnected ${reconnected} container(s) to ${DOCKYARD_NET}`);
+  }
+  return reconnected;
 }
 
 /** NetworkingConfig fragment that attaches a container to the shared network. */
