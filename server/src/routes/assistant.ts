@@ -171,8 +171,10 @@ function resolveAssistantOpts(
         ? tools.filter((t) => allowedTools.has(t.name))
         : tools,
     };
-  } catch {
-    // Assistant not found — fall back to defaults.
+  } catch (err) {
+    if ((err as { status?: number }).status !== 404) {
+      console.warn("resolveAssistantOpts failed:", (err as Error).message);
+    }
     return undefined;
   }
 }
