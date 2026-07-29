@@ -109,9 +109,12 @@ jobs:
             # Tear down the entire stack.  'down' stops containers, removes
             # them, and cleans up networks — this is the only reliable way to
             # guarantee port bindings are fully released before recreating.
-            docker compose down --remove-orphans || true
+            # Note: do NOT use --remove-orphans — user-managed containers (MinIO,
+            # app instances) lack compose labels and would be incorrectly removed.
+            # The server's reconcileNetwork() reattaches them after startup.
+            docker compose down || true
             docker compose pull console consumer
-            docker compose up -d --remove-orphans
+            docker compose up -d
             # Cleanup is best-effort only — stale images shouldn't block a deploy.
             docker image prune -f || true
             # Append success notification for the local notify-watcher

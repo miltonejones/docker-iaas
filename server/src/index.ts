@@ -3,7 +3,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import express from 'express';
 import cors from 'cors';
-import { ensureNetwork, pingDocker } from './docker.js';
+import { ensureNetwork, pingDocker, reconcileNetwork } from './docker.js';
 import { containersRouter } from './routes/containers.js';
 import { imagesRouter } from './routes/images.js';
 import { systemRouter } from './routes/system.js';
@@ -34,7 +34,7 @@ import {
   finalizeGatewayErrorClassification,
   type GatewayTelemetryState,
 } from './gatewayHandlers.js';
-import { reloadCaddy } from './caddy.js';
+import { reloadCaddy, reconcileGateway } from './caddy.js';
 import { getRouteByDomain, recordGatewayTrafficEvent } from './db/gateway.js';
 import { initDb } from './db.js';
 import { connectToRelay } from './relay.js';
@@ -203,6 +203,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
   const port = Number(process.env.PORT || 4300);
   app.listen(port, '0.0.0.0', async () => {
     await ensureNetwork();
+    await reconcileNetwork();
     const ping = await pingDocker();
     console.log(`\n  Dockyard.ai server listening on http://0.0.0.0:${port}`);
     console.log(
@@ -224,6 +225,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
     // Connect to relay if configured.
         // Re-apply persisted custom-domain blocks into Caddy.
     try { await reloadCaddy(); } catch { /* best-effort */ }
+    try { await reconcileGateway(); } catch { /* best-effort */ }
 
     if (relayUrl) {
       connectToRelay(relayUrl);

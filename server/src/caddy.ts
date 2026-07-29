@@ -179,3 +179,27 @@ export async function reloadCaddy(): Promise<void> {
     child.unref();
   });
 }
+
+// ── Startup reconciliation ─────────────────────────────────────────────
+
+/** Rebuild per-domain Caddy site files from the database.
+ *  Called on startup to restore gateway routes that were lost when the
+ *  Caddy data volume was recreated or the container was redeployed.
+ *  Idempotent — appendCaddySite overwrites existing files. */
+export async function reconcileGateway(): Promise<void> {
+  const { getVerifiedDomainRoutes } = await import('./db/gateway.js');
+  const routes = getVerifiedDomainRoutes();
+  if (!routes.length) return;
+
+  let restored = 0;
+  for (const route of routes) {
+    try {
+      await appendCaddySite(route.domain);
+      restored++;
+    } catch { /* best-effort per domain */ }
+  }
+  if (restored) {
+    try { await reloadCaddy(); } catch { /* best-effort */ }
+    console.log(`  reconcileGateway: restored ${restored} domain(s)`);
+  }
+}
