@@ -3349,11 +3349,7 @@ textarea:focus {
     width: 100%;
   }
   .brand h1 {
-    font-size: 0;       /* hide text */
-  }
-  .brand h1::after {
-    content: "Dockyard";
-    font-size: 15px;
+    display: none;       /* hide title in mobile view */
   }
   .brand__mark {
     font-size: 22px;
@@ -3663,11 +3659,7 @@ textarea:focus {
     gap: 6px;
   }
   .brand h1 {
-    font-size: 0;
-  }
-  .brand h1::after {
-    content: "Dockyard";
-    font-size: 14px;
+    display: none;       /* hide title in mobile view */
   }
   .brand__mark {
     font-size: 20px;
