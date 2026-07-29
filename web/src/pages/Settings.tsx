@@ -101,77 +101,137 @@ export function SettingsPage() {
   const fields = Object.keys(FIELD_LABELS);
 
   return (
+    <SettingsTabbedView
+      error={error}
+      saved={saved}
+      status={status}
+      fields={fields}
+      saving={saving}
+      webhookSecret={webhookSecret}
+      webhookCopied={webhookCopied}
+      onSave={handleSave}
+      onCopyWebhook={copyWebhook}
+      onRotateWebhook={rotateWebhook}
+    />
+  );
+}
+
+function SettingsTabbedView(props: {
+  error: string;
+  saved: boolean;
+  status: UserSettings;
+  fields: string[];
+  saving: boolean;
+  webhookSecret: string | null;
+  webhookCopied: boolean;
+  onSave: (e: React.FormEvent<HTMLFormElement>) => void;
+  onCopyWebhook: () => void;
+  onRotateWebhook: () => void;
+}) {
+  const {
+    error, saved, status, fields, saving,
+    webhookSecret, webhookCopied,
+    onSave, onCopyWebhook, onRotateWebhook,
+  } = props;
+
+  const SETTINGS_TABS = [
+    { key: 'credentials' as const, label: 'Credentials' },
+    { key: 'webhook' as const, label: 'Webhook' },
+    { key: 'assistants' as const, label: 'Assistants' },
+  ];
+  type SettingsTab = (typeof SETTINGS_TABS)[number]['key'];
+
+  const [activeTab, setActiveTab] = useState<SettingsTab>('credentials');
+
+  return (
     <div className="page">
       <h1>Settings</h1>
       <p className="muted">Configure your API keys and credentials. They are encrypted at rest and never returned in plaintext.</p>
 
-      {error && <div className="toast toast--error">{error}</div>}
-      {saved && <div className="toast toast--success">Settings saved.</div>}
+      <div className="tab-bar" style={{ marginTop: 16 }}>
+        {SETTINGS_TABS.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            className={`tab-bar__item${activeTab === t.key ? ' tab-bar__item--active' : ''}`}
+            onClick={() => setActiveTab(t.key)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-      <form onSubmit={handleSave} className="settings-form">
-        {fields.map((key) => {
-          const configured = status[key]?.configured ?? false;
-          const isSecret = key !== 'assistant_provider';
-          return (
-            <label key={key} className="settings-field">
-              <span className="settings-field__label">
-                {FIELD_LABELS[key]}
-                {configured && <span className="badge badge--ok" style={{ marginLeft: 8 }}>configured</span>}
-              </span>
-              {isSecret ? (
-                <input
-                  type="password"
-                  name={key}
-                  defaultValue=""
-                  placeholder={configured ? '(unchanged)' : FIELD_PLACEHOLDERS[key]}
-                  className="input"
-                  autoComplete="off"
-                />
-              ) : (
-                <select name={key} defaultValue="" className="input">
-                  <option value="">System default</option>
-                  <option value="anthropic">Anthropic</option>
-                  <option value="deepseek">DeepSeek</option>
-                </select>
-              )}
-            </label>
-          );
-        })}
-        <button type="submit" className="btn btn--primary" disabled={saving}>
-          {saving ? 'Saving…' : 'Save settings'}
-        </button>
-      </form>
+      {error && <div className="toast toast--error" style={{ marginTop: 16 }}>{error}</div>}
+      {saved && <div className="toast toast--success" style={{ marginTop: 16 }}>Settings saved.</div>}
 
-      <section className="settings-section" style={{ marginTop: '2rem' }}>
-        <h2>Webhook Secret</h2>
-        <p className="muted">
-          Used by CI/CD pipelines to authenticate requests to Dockyard's GitHub API endpoints.
-          Include this value in the <code>x-webhook-secret</code> header.
-        </p>
-        {webhookSecret === null ? (
-          <p className="empty-sm">Loading…</p>
-        ) : webhookSecret ? (
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '0.5rem' }}>
-            <input
-              type="text"
-              readOnly
-              value={webhookSecret}
-              className="input mono"
-              style={{ flex: 1, fontFamily: 'monospace', fontSize: '13px' }}
-            />
-            <button type="button" className="btn btn--sm" onClick={copyWebhook}>
-              {webhookCopied ? 'Copied!' : 'Copy'}
-            </button>
-            <button type="button" className="btn btn--sm btn--danger" onClick={rotateWebhook}>
-              Rotate
-            </button>
-          </div>
-        ) : (
-          <p className="empty-sm">Loading…</p>
-        )}
-      </section>
+      {activeTab === 'credentials' && (
+        <form onSubmit={onSave} className="settings-form" style={{ marginTop: 16 }}>
+          {fields.map((key) => {
+            const configured = status[key]?.configured ?? false;
+            const isSecret = key !== 'assistant_provider';
+            return (
+              <label key={key} className="settings-field">
+                <span className="settings-field__label">
+                  {FIELD_LABELS[key]}
+                  {configured && <span className="badge badge--ok" style={{ marginLeft: 8 }}>configured</span>}
+                </span>
+                {isSecret ? (
+                  <input
+                    type="password"
+                    name={key}
+                    defaultValue=""
+                    placeholder={configured ? '(unchanged)' : FIELD_PLACEHOLDERS[key]}
+                    className="input"
+                    autoComplete="off"
+                  />
+                ) : (
+                  <select name={key} defaultValue="" className="input">
+                    <option value="">System default</option>
+                    <option value="anthropic">Anthropic</option>
+                    <option value="deepseek">DeepSeek</option>
+                  </select>
+                )}
+              </label>
+            );
+          })}
+          <button type="submit" className="btn btn--primary" disabled={saving}>
+            {saving ? 'Saving…' : 'Save settings'}
+          </button>
+        </form>
+      )}
 
-      <AssistantsSettings />
+      {activeTab === 'webhook' && (
+        <section className="settings-section">
+          <h2>Webhook Secret</h2>
+          <p className="muted">
+            Used by CI/CD pipelines to authenticate requests to Dockyard's GitHub API endpoints.
+            Include this value in the <code>x-webhook-secret</code> header.
+          </p>
+          {webhookSecret === null ? (
+            <p className="empty-sm">Loading…</p>
+          ) : webhookSecret ? (
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '0.5rem' }}>
+              <input
+                type="text"
+                readOnly
+                value={webhookSecret}
+                className="input mono"
+                style={{ flex: 1, fontFamily: 'monospace', fontSize: '13px' }}
+              />
+              <button type="button" className="btn btn--sm" onClick={onCopyWebhook}>
+                {webhookCopied ? 'Copied!' : 'Copy'}
+              </button>
+              <button type="button" className="btn btn--sm btn--danger" onClick={onRotateWebhook}>
+                Rotate
+              </button>
+            </div>
+          ) : (
+            <p className="empty-sm">Loading…</p>
+          )}
+        </section>
+      )}
+
+      {activeTab === 'assistants' && <AssistantsSettings />}
     </div>
   );
 }
