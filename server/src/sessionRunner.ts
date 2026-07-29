@@ -13,6 +13,7 @@ type RespondStreamFn = (
   messages: Anthropic.MessageParam[],
   onEvent: (event: SessionEvent) => void,
   signal: AbortSignal,
+  opts?: { system?: string; tools?: Anthropic.Tool[] },
 ) => Promise<void>;
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -40,6 +41,9 @@ export interface SessionState {
   resolved: unknown[];
 }
 
+/** Options forwarded to streamTurn for custom assistant system prompt / tools. */
+export type StreamOpts = { system?: string; tools?: Anthropic.Tool[] };
+
 // ── Session Runner ───────────────────────────────────────────────────────────
 
 export class SessionRunner extends EventEmitter {
@@ -51,18 +55,21 @@ export class SessionRunner extends EventEmitter {
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly IDLE_MS = 5 * 60_000; // 5 min
   private readonly client: Anthropic;
+  private readonly opts?: StreamOpts;
 
   constructor(
     id: string,
     userId: string | undefined,
     respondStream: RespondStreamFn,
     client: Anthropic,
+    opts?: StreamOpts,
   ) {
     super();
     this.id = id;
     this.userId = userId;
     this.respondStream = respondStream;
     this.client = client;
+    this.opts = opts;
     this.setMaxListeners(50); // support many subscribers
   }
 
@@ -139,7 +146,7 @@ export class SessionRunner extends EventEmitter {
     }
 
     try {
-      await this.respondStream(this.userId ?? 'deploy', messages, (event) => this.broadcast(event), this.abortController.signal);
+      await this.respondStream(this.userId ?? 'deploy', messages, (event) => this.broadcast(event), this.abortController.signal, this.opts);
     } catch (err) {
       if (!this.abortController.signal.aborted) {
         this.broadcast({ type: "error", error: (err as Error).message });
@@ -196,10 +203,11 @@ export function getOrCreateSession(
   userId: string | undefined,
   respondStream: RespondStreamFn,
   client: Anthropic,
+  opts?: StreamOpts,
 ): SessionRunner {
   let runner = sessionRegistry.get(id);
   if (!runner) {
-    runner = new SessionRunner(id, userId, respondStream, client);
+    runner = new SessionRunner(id, userId, respondStream, client, opts);
     sessionRegistry.set(id, runner);
     // Load persisted state from DB — fire and forget
     getAssistantSession(id, userId);

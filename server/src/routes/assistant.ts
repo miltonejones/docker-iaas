@@ -154,6 +154,29 @@ Rules:
 
 import { tools } from "../assistant-tools.js";
 
+/** Resolve a custom assistant's system prompt and tool subset into options
+ *  for streamTurn. Returns undefined if the assistant doesn't exist or has
+ *  no customisation (empty prompt + empty tool list). */
+function resolveAssistantOpts(
+  assistantId: string | null | undefined,
+  userId: string | undefined,
+): { system?: string; tools?: Anthropic.Tool[] } | undefined {
+  if (!assistantId || !userId) return undefined;
+  try {
+    const assistant = getAssistant(assistantId, userId);
+    const allowedTools = new Set<string>(assistant.toolList);
+    return {
+      system: assistant.systemPrompt || SYSTEM,
+      tools: assistant.toolList.length > 0
+        ? tools.filter((t) => allowedTools.has(t.name))
+        : tools,
+    };
+  } catch {
+    // Assistant not found — fall back to defaults.
+    return undefined;
+  }
+}
+
 /** These tools have no side effects, so the server executes them itself and
  *  loops back to Claude immediately — the client never sees them and never
  *  has to confirm a plain lookup. */
@@ -494,26 +517,7 @@ assistantRouter.post("/plan", async (req: Request, res: Response) => {
     }
 
     // Resolve custom assistant if requested.
-    let customOpts: { system?: string; tools?: Anthropic.Tool[] } | undefined;
-    if (assistantId) {
-      const userId = getAuthUser(req)?.userId;
-      if (userId) {
-        try {
-          const assistant = getAssistant(assistantId, userId);
-          const allowedTools = new Set<string>(assistant.toolList);
-          customOpts = {
-            system: assistant.systemPrompt || SYSTEM,
-            tools: assistant.toolList.length > 0
-              ? tools.filter((t) => allowedTools.has(t.name))
-              : tools,
-          };
-        } catch (err) {
-          if ((err as { status?: number }).status !== 404) {
-            console.error("Failed to load assistant:", (err as Error).message);
-          }
-        }
-      }
-    }
+    const customOpts = resolveAssistantOpts(assistantId, getAuthUser(req)?.userId);
 
     const messages: Anthropic.MessageParam[] = [
       ...(prior ?? []),
@@ -554,24 +558,7 @@ assistantRouter.post("/confirm", async (req: Request, res: Response) => {
     });
 
     // Propagate custom assistant config.
-    let customOpts: { system?: string; tools?: Anthropic.Tool[] } | undefined;
-    if (assistantId) {
-      const userId = getAuthUser(req)?.userId;
-      if (userId) {
-        try {
-          const assistant = getAssistant(assistantId, userId);
-          const allowedTools = new Set<string>(assistant.toolList);
-          customOpts = {
-            system: assistant.systemPrompt || SYSTEM,
-            tools: assistant.toolList.length > 0
-              ? tools.filter((t) => allowedTools.has(t.name))
-              : tools,
-          };
-        } catch (err) {
-          console.error("Failed to load assistant for confirm:", (err as Error).message);
-        }
-      }
-    }
+    const customOpts = resolveAssistantOpts(assistantId, getAuthUser(req)?.userId);
 
     await respondStream(messages, req, res, customOpts);
   } catch (err) {
@@ -1076,7 +1063,8 @@ assistantRouter.get("/sessions/:id/stream", (req: Request, res: Response) => {
     res.status(400).json({ error: 'No API key configured. Set your Anthropic or DeepSeek key in Settings.' });
     return;
   }
-  const runner = getOrCreateSession(sessionId, row.name, userId, streamTurn, ac.client);
+  const streamOpts = resolveAssistantOpts(row.assistant_id, userId);
+  const runner = getOrCreateSession(sessionId, row.name, userId, streamTurn, ac.client, streamOpts);
 
   res.set({
     "Content-Type": "text/event-stream",
@@ -1134,7 +1122,8 @@ assistantRouter.post("/sessions/:id/send", async (req: Request, res: Response) =
       res.status(400).json({ error: 'No API key configured. Set your Anthropic or DeepSeek key in Settings.' });
       return;
     }
-    const runner = getOrCreateSession(sessionId, row.name, userId, streamTurn, ac.client);
+    const sendOpts = resolveAssistantOpts(row.assistant_id, userId);
+    const runner = getOrCreateSession(sessionId, row.name, userId, streamTurn, ac.client, sendOpts);
 
     // Start processing in the background — client subscribes via /stream.
     const sessionState = state || JSON.parse(row.state);
