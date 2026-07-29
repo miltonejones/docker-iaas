@@ -764,7 +764,12 @@ async function streamArchiveBetweenContainers(
         const newName = relative
           ? `${destBase.replace(/^\//, '')}/${relative}`
           : destBase.replace(/^\//, '');
-        pack.entry({ name: newName, size: header.size || 0, mode: header.mode || 0o644 }, Buffer.concat(entryChunks));
+        if (header.type === 'directory') {
+          // Directory entry — no content, just the header.
+          pack.entry({ name: newName, type: 'directory', mode: header.mode || 0o755 });
+        } else {
+          pack.entry({ name: newName, size: header.size || 0, mode: header.mode || 0o644 }, Buffer.concat(entryChunks));
+        }
         next();
       });
       stream.on('error', reject);
