@@ -649,7 +649,8 @@ const MAX_READ_BYTES = 256 * 1024; // 256 KiB cap (matches replaceInFile)
 
 /** Read a text file from a running container at the given absolute path.
  *  Uses getArchive to pull the file as a tar stream, extracts the content,
- *  and returns it as a UTF-8 string capped at 256 KiB. */
+ *  and returns it as a UTF-8 string capped at 256 KiB.
+ *  Streams and caps during reading to avoid buffering huge files. */
 export async function readFile(
   containerId: string,
   filePath: string,
@@ -660,20 +661,46 @@ export async function readFile(
 
   const container = docker.getContainer(containerId);
   const info = await container.inspect();
+  if (info.Config?.Labels?.['iaas.system']) {
+    throw new HttpError(403, 'System-managed containers cannot be read by the assistant.');
+  }
+  if (info.Config?.Labels?.['iaas.assistant-managed'] !== 'true') {
+    throw new HttpError(403, 'File reads are limited to containers created by the assistant.');
+  }
   if (!info.State?.Running) throw new HttpError(409, 'Container is not running.');
 
   const archive = await container.getArchive({ path: filePath });
-  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  let content = '';
+  let truncated = false;
+  let found = false;
 
   await new Promise<void>((resolve, reject) => {
     const extract = tar.extract();
-    extract.on('entry', (header, stream, next) => {
-      const entryChunks: Buffer[] = [];
-      stream.on('data', (d: Buffer) => entryChunks.push(d));
-      stream.on('end', () => {
-        chunks.push(Buffer.concat(entryChunks));
-        next();
+    extract.on('entry', (_header, stream, next) => {
+      found = true;
+      stream.on('data', (d: Buffer) => {
+        totalBytes += d.length;
+        if (!truncated) {
+          const room = MAX_READ_BYTES - Buffer.byteLength(content, 'utf8');
+          if (room <= 0) { truncated = true; return; }
+          const piece = d.toString('utf8');
+          if (Buffer.byteLength(piece, 'utf8') <= room) {
+            content += piece;
+          } else {
+            truncated = true;
+            // Take as many complete characters as fit.
+            let added = 0;
+            for (const ch of piece) {
+              const charBytes = Buffer.byteLength(ch, 'utf8');
+              if (added + charBytes > room) { truncated = true; break; }
+              content += ch;
+              added += charBytes;
+            }
+          }
+        }
       });
+      stream.on('end', () => next());
       stream.on('error', reject);
     });
     extract.on('finish', resolve);
@@ -681,14 +708,11 @@ export async function readFile(
     archive.pipe(extract);
   });
 
-  if (chunks.length === 0) {
+  if (!found) {
     throw new HttpError(404, `File not found: ${filePath}`);
   }
 
-  const raw = Buffer.concat(chunks);
-  const truncated = raw.length > MAX_READ_BYTES;
-  const content = raw.toString('utf8').slice(0, MAX_READ_BYTES);
-  return { content, truncated, size: raw.length };
+  return { content, truncated, size: totalBytes };
 }
 
 // ── Copy to container (from container or bucket) ─────────────
@@ -704,6 +728,9 @@ async function streamArchiveBetweenContainers(
 ): Promise<void> {
   const srcContainer = docker.getContainer(srcId);
   const srcInfo = await srcContainer.inspect();
+  if (srcInfo.Config?.Labels?.['iaas.system']) {
+    throw new HttpError(403, 'Cannot copy from a system-managed container.');
+  }
   if (!srcInfo.State?.Running) throw new HttpError(409, 'Source container is not running.');
 
   const destContainer = docker.getContainer(destId);
@@ -755,6 +782,7 @@ async function streamArchiveBetweenContainers(
  *  written as a single file via tar + putArchive. */
 export async function copyToContainer(
   input: CopyToContainerInput,
+  userId?: string,
 ): Promise<{ ok: true; destPath: string }> {
   const { source, destId, destPath } = input;
 
@@ -773,12 +801,13 @@ export async function copyToContainer(
 
   if (source.type === 'container') {
     if (!source.containerId) throw new HttpError(400, 'source.containerId is required for type=container.');
-    if (!source.path || !source.path.startsWith('/')) {
-      throw new HttpError(400, 'source.path must be an absolute path.');
+    if (!source.path || !source.path.startsWith('/') || source.path.includes('..')) {
+      throw new HttpError(400, 'source.path must be an absolute path (no "..").');
     }
     await streamArchiveBetweenContainers(
       source.containerId, source.path, destId, destPath,
     );
+    recordAuditLog('container.files.copy_to_container', 'container', destId, userId, `src=${source.containerId}:${source.path} → ${destPath}`);
     return { ok: true, destPath };
   }
 
@@ -807,6 +836,7 @@ export async function copyToContainer(
       pack.finalize();
     });
     await destContainer.putArchive(tarBuffer, { path: '/' });
+    recordAuditLog('container.files.copy_from_bucket', 'container', destId, userId, `bucket=${source.bucket}/${source.key} → ${destPath}`);
     return { ok: true, destPath };
   }
 

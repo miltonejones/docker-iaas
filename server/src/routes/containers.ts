@@ -326,7 +326,7 @@ containersRouter.post('/:id/files/copy', async (req: Request, res: Response) => 
       source: source as any,
       destId: req.params.id,
       destPath,
-    }));
+    }, getAuthUser(req)?.userId));
   } catch (err) {
     sendError(res, err);
   }

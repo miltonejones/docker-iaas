@@ -29,8 +29,9 @@ COPY --from=build /app/node_modules node_modules
 # (from package.json) drives which browser revision to download.
 # Running it before caused a version-mismatch: npx pulled the latest
 # playwright, but node_modules had a different (pinned) version.
-# System deps are handled by apt-get above; no --with-deps needed.
-RUN npx playwright install chromium
+# --with-deps installs any additional system libraries Chromium needs
+# beyond the manual apt list above (e.g. libatspi2.0-0 on version bumps).
+RUN npx playwright install chromium --with-deps
 COPY --from=build /app/server/dist server/dist
 COPY --from=build /app/web/dist web/dist
 EXPOSE 4300
