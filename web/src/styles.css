@@ -1594,6 +1594,7 @@ textarea:focus {
   border-radius: var(--r-sm);
   font-size: 11.5px;
   border: 1px solid var(--border);
+  overflow: hidden;
 }
 .assistant-log__entry--assistant .assistant-log__avatar {
   color: var(--accent);

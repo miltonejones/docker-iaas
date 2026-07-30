@@ -376,6 +376,10 @@ export interface AssistantLogEntry {
   text: string;
   /** Api response from a tool execution, shown when the user expands an action entry. */
   result?: unknown;
+  /** Which user-defined assistant produced this entry, so the avatar reflects
+   *  the assistant that was active at the time rather than the currently
+   *  selected one (which may have changed since). null = the default assistant. */
+  assistantId?: string | null;
 }
 
 /** Everything needed to resume an Ask Dockyard conversation exactly where it

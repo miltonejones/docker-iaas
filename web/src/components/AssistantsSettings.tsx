@@ -95,6 +95,20 @@ const ASSISTANT_ICONS = [
   '🧹', '🗂️', '📁', '🧰', '🏭', '🛳️', '🪝', '🔗', '🎨', '💡',
 ];
 
+/** The avatar slot renders a single grapheme, so clamp free-text input to the
+ *  first grapheme a user types or pastes (handles multi-char emoji sequences and
+ *  accidental multi-character pastes). The picker already selects one emoji. */
+function firstGrapheme(s: string): string {
+  if (!s) return '';
+  try {
+    const seg = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+    for (const g of seg.segment(s)) return g.segment;
+    return s[0] ?? '';
+  } catch {
+    return Array.from(s)[0] ?? '';
+  }
+}
+
 export function AssistantsSettings() {
   const [assistants, setAssistants] = useState<UserAssistant[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -253,7 +267,7 @@ export function AssistantsSettings() {
             <label className="settings-field">
               <span className="settings-field__label">Icon</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input className="input" value={icon ?? ''} onChange={(e) => setIcon(e.target.value || null)} placeholder="🛠️" style={{ width: 48, textAlign: 'center', fontSize: 18 }} />
+                <input className="input" value={icon ?? ''} onChange={(e) => setIcon(firstGrapheme(e.target.value) || null)} placeholder="🛠️" style={{ width: 48, textAlign: 'center', fontSize: 18 }} />
                 <button type="button" className="btn btn--ghost btn--sm" onClick={() => setIconPickerOpen(!iconPickerOpen)}>
                   {icon ? icon : 'Pick'}
                 </button>
