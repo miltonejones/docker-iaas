@@ -499,9 +499,15 @@ async function respondStream(
   // Abort the turn if the client disconnects mid-stream, and forward the
   // custom-assistant opts so /plan and /confirm actually apply the selected
   // assistant's system prompt and tool subset (previously dropped here).
+  // NOTE: listen on `res`, not `req`. For a POST with a body, the request's
+  // 'close' fires the moment express.json finishes reading the small body —
+  // which is before the Anthropic API has responded — so wiring the abort to
+  // `req.on('close')` aborted every turn up front and /plan and /confirm came
+  // back as empty 200s. The response's 'close' fires only on a real
+  // disconnect (or after res.end(), guarded out by writableEnded).
   const ac = new AbortController();
-  const onClientClose = () => ac.abort();
-  req.on("close", onClientClose);
+  const onClientClose = () => { if (!res.writableEnded) ac.abort(); };
+  res.on("close", onClientClose);
 
   await streamTurn(getAuthUser(req)?.userId ?? 'deploy', messages, (e) => {
     if (e.type === "text") send({ type: "text", delta: e.delta });
