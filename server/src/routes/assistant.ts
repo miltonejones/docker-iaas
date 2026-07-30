@@ -155,8 +155,10 @@ Rules:
 import { tools } from "../assistant-tools.js";
 
 /** Resolve a custom assistant's system prompt and tool subset into options
- *  for streamTurn. Returns undefined if the assistant doesn't exist or has
- *  no customisation (empty prompt + empty tool list). */
+ *  for streamTurn. Returns undefined when no assistantId/userId is given or
+ *  the assistant doesn't exist (404). Otherwise returns { system, tools },
+ *  falling back to the built-in SYSTEM prompt and the full tool set when the
+ *  assistant has no customisation (empty systemPrompt and empty toolList). */
 function resolveAssistantOpts(
   assistantId: string | null | undefined,
   userId: string | undefined,
@@ -173,7 +175,7 @@ function resolveAssistantOpts(
     };
   } catch (err) {
     if ((err as { status?: number }).status !== 404) {
-      console.warn("resolveAssistantOpts failed:", (err as Error).message);
+      console.error("resolveAssistantOpts failed:", (err as Error).message);
     }
     return undefined;
   }
@@ -494,12 +496,19 @@ async function respondStream(
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
 
+  // Abort the turn if the client disconnects mid-stream, and forward the
+  // custom-assistant opts so /plan and /confirm actually apply the selected
+  // assistant's system prompt and tool subset (previously dropped here).
+  const ac = new AbortController();
+  const onClientClose = () => ac.abort();
+  req.on("close", onClientClose);
+
   await streamTurn(getAuthUser(req)?.userId ?? 'deploy', messages, (e) => {
     if (e.type === "text") send({ type: "text", delta: e.delta });
     else if (e.type === "turn") send(e as unknown as Record<string, unknown>);
     else if (e.type === "error") send({ type: "error", error: e.error });
     else if (e.type === "wait") send({ type: "wait", seconds: e.seconds, reason: e.reason, toolUseId: e.toolUseId });
-  });
+  }, ac.signal, opts);
   res.end();
 }
 
