@@ -710,9 +710,9 @@ export function AssistantBar({
    *  streaming text in real-time and applying the turn state when it
    *  arrives. The caller must have already set busy=true and added the
    *  user prompt to the log. */
-  async function consumeTurnStream(stream: AsyncGenerator<Record<string, unknown>>) {
+  async function consumeTurnStream(stream: AsyncGenerator<Record<string, unknown>>, turnAssistantId?: string) {
     let streamedText = '';
-    setLog((l) => [...l, { kind: 'assistant', text: '' }]);
+    setLog((l) => [...l, { kind: 'assistant', text: '', assistantId: turnAssistantId ?? null }]);
 
     for await (const event of stream) {
       if (event.type === 'text') {
@@ -720,7 +720,7 @@ export function AssistantBar({
         streamedText += event.delta as string;
         setLog((l) => {
           const copy = [...l];
-          copy[copy.length - 1] = { kind: 'assistant', text: streamedText };
+          copy[copy.length - 1] = { kind: 'assistant', text: streamedText, assistantId: turnAssistantId ?? null };
           return copy;
         });
       } else if (event.type === 'turn') {
@@ -729,7 +729,7 @@ export function AssistantBar({
         // Replace the streaming placeholder with the final text.
         setLog((l) => {
           const copy = [...l];
-          copy[copy.length - 1] = { kind: 'assistant', text: streamedText || turn.text };
+          copy[copy.length - 1] = { kind: 'assistant', text: streamedText || turn.text, assistantId: turnAssistantId ?? null };
           return copy;
         });
         applyTurnState(turn);
@@ -737,10 +737,10 @@ export function AssistantBar({
         // close right here would otherwise lose the entire turn.
         saveSession({
           messages: turn.messages,
-          log: [...log, { kind: 'assistant', text: streamedText || turn.text }],
+          log: [...log, { kind: 'assistant', text: streamedText || turn.text, assistantId: turnAssistantId ?? null }],
           pending: turn.pending,
           resolved: turn.autoResolved ?? [],
-          assistantId: activeAssistantId ?? null,
+          assistantId: turnAssistantId ?? activeAssistantId ?? null,
         });
         if (turn.autoResolved?.length) {
           const labels = Array.from(
@@ -828,7 +828,7 @@ export function AssistantBar({
         ? `${contextPrompt}\n\nUser request: ${text}`
         : text;
       const stream = await api.assistantPlanStream(request, rawMessages, abortRef.current!.signal, effectiveAssistantId);
-      await consumeTurnStream(stream);
+      await consumeTurnStream(stream, effectiveAssistantId);
     } catch (err) {
       if ((err as Error).name === 'AbortError') return;
       setError((err as Error).message);
@@ -1428,7 +1428,7 @@ export function AssistantBar({
     try {
       if (!abortRef.current) abortRef.current = new AbortController();
       const stream = await api.assistantConfirmStream(rawMessages, nextResolved, abortRef.current.signal, activeAssistantId ?? undefined);
-      await consumeTurnStream(stream);
+      await consumeTurnStream(stream, activeAssistantId ?? undefined);
     } catch (err) {
       if ((err as Error).name === 'AbortError') return;
       setError((err as Error).message);
@@ -1636,8 +1636,8 @@ export function AssistantBar({
                     <span className="assistant-log__avatar">
                       {entry.kind === 'user' ? (
                         <AppIcon name="user" />
-                      ) : activeAssistantId && assistants.find(a => a.id === activeAssistantId)?.icon ? (
-                        <span>{assistants.find(a => a.id === activeAssistantId)!.icon}</span>
+                      ) : entry.assistantId && assistants.find(a => a.id === entry.assistantId)?.icon ? (
+                        <span aria-hidden="true">{assistants.find(a => a.id === entry.assistantId)!.icon}</span>
                       ) : (
                         <AppIcon name="assistant" />
                       )}
