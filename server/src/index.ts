@@ -146,12 +146,13 @@ export function createApp(): express.Express {
 
   app.use('/api/buckets', requireAuth, bucketsRouter);
 
-  // Assistant routes need a higher JSON body limit — session histories
+  // Assistant chat routes need a higher JSON body limit — session histories
   // with many tool calls and results legitimately exceed the default 2 MB.
-  // Mount them before the global express.json() so the global parser doesn't
-  // reject large bodies before they reach the assistant-specific limit.
-  app.use('/api/assistant', express.json({ limit: '10mb' }), requireAuth, assistantRouter);
-  app.use('/api/assistants', express.json({ limit: '10mb' }), requireAuth, assistantsRouter);
+  // requireAuth runs BEFORE the body parser so an unauthenticated request is
+  // rejected before the server buffers a 10 MB body. Mounted ahead of the
+  // global express.json() so the 2 MB global parser doesn't reject these
+  // large (but legitimate, authenticated) bodies first.
+  app.use('/api/assistant', requireAuth, express.json({ limit: '10mb' }), assistantRouter);
 
   app.use(express.json({ limit: '2mb' }));
 
@@ -165,6 +166,7 @@ export function createApp(): express.Express {
   app.use('/api/host-builds', requireAuth, hostBuildsRouter);
   app.use('/api/databases', requireAuth, databasesRouter);
   app.use('/api/projects', requireAuth, projectsRouter);
+  app.use('/api/assistants', requireAuth, assistantsRouter);
   app.use('/api/github', webhookAuth, githubRouter);
   app.use('/api/notifications', optionalAuth, notificationsRouter);
   app.use('/api/auth', authRouter);

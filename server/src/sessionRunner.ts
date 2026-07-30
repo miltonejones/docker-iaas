@@ -55,7 +55,7 @@ export class SessionRunner extends EventEmitter {
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly IDLE_MS = 5 * 60_000; // 5 min
   private readonly client: Anthropic;
-  private readonly opts?: StreamOpts;
+  private opts?: StreamOpts;
 
   constructor(
     id: string,
@@ -71,6 +71,15 @@ export class SessionRunner extends EventEmitter {
     this.client = client;
     this.opts = opts;
     this.setMaxListeners(50); // support many subscribers
+  }
+
+  /** Update the custom-assistant options used for subsequent turns. Called on
+   *  cache hits in getOrCreateSession so a session whose assistant_id changed
+   *  (or whose assistant config was edited) picks up the new prompt/tools
+   *  without waiting for the idle eviction to rebuild the runner. An in-flight
+   *  turn keeps the opts it was started with; this only affects later turns. */
+  setOpts(opts: StreamOpts | undefined): void {
+    this.opts = opts;
   }
 
   /** Load persisted state from DB, or create an empty session. */
@@ -211,6 +220,11 @@ export function getOrCreateSession(
     sessionRegistry.set(id, runner);
     // Load persisted state from DB — fire and forget
     getAssistantSession(id, userId);
+  } else {
+    // Refresh opts on every cache hit so a changed assistant_id (or an edit
+    // to the assistant's prompt/toolList) takes effect on the next turn
+    // instead of being silently ignored until the 5-min idle eviction.
+    runner.setOpts(opts);
   }
   return runner;
 }
