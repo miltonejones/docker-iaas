@@ -1164,6 +1164,84 @@ assistantRouter.post("/sessions/:id/abort", (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// ── Sync session knowledge to dockyard-knowledge bucket ─────────────────
+assistantRouter.post("/sync-knowledge", async (req: Request, res: Response) => {
+  try {
+    const {
+      log,
+      resourceType,
+      resourceId,
+    } = req.body as {
+      log?: { kind: string; text: string }[];
+      resourceType?: string;
+      resourceId?: string;
+    };
+
+    if (!log || !Array.isArray(log) || log.length === 0) {
+      res.status(400).json({ error: "Session log is required." });
+      return;
+    }
+
+    // Determine the object key.  Resource context wins; fall back to a
+    // timestamped session entry so unsaved knowledge still has a home.
+    const key = resourceType && resourceId
+      ? `${resourceType}/${resourceId}.md`
+      : `session/${new Date().toISOString().replace(/[:.]/g, '-')}.md`;
+
+    // Build a markdown note from the session log entries.
+    const lines: string[] = [];
+    lines.push(`# Knowledge Base Entry`);
+    if (resourceType && resourceId) {
+      lines.push(`**Resource:** ${resourceType}/${resourceId}`);
+    }
+    lines.push(`**Synced:** ${new Date().toISOString()}`);
+    lines.push(``);
+    for (const entry of log) {
+      switch (entry.kind) {
+        case 'user':
+          lines.push(`### User`);
+          lines.push(``);
+          lines.push(entry.text);
+          break;
+        case 'assistant':
+          lines.push(`### Assistant`);
+          lines.push(``);
+          lines.push(entry.text);
+          break;
+        case 'action':
+          lines.push(`- ${entry.text.replace(/\n/g, '\n  ')}`);
+          break;
+        case 'error':
+          lines.push(`> ⚠ ${entry.text}`);
+          break;
+        default:
+          lines.push(entry.text);
+          break;
+      }
+      lines.push(``);
+    }
+
+    const markdown = lines.join('\n');
+
+    // Ensure the dockyard-knowledge bucket exists.
+    const BUCKET = 'dockyard-knowledge';
+    try {
+      await bucketService.putObject(BUCKET, key, Buffer.from(markdown, 'utf8'), 'text/markdown');
+    } catch (err) {
+      const code = (err as { Code?: string; name?: string }).Code ?? (err as { name?: string }).name;
+      if (code === 'NoSuchBucket') {
+        await bucketService.create(undefined, BUCKET, true);
+        await bucketService.putObject(BUCKET, key, Buffer.from(markdown, 'utf8'), 'text/markdown');
+      } else {
+        throw err;
+      }
+    }
+    res.json({ ok: true, key, bucket: BUCKET });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 // Consumer status — reads the JSON file the consumer writes on every poll cycle.
 assistantRouter.get("/consumer/status", (_req: Request, res: Response) => {
   try {

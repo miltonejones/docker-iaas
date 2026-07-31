@@ -788,6 +788,16 @@ export const api = {
   assistantGetIssue: (id: string) =>
     fetch(`/api/assistant/issues/${encodeURIComponent(id)}`).then((r) => json<AssistantIssue>(r)),
 
+  /** Persist the current session's conversation log to the dockyard-knowledge
+   *  bucket as a markdown note.  Resource context (type + id) determines the
+   *  key, e.g. "container/ct-abc123.md". */
+  assistantSyncKnowledge: (log: { kind: string; text: string }[], resourceType?: string, resourceId?: string) =>
+    fetch('/api/assistant/sync-knowledge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ log, resourceType, resourceId }),
+    }).then((r) => json<{ ok: true; key: string; bucket: string }>(r)),
+
   consumerStatus: () =>
     fetch('/api/assistant/consumer/status').then((r) => json<{
       state: string;
