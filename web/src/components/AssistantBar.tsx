@@ -225,6 +225,10 @@ interface Props {
   /** Called when the active session id changes so the parent can track it.
    *  Passed `null` when the session is reset to a fresh (unsaved) state. */
   onSessionId?: (id: string | null) => void;
+  /** Resource type for the knowledge-base key, e.g. "container" or "fn". */
+  resourceType?: string;
+  /** Resource id for the knowledge-base key. */
+  resourceId?: string;
 }
 
 export function AssistantBar({
@@ -237,6 +241,8 @@ export function AssistantBar({
   contextPrompt,
   sessionStorageKey,
   onSessionId,
+  resourceType,
+  resourceId,
 }: Props) {
   const { askConfirm } = useConfirm();
   const [prompt, setPrompt] = useState('');
@@ -301,6 +307,7 @@ export function AssistantBar({
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionName, setSessionName] = useState('');
   const [sessionSaving, setSessionSaving] = useState(false);
+  const [syncingKB, setSyncingKB] = useState(false);
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const [sessionsList, setSessionsList] = useState<AssistantSessionSummary[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
@@ -694,6 +701,25 @@ export function AssistantBar({
       if (id === sessionId) resetToNewSession();
     } catch (err) {
       setError((err as Error).message);
+    }
+  }
+
+  /** Persist the current conversation log to the dockyard-knowledge bucket
+   *  as a markdown note keyed by resource type + id. */
+  async function syncToKnowledgeBase() {
+    setSyncingKB(true);
+    setError(null);
+    try {
+      const result = await api.assistantSyncKnowledge(
+        log.filter((e) => e.text?.trim()),
+        resourceType,
+        resourceId,
+      );
+      setLog((l) => [...l, { kind: 'action', text: `Synced to knowledge base: ${result.key}` }]);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSyncingKB(false);
     }
   }
 
@@ -1514,6 +1540,17 @@ export function AssistantBar({
           )}
           {!embedded && (
             <span style={{ display: 'flex', gap: 4 }}>
+              {log.length > 0 && (
+                <button
+                  className="btn btn--ghost"
+                  onClick={syncToKnowledgeBase}
+                  title="Save session knowledge to dockyard-knowledge bucket"
+                  disabled={busy || syncingKB}
+                >
+                  <AppIcon name="database" />{' '}
+                  <span className="btn-label">{syncingKB ? 'Saving…' : 'Sync KB'}</span>
+                </button>
+              )}
               {onPin && (
                 <button className="btn btn--ghost" onClick={onPin} title="Pin to workspace" disabled={busy}>
                   <AppIcon name="external" /> <span className="btn-label">Pin</span>
