@@ -67,6 +67,13 @@ export function initDb(dbPath?: string): void {
     )
   `);
 
+  // Migration: add role column so every user has one of 'admin' | 'operator' | 'viewer'.
+  try {
+    db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'");
+  } catch {
+    // Column already exists — fine.
+  }
+
   // Per-user encrypted credentials and preferences.
   db.exec(`
     CREATE TABLE IF NOT EXISTS user_settings (
@@ -380,6 +387,7 @@ export interface UserRow {
   id: string;
   email: string;
   password_hash: string;
+  role: string;
   network_name: string;
   port_range_start: number;
   port_range_end: number;
@@ -467,8 +475,8 @@ export function createUser(email: string, passwordHash: string): UserRow {
   const isFirst = !hasUsers();
 
   db.prepare(
-    'INSERT INTO users (id, email, password_hash, network_name, port_range_start, port_range_end, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-  ).run(id, email.toLowerCase(), passwordHash, networkName, start, end, now);
+    'INSERT INTO users (id, email, password_hash, role, network_name, port_range_start, port_range_end, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+  ).run(id, email.toLowerCase(), passwordHash, isFirst ? 'admin' : 'viewer', networkName, start, end, now);
 
   // First user claims all existing resources (legacy data with null user_id).
   if (isFirst) {
@@ -479,6 +487,31 @@ export function createUser(email: string, passwordHash: string): UserRow {
   }
 
   return getUserById(id)!;
+}
+
+/** List all users (without password hashes).  Admin only. */
+export function listUsers(): Array<{ id: string; email: string; role: string; created_at: string }> {
+  return db
+    .prepare('SELECT id, email, role, created_at FROM users ORDER BY created_at ASC')
+    .all() as Array<{ id: string; email: string; role: string; created_at: string }>;
+}
+
+/** Update a user's role.  Returns true if the user existed. */
+export function setUserRole(userId: string, role: 'admin' | 'operator' | 'viewer'): boolean {
+  const result = db.prepare('UPDATE users SET role = ? WHERE id = ?').run(role, userId);
+  return result.changes > 0;
+}
+
+/** Count users with a given role. */
+export function countUsersByRole(role: string): number {
+  const row = db.prepare('SELECT COUNT(*) AS c FROM users WHERE role = ?').get(role) as { c: number };
+  return row.c;
+}
+
+/** Delete a user by id.  Returns true if the user existed and was deleted. */
+export function deleteUser(userId: string): boolean {
+  const result = db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+  return result.changes > 0;
 }
 
 // ---------------------------------------------------------------------------

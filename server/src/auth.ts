@@ -86,11 +86,16 @@ try { loadWebhookSecret(); } catch { /* DB not ready yet — will run on first r
 export interface AuthUser {
   userId: string;
   email: string;
+  role: 'admin' | 'operator' | 'viewer';
 }
 
 /** Sign a JWT for the given user. */
-export function signToken(user: { id: string; email: string }): string {
-  return jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET!, { expiresIn: JWT_EXPIRES_IN });
+export function signToken(user: { id: string; email: string; role: string }): string {
+  return jwt.sign(
+    { userId: user.id, email: user.email, role: user.role },
+    JWT_SECRET!,
+    { expiresIn: JWT_EXPIRES_IN },
+  );
 }
 
 /** Express middleware: extracts and verifies the Authorization Bearer token,
@@ -114,7 +119,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
       res.status(401).json({ error: 'User not found.' });
       return;
     }
-    req.authUser = { userId: user.id, email: user.email };
+    req.authUser = { userId: user.id, email: user.email, role: user.role as AuthUser['role'] };
     next();
   } catch {
     res.status(401).json({ error: 'Invalid or expired token.' });
@@ -131,7 +136,7 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
       const payload = jwt.verify(header.slice(7), JWT_SECRET!) as unknown as AuthUser;
       const user = getUserById(payload.userId);
       if (user) {
-        req.authUser = { userId: user.id, email: user.email };
+        req.authUser = { userId: user.id, email: user.email, role: user.role as AuthUser['role'] };
       }
     } catch {
       /* token invalid — fall through as anonymous */
@@ -151,7 +156,7 @@ export function webhookAuth(req: Request, res: Response, next: NextFunction): vo
       const payload = jwt.verify(header.slice(7), JWT_SECRET!) as unknown as AuthUser;
       const user = getUserById(payload.userId);
       if (user) {
-        req.authUser = { userId: user.id, email: user.email };
+        req.authUser = { userId: user.id, email: user.email, role: user.role as AuthUser['role'] };
         next();
         return;
       }
@@ -187,3 +192,31 @@ export function getAuthUser(req: Request): AuthUser | undefined {
 export function isWebhookAuthenticated(req: Request): boolean {
   return req.webhookAuthenticated === true;
 }
+
+/** Express middleware: ensures the authenticated user has one of the allowed roles.
+ *  Assumes `requireAuth` already ran (req.authUser is populated).
+ *  `admin` users are always allowed regardless of the `allowed` list.
+ *
+ *  Usage:
+ *    router.post('/something', requireAuth, requireRole('operator'), handler); */
+export function requireRole(...allowed: Array<'admin' | 'operator' | 'viewer'>) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!req.authUser) {
+      res.status(500).json({ error: 'requireRole mounted without requireAuth.' });
+      return;
+    }
+    // admin is implicitly allowed everywhere.
+    if (req.authUser.role === 'admin') {
+      next();
+      return;
+    }
+    if (!allowed.includes(req.authUser.role)) {
+      res.status(403).json({ error: `Requires role: ${allowed.join(' or ')}.` });
+      return;
+    }
+    next();
+  };
+}
+
+/** Convenience: requires operator or admin (i.e. any write-capable role). */
+export const requireWrite = requireRole('operator');

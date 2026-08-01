@@ -44,6 +44,7 @@ export async function register(email: string, password: string) {
     user: {
       id: user.id,
       email: user.email,
+      role: user.role,
       portRangeStart: user.port_range_start,
       portRangeEnd: user.port_range_end,
     },
@@ -70,6 +71,7 @@ export async function login(email: string, password: string) {
     user: {
       id: user.id,
       email: user.email,
+      role: user.role,
       portRangeStart: user.port_range_start,
       portRangeEnd: user.port_range_end,
     },
