@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { getAuthUser } from '../auth.js';
+import { getAuthUser, requireRole } from '../auth.js';
 import { HttpError } from '../services/HttpError.js';
 import * as lambdaService from '../services/lambda.js';
 
@@ -20,7 +20,7 @@ lambdaRouter.get('/runtimes', (_req: Request, res: Response) => {
 });
 
 // Execute code in a temporary container.
-lambdaRouter.post('/run', async (req: Request, res: Response) => {
+lambdaRouter.post('/run', requireRole('operator'), async (req: Request, res: Response) => {
   try {
     const result = await lambdaService.runCode(req.body);
     res.json(result);
@@ -58,7 +58,7 @@ lambdaRouter.get('/functions/:id', (req: Request, res: Response) => {
 });
 
 // Create a new function.
-lambdaRouter.post('/functions', (req: Request, res: Response) => {
+lambdaRouter.post('/functions', requireRole('operator'), (req: Request, res: Response) => {
   try {
     const result = lambdaService.createFunc(getAuthUser(req)?.userId, req.body);
     res.status(201).json(result);
@@ -68,7 +68,7 @@ lambdaRouter.post('/functions', (req: Request, res: Response) => {
 });
 
 // Update an existing function.
-lambdaRouter.put('/functions/:id', (req: Request, res: Response) => {
+lambdaRouter.put('/functions/:id', requireRole('operator'), (req: Request, res: Response) => {
   try {
     res.json(lambdaService.updateFunc(req.params.id, req.body));
   } catch (err) {
@@ -77,7 +77,7 @@ lambdaRouter.put('/functions/:id', (req: Request, res: Response) => {
 });
 
 // Delete a function.
-lambdaRouter.delete('/functions/:id', (req: Request, res: Response) => {
+lambdaRouter.delete('/functions/:id', requireRole('operator'), (req: Request, res: Response) => {
   try {
     lambdaService.removeFunc(req.params.id);
     res.json({ ok: true });

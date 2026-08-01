@@ -5,6 +5,7 @@ interface AuthState {
   token: string | null;
   userId: string | null;
   email: string | null;
+  role: string | null;
 }
 
 interface AuthContextValue extends AuthState {
@@ -23,7 +24,7 @@ function loadStoredAuth(): AuthState {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) return JSON.parse(raw) as AuthState;
   } catch { /* corrupt */ }
-  return { token: null, userId: null, email: null };
+  return { token: null, userId: null, email: null, role: null };
 }
 
 function saveAuth(state: AuthState) {
@@ -45,7 +46,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Authentication failed');
-    const state: AuthState = { token: data.token, userId: data.user?.id ?? null, email: data.user?.email ?? email };
+    const state: AuthState = {
+      token: data.token,
+      userId: data.user?.id ?? null,
+      email: data.user?.email ?? email,
+      role: data.user?.role ?? null,
+    };
     setAuth(state);
     saveAuth(state);
   }, []);
@@ -54,7 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = useCallback((email: string, password: string) => callAuth('register', email, password), [callAuth]);
 
   const logout = useCallback(() => {
-    setAuth({ token: null, userId: null, email: null });
+    setAuth({ token: null, userId: null, email: null, role: null });
     clearAuth();
   }, []);
 
@@ -65,11 +71,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Register synchronously so pages making API calls on first render get auth headers.
   setAuthHeadersProvider(getAuthHeaders);
 
-  // Verify token is still valid on mount
+  // Verify token is still valid on mount, and sync role from server.
   useEffect(() => {
     if (!auth.token) return;
     fetch('/api/auth/me', { headers: { Authorization: `Bearer ${auth.token}` } })
-      .then((res) => { if (!res.ok) logout(); })
+      .then(async (res) => {
+        if (!res.ok) { logout(); return; }
+        const user = await res.json();
+        setAuth((prev) => ({ ...prev, role: user.role ?? prev.role }));
+      })
       .catch(() => logout());
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 

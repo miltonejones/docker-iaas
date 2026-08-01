@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import express from 'express';
-import { getAuthUser } from '../auth.js';
+import { getAuthUser, requireRole } from '../auth.js';
 import { HttpError } from '../services/HttpError.js';
 import * as bucketService from '../services/buckets.js';
 
@@ -24,7 +24,7 @@ bucketsRouter.get('/:name', (req: Request, res: Response) => {
   res.json(bucketService.get(req.params.name));
 });
 
-bucketsRouter.post('/:name/protected', express.json(), (req: Request, res: Response) => {
+bucketsRouter.post('/:name/protected', requireRole('operator'), express.json(), (req: Request, res: Response) => {
   const protect = !!req.body?.protected;
   const projectId = typeof req.body?.projectId === 'string' ? req.body.projectId.trim() : undefined;
   const userId = getAuthUser(req)?.userId;
@@ -32,7 +32,7 @@ bucketsRouter.post('/:name/protected', express.json(), (req: Request, res: Respo
   res.json({ name: req.params.name, protected: protect });
 });
 
-bucketsRouter.post('/', express.json(), async (req: Request, res: Response) => {
+bucketsRouter.post('/', requireRole('operator'), express.json(), async (req: Request, res: Response) => {
   const name = (req.body?.name || '').trim();
   const userId = getAuthUser(req)?.userId;
   const protect = !!req.body?.protected;
@@ -45,7 +45,7 @@ bucketsRouter.post('/', express.json(), async (req: Request, res: Response) => {
   }
 });
 
-bucketsRouter.delete('/:name', async (req: Request, res: Response) => {
+bucketsRouter.delete('/:name', requireRole('operator'), async (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
     await bucketService.remove(req.params.name, userId);
@@ -67,6 +67,7 @@ bucketsRouter.get('/:name/objects', async (req: Request, res: Response) => {
 // Raw-body upload — Express middleware handles body parsing.
 bucketsRouter.put(
   '/:name/objects/:key(.*)',
+  requireRole('operator'),
   express.raw({ type: '*/*', limit: '200mb' }),
   async (req: Request, res: Response) => {
     const key = req.params.key;
@@ -98,7 +99,7 @@ bucketsRouter.get('/:name/objects/:key(.*)', async (req: Request, res: Response)
   }
 });
 
-bucketsRouter.delete('/:name/objects/:key(.*)', async (req: Request, res: Response) => {
+bucketsRouter.delete('/:name/objects/:key(.*)', requireRole('operator'), async (req: Request, res: Response) => {
   const key = req.params.key;
   try {
     await bucketService.deleteObject(req.params.name, key);
@@ -108,7 +109,7 @@ bucketsRouter.delete('/:name/objects/:key(.*)', async (req: Request, res: Respon
   }
 });
 
-bucketsRouter.post('/:name/objects/replace', express.json(), async (req: Request, res: Response) => {
+bucketsRouter.post('/:name/objects/replace', requireRole('operator'), express.json(), async (req: Request, res: Response) => {
   const key = String(req.body?.key ?? '').trim();
   const search = String(req.body?.search ?? '');
   const replace = String(req.body?.replace ?? '');
@@ -120,7 +121,7 @@ bucketsRouter.post('/:name/objects/replace', express.json(), async (req: Request
   }
 });
 
-bucketsRouter.post('/:name/objects/bulk', express.json(), async (req: Request, res: Response) => {
+bucketsRouter.post('/:name/objects/bulk', requireRole('operator'), express.json(), async (req: Request, res: Response) => {
   const objects = req.body?.objects;
   try {
     res.json(await bucketService.writeObjects(req.params.name, objects));

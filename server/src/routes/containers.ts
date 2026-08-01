@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { getAuthUser } from '../auth.js';
+import { getAuthUser, requireRole } from '../auth.js';
 import { HttpError } from '../services/HttpError.js';
 import * as containerService from '../services/containers.js';
 
@@ -29,7 +29,7 @@ containersRouter.get('/', async (req: Request, res: Response) => {
 
 // ── Launch ────────────────────────────────────────────────────
 
-containersRouter.post('/', async (req: Request, res: Response) => {
+containersRouter.post('/', requireRole('operator'), async (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
     const result = await containerService.launch(userId, req.body);
@@ -41,7 +41,7 @@ containersRouter.post('/', async (req: Request, res: Response) => {
 
 // ── Write file ────────────────────────────────────────────────
 
-containersRouter.post('/:id/files', async (req: Request, res: Response) => {
+containersRouter.post('/:id/files', requireRole('operator'), async (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
     res.json(await containerService.writeFile(req.params.id, userId, req.body));
@@ -63,7 +63,7 @@ containersRouter.get('/execs/:execId/output', async (req: Request, res: Response
 
 // ── Exec ──────────────────────────────────────────────────────
 
-containersRouter.post('/:id/exec', async (req: Request, res: Response) => {
+containersRouter.post('/:id/exec', requireRole('operator'), async (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
     res.json(await containerService.execCommand(req.params.id, userId, req.body));
@@ -74,7 +74,7 @@ containersRouter.post('/:id/exec', async (req: Request, res: Response) => {
 
 // ── Exec stream (SSE) — stays in route ────────────────────────
 
-containersRouter.post('/:id/exec/stream', async (req: Request, res: Response) => {
+containersRouter.post('/:id/exec/stream', requireRole('operator'), async (req: Request, res: Response) => {
   const userId = getAuthUser(req)?.userId;
   const { command, workingDir, timeoutSeconds } = req.body as Record<string, unknown>;
   if (
@@ -188,7 +188,7 @@ containersRouter.post('/:id/exec/stream', async (req: Request, res: Response) =>
 
 // ── Update env ────────────────────────────────────────────────
 
-containersRouter.post('/:id/env', async (req: Request, res: Response) => {
+containersRouter.post('/:id/env', requireRole('operator'), async (req: Request, res: Response) => {
   try {
     res.json(await containerService.updateEnv(req.params.id, getAuthUser(req)?.userId, req.body));
   } catch (err) {
@@ -198,7 +198,7 @@ containersRouter.post('/:id/env', async (req: Request, res: Response) => {
 
 // ── Replace in file ───────────────────────────────────────────
 
-containersRouter.post('/:id/files/replace', async (req: Request, res: Response) => {
+containersRouter.post('/:id/files/replace', requireRole('operator'), async (req: Request, res: Response) => {
   try {
     const result = await containerService.replaceInFile(req.params.id, getAuthUser(req)?.userId, req.body);
     res.json({ path: req.body.path, replaced: true, occurrences: result.replacements });
@@ -213,7 +213,7 @@ containersRouter.post('/:id/files/replace', async (req: Request, res: Response) 
 
 // ── Bulk write files ──────────────────────────────────────────
 
-containersRouter.post('/:id/files/bulk', async (req: Request, res: Response) => {
+containersRouter.post('/:id/files/bulk', requireRole('operator'), async (req: Request, res: Response) => {
   try {
     res.json(await containerService.writeFiles(req.params.id, getAuthUser(req)?.userId, req.body?.files));
   } catch (err) {
@@ -224,7 +224,7 @@ containersRouter.post('/:id/files/bulk', async (req: Request, res: Response) => 
 // ── Lifecycle ─────────────────────────────────────────────────
 
 for (const action of ['start', 'stop', 'restart'] as const) {
-  containersRouter.post(`/:id/${action}`, async (req: Request, res: Response) => {
+  containersRouter.post(`/:id/${action}`, requireRole('operator'), async (req: Request, res: Response) => {
     try {
       const userId = getAuthUser(req)?.userId;
       await containerService[action](req.params.id, userId);
@@ -235,7 +235,7 @@ for (const action of ['start', 'stop', 'restart'] as const) {
   });
 }
 
-containersRouter.delete('/:id', async (req: Request, res: Response) => {
+containersRouter.delete('/:id', requireRole('operator'), async (req: Request, res: Response) => {
   const force = req.query.force === 'true';
   try {
     const userId = getAuthUser(req)?.userId;
@@ -310,7 +310,7 @@ containersRouter.post('/:id/files/read', async (req: Request, res: Response) => 
 
 // ── Copy to container ────────────────────────────────────────
 
-containersRouter.post('/:id/files/copy', async (req: Request, res: Response) => {
+containersRouter.post('/:id/files/copy', requireRole('operator'), async (req: Request, res: Response) => {
   try {
     const body = req.body as Record<string, unknown>;
     // Accept both nested { source: {...} } (direct API) and flat params (tool call).
