@@ -172,8 +172,12 @@ function resolveAssistantOpts(
   try {
     const assistant = getAssistant(assistantId, userId);
     const allowedTools = new Set<string>(assistant.toolList);
+    // Always-included tools are never removed from the filter, even when the
+    // assistant restricts its tool list. The service layer guarantees they are
+    // persisted, but we also enforce it at resolve time as a safety net.
+    allowedTools.add('wait');
     return {
-      system: assistant.promptMode === "replace" ? (assistant.systemPrompt || SYSTEM) : SYSTEM_PERSONA + SYSTEM_CORE + (assistant.systemPrompt ? "\n\n## Custom instructions for this assistant\n" + assistant.systemPrompt : ""),
+      system: assistant.promptMode === "replace" ? (assistant.systemPrompt || SYSTEM) : SYSTEM + (assistant.systemPrompt ? "\n\n## Custom instructions for this assistant\n" + assistant.systemPrompt : ""),
       tools: assistant.toolList.length > 0
         ? tools.filter((t) => allowedTools.has(t.name))
         : tools,

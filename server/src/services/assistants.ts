@@ -8,6 +8,13 @@ import {
 } from '../db.js';
 import { HttpError } from './HttpError.js';
 
+const ALWAYS_INCLUDED = ['wait'];
+
+function ensureWait(toolList: string[]): string[] {
+  if (toolList.length === 0) return toolList;
+  return [...new Set([...toolList, ...ALWAYS_INCLUDED])];
+}
+
 function toJson(r: UserAssistantRow) {
   return {
     id: r.id,
@@ -55,7 +62,7 @@ export function create(
     name: input.name,
     description: input.description,
     systemPrompt: input.systemPrompt,
-    toolList: input.toolList ? JSON.stringify(input.toolList) : undefined,
+    toolList: input.toolList ? JSON.stringify(ensureWait(input.toolList)) : undefined,
     voice: input.voice,
     icon: input.icon,
     isDefault: input.isDefault,
@@ -82,7 +89,7 @@ export function update(
     name: fields.name,
     description: fields.description,
     systemPrompt: fields.systemPrompt,
-    toolList: fields.toolList ? JSON.stringify(fields.toolList) : undefined,
+    toolList: fields.toolList ? JSON.stringify(ensureWait(fields.toolList)) : undefined,
     voice: fields.voice,
     icon: fields.icon,
     isDefault: fields.isDefault,
