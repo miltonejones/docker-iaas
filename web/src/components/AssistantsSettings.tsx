@@ -289,7 +289,7 @@ export function AssistantsSettings() {
               )}
             </label>
             <label className="settings-field">
-              <span className="settings-field__label">Description (used for auto-routing)</span>
+              <span className="settings-field__label">Description</span>
               <input className="input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. CI/CD, deployments, GitHub, builds" />
             </label>
             <label className="settings-field">

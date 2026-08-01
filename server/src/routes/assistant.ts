@@ -195,7 +195,7 @@ function resolveAssistantOpts(
 /** These tools have no side effects, so the server executes them itself and
  *  loops back to Claude immediately — the client never sees them and never
  *  has to confirm a plain lookup. */
-const READ_ONLY_TOOLS = new Set([
+export const READ_ONLY_TOOLS = new Set([
   "list_containers",
   "list_functions",
   "list_gateway_routes",
