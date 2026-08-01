@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AssistantsSettings } from '../components/AssistantsSettings';
+import { useAuth } from '../AuthContext';
 
 interface SettingStatus {
   configured: boolean;
@@ -26,12 +27,15 @@ const FIELD_PLACEHOLDERS: Record<string, string> = {
 };
 
 export function SettingsPage() {
+  const { role } = useAuth();
   const [status, setStatus] = useState<UserSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
   const [webhookSecret, setWebhookSecret] = useState<string | null>(null);
   const [webhookCopied, setWebhookCopied] = useState(false);
+  const [users, setUsers] = useState<Array<{ id: string; email: string; role: string; created_at: string }>>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
 
   useEffect(() => {
     fetch('/api/auth/settings')
@@ -39,14 +43,25 @@ export function SettingsPage() {
       .then(setStatus)
       .catch(() => setError('Failed to load settings.'));
 
-    fetch('/api/system/webhook-secret')
-      .then((r) => r.json())
-      .then((d) => setWebhookSecret(d.secret || ''))
-      .catch(() => {
-        setWebhookSecret('');
-        setError('Failed to load webhook secret.');
-      });
-  }, []);
+    // Only admins can access webhook and user management.
+    if (role === 'admin') {
+      fetch('/api/system/webhook-secret')
+        .then((r) => r.json())
+        .then((d) => setWebhookSecret(d.secret || ''))
+        .catch(() => setWebhookSecret(''));
+
+      loadUsers();
+    }
+  }, [role]);
+
+  async function loadUsers() {
+    setUsersLoading(true);
+    try {
+      const res = await fetch('/api/auth/users');
+      if (res.ok) setUsers(await res.json());
+    } catch { /* ignore */ }
+    setUsersLoading(false);
+  }
 
   async function rotateWebhook() {
     if (!confirm('This will invalidate the current webhook secret and break any CI/CD pipeline using it. Continue?')) return;
@@ -100,6 +115,39 @@ export function SettingsPage() {
 
   const fields = Object.keys(FIELD_LABELS);
 
+  async function updateUserRole(userId: string, newRole: string) {
+    try {
+      const res = await fetch(`/api/auth/users/${userId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: newRole }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || 'Failed to update role.');
+        return;
+      }
+      await loadUsers();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function deleteUserAccount(userId: string, email: string) {
+    if (!confirm(`Delete user ${email}? This cannot be undone.`)) return;
+    try {
+      const res = await fetch(`/api/auth/users/${userId}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json();
+        setError(data.error || 'Failed to delete user.');
+        return;
+      }
+      await loadUsers();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
   return (
     <SettingsTabbedView
       error={error}
@@ -109,9 +157,14 @@ export function SettingsPage() {
       saving={saving}
       webhookSecret={webhookSecret}
       webhookCopied={webhookCopied}
+      role={role}
+      users={users}
+      usersLoading={usersLoading}
       onSave={handleSave}
       onCopyWebhook={copyWebhook}
       onRotateWebhook={rotateWebhook}
+      onUpdateUserRole={updateUserRole}
+      onDeleteUser={deleteUserAccount}
     />
   );
 }
@@ -124,20 +177,28 @@ function SettingsTabbedView(props: {
   saving: boolean;
   webhookSecret: string | null;
   webhookCopied: boolean;
+  role: string | null;
+  users: Array<{ id: string; email: string; role: string; created_at: string }>;
+  usersLoading: boolean;
   onSave: (e: React.FormEvent<HTMLFormElement>) => void;
   onCopyWebhook: () => void;
   onRotateWebhook: () => void;
+  onUpdateUserRole: (userId: string, newRole: string) => void;
+  onDeleteUser: (userId: string, email: string) => void;
 }) {
   const {
     error, saved, status, fields, saving,
     webhookSecret, webhookCopied,
+    role, users, usersLoading,
     onSave, onCopyWebhook, onRotateWebhook,
+    onUpdateUserRole, onDeleteUser,
   } = props;
 
   const SETTINGS_TABS = [
     { key: 'credentials' as const, label: 'Credentials' },
     { key: 'webhook' as const, label: 'Webhook' },
     { key: 'assistants' as const, label: 'Assistants' },
+    ...(role === 'admin' ? [{ key: 'users' as const, label: 'Users' }] : []),
   ];
   type SettingsTab = (typeof SETTINGS_TABS)[number]['key'];
 
@@ -227,6 +288,56 @@ function SettingsTabbedView(props: {
             </div>
           ) : (
             <p className="empty-sm">Loading…</p>
+          )}
+        </section>
+      )}
+
+      {activeTab === 'users' && (
+        <section className="settings-section" style={{ marginTop: 16 }}>
+          <h2>Users</h2>
+          {usersLoading ? (
+            <p className="empty-sm">Loading…</p>
+          ) : users.length === 0 ? (
+            <p className="empty-sm">No users found.</p>
+          ) : (
+            <table className="data-table" style={{ width: '100%', marginTop: 8 }}>
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Created</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u.id}>
+                    <td>{u.email}</td>
+                    <td>
+                      <select
+                        value={u.role}
+                        onChange={(e) => onUpdateUserRole(u.id, e.target.value)}
+                        className="input input--sm"
+                      >
+                        <option value="admin">admin</option>
+                        <option value="operator">operator</option>
+                        <option value="viewer">viewer</option>
+                      </select>
+                    </td>
+                    <td className="muted" style={{ fontSize: '13px' }}>{new Date(u.created_at).toLocaleDateString()}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn btn--sm btn--danger"
+                        onClick={() => onDeleteUser(u.id, u.email)}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </section>
       )}
