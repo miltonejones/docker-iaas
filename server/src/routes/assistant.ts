@@ -1,6 +1,7 @@
 import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { Router, type Request, type Response } from "express";
 import { getAuthUser } from "../auth.js";
 import Anthropic from "@anthropic-ai/sdk";
@@ -52,6 +53,7 @@ import * as imageService from "../services/images.js";
 import * as systemService from "../services/system.js";
 import * as projectService from "../services/projects.js";
 import { get as getAssistant } from "../services/assistants.js";
+import { HttpError } from "../services/HttpError.js";
 import * as volumeService from "../services/volumes.js";
 
 export const assistantRouter = Router();
@@ -156,15 +158,15 @@ Rules:
 import { tools } from "../assistant-tools.js";
 
 /** Resolve a custom assistant's system prompt and tool subset into options
- *  for streamTurn. Returns undefined when no assistantId/userId is given or
- *  the assistant doesn't exist (404). Otherwise returns { system, tools },
- *  falling back to the built-in SYSTEM prompt and the full tool set when the
- *  assistant has no customisation (empty systemPrompt and empty toolList). */
+ *  for streamTurn. Returns undefined when no assistantId is given (use defaults).
+ *  Throws HttpError(410) when assistantId is supplied but the assistant no longer
+ *  exists — never silently falls back to the unrestricted default. */
 function resolveAssistantOpts(
   assistantId: string | null | undefined,
   userId: string | undefined,
 ): { system?: string; tools?: Anthropic.Tool[] } | undefined {
-  if (!assistantId || !userId) return undefined;
+  if (!assistantId) return undefined;
+  if (!userId) throw new HttpError(410, "Session assistant requires authentication.");
   try {
     const assistant = getAssistant(assistantId, userId);
     const allowedTools = new Set<string>(assistant.toolList);
@@ -175,10 +177,16 @@ function resolveAssistantOpts(
         : tools,
     };
   } catch (err) {
-    if ((err as { status?: number }).status !== 404) {
-      console.error("resolveAssistantOpts failed:", (err as Error).message);
+    const status = (err as { status?: number }).status;
+    if (status === 404 || status === 410) {
+      throw new HttpError(410,
+        `Assistant "${assistantId}" no longer exists (it may have been deleted). ` +
+        'This session is bound to it — pick another assistant or clear the session\'s assistant.',
+      );
     }
-    return undefined;
+    if (err instanceof HttpError) throw err;
+    console.error("resolveAssistantOpts failed:", (err as Error).message);
+    throw new HttpError(500, "Failed to resolve assistant configuration.");
   }
 }
 
@@ -727,7 +735,7 @@ assistantRouter.post("/sessions", (req: Request, res: Response) => {
       res.status(400).json({ error: "A session name is required." });
       return;
     }
-    const id = `asn-${Math.random().toString(36).slice(2, 8)}`;
+    const id = `asn-${crypto.randomBytes(9).toString('base64url')}`;
     const row = createAssistantSession(
       id,
       name.trim(),
@@ -1033,7 +1041,7 @@ async function streamTurn(
       if (mutatingCalls.length > 0) {
         const autoResolved: ResolvedResult[] = await Promise.all(
           readOnlyCalls.map(async (b) => {
-            const r = await safeExecuteReadOnly(b.name, b.input as Record<string, unknown>);
+            const r = await safeExecuteReadOnly(b.name, b.input as Record<string, unknown>, userId);
             return { toolUseId: b.id, ok: r.ok, content: r.content };
           }),
         );
@@ -1051,7 +1059,7 @@ async function streamTurn(
       // All tools are read-only — execute inline and loop.
       const results = await Promise.all(
         readOnlyCalls.map(async (b) => {
-          const r = await safeExecuteReadOnly(b.name, b.input as Record<string, unknown>);
+          const r = await safeExecuteReadOnly(b.name, b.input as Record<string, unknown>, userId);
           return {
             type: "tool_result" as const,
             tool_use_id: b.id,
@@ -1084,7 +1092,14 @@ assistantRouter.get("/sessions/:id/stream", (req: Request, res: Response) => {
     res.status(400).json({ error: 'No API key configured. Set your Anthropic or DeepSeek key in Settings.' });
     return;
   }
-  const streamOpts = resolveAssistantOpts(row.assistant_id, userId);
+  let streamOpts: ReturnType<typeof resolveAssistantOpts>;
+  try {
+    streamOpts = resolveAssistantOpts(row.assistant_id, userId);
+  } catch (err) {
+    const status = (err as HttpError).status || 500;
+    res.status(status).json({ error: (err as Error).message });
+    return;
+  }
   const runner = getOrCreateSession(sessionId, row.name, userId, streamTurn, ac.client, streamOpts);
 
   res.set({
@@ -1143,7 +1158,14 @@ assistantRouter.post("/sessions/:id/send", async (req: Request, res: Response) =
       res.status(400).json({ error: 'No API key configured. Set your Anthropic or DeepSeek key in Settings.' });
       return;
     }
-    const sendOpts = resolveAssistantOpts(row.assistant_id, userId);
+    let sendOpts: ReturnType<typeof resolveAssistantOpts>;
+    try {
+      sendOpts = resolveAssistantOpts(row.assistant_id, userId);
+    } catch (err) {
+      const status = (err as HttpError).status || 500;
+      res.status(status).json({ error: (err as Error).message });
+      return;
+    }
     const runner = getOrCreateSession(sessionId, row.name, userId, streamTurn, ac.client, sendOpts);
 
     // Start processing in the background — client subscribes via /stream.
