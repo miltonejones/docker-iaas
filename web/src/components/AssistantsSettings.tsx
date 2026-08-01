@@ -3,89 +3,12 @@ import type { UserAssistant } from '../types';
 import { api } from '../api';
 import { AppIcon } from '../icons';
 
-const TOOL_CATEGORIES: { label: string; tools: string[] }[] = [
-  {
-    label: 'Containers',
-    tools: [
-      'list_containers', 'launch_container', 'container_action',
-      'inspect_container', 'get_container_logs', 'write_container_file',
-      'write_container_files', 'replace_in_container_file', 'read_container_file',
-      'list_container_files', 'execute_container_command',
-      'get_container_exec_output', 'probe_container_endpoint',
-      'update_container_env', 'delete_container',
-    ],
-  },
-  {
-    label: 'Functions',
-    tools: [
-      'list_functions', 'create_lambda_function', 'read_function',
-      'update_lambda_function', 'delete_lambda_function',
-      'run_function', 'replace_lambda_function_files',
-    ],
-  },
-  {
-    label: 'Gateway & DNS',
-    tools: [
-      'list_gateway_routes', 'create_gateway_route', 'update_gateway_route',
-      'delete_gateway_route', 'check_gateway_domain_status',
-      'set_gateway_domain', 'enable_gateway_domain', 'remove_gateway_domain',
-      'list_dns_zones', 'list_dns_records', 'create_dns_record', 'delete_dns_record',
-    ],
-  },
-  {
-    label: 'Buckets',
-    tools: [
-      'list_buckets', 'create_bucket', 'delete_bucket', 'update_bucket',
-      'list_bucket_objects', 'read_bucket_object', 'write_bucket_object',
-      'write_bucket_objects', 'replace_in_bucket_object', 'delete_bucket_object',
-      'copy_host_file_to_bucket',
-    ],
-  },
-  {
-    label: 'Images',
-    tools: ['list_images', 'delete_image', 'prune_images', 'prune_build_cache'],
-  },
-  {
-    label: 'Database',
-    tools: [
-      'list_database_connections', 'get_database_connection',
-      'get_database_operations_overview', 'inspect_database_schema',
-      'run_database_read_query', 'test_database_connection',
-      'create_database_connection', 'update_database_connection',
-      'delete_database_connection', 'execute_database_mutation',
-      'execute_database_migration', 'execute_database_access_grant',
-      'create_database_backup', 'restore_database_backup',
-      'list_database_jobs', 'get_database_job',
-    ],
-  },
-  {
-    label: 'Projects',
-    tools: ['list_projects', 'create_project', 'update_project', 'delete_project'],
-  },
-  {
-    label: 'GitHub',
-    tools: [
-      'get_github_workflow_status', 'list_github_repo_files',
-      'read_github_file', 'pull_github_repo_to_bucket',
-      'pull_github_repo_to_container', 'commit_and_push_github_files',
-    ],
-  },
-  {
-    label: 'Host & System',
-    tools: [
-      'list_presets', 'list_used_ports', 'list_images', 'system_ping',
-      'list_volumes', 'list_host_directory', 'read_host_file',
-      'list_host_build_presets', 'run_host_build_preset',
-      'copy_host_file_to_container',
-    ],
-  },
-  {
-    label: 'Issues',
-    tools: ['list_issues', 'get_issue', 'report_issue', 'update_issue', 'delete_issue', 'clear_issues'],
-  },
-];
-
-const VOICES = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'onyx', 'nova', 'sage', 'shimmer', 'verse'];
+interface ToolMeta {
+  name: string;
+  description: string;
+  category: string;
+  readOnly: boolean;
+}
 
 const ASSISTANT_ICONS = [
   '🛠️', '🔧', '⚙️', '🚀', '🐳', '☁️', '🌐', '💻', '🖥️', '📱',
@@ -95,9 +18,6 @@ const ASSISTANT_ICONS = [
   '🧹', '🗂️', '📁', '🧰', '🏭', '🛳️', '🪝', '🔗', '🎨', '💡',
 ];
 
-/** The avatar slot renders a single grapheme, so clamp free-text input to the
- *  first grapheme a user types or pastes (handles multi-char emoji sequences and
- *  accidental multi-character pastes). The picker already selects one emoji. */
 function firstGrapheme(s: string): string {
   if (!s) return '';
   try {
@@ -113,8 +33,9 @@ export function AssistantsSettings() {
   const [assistants, setAssistants] = useState<UserAssistant[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [toolMeta, setToolMeta] = useState<ToolMeta[]>([]);
+  const [alwaysIncluded, setAlwaysIncluded] = useState<string[]>([]);
 
-  // New/edit form state
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
@@ -122,12 +43,20 @@ export function AssistantsSettings() {
   const [voice, setVoice] = useState('alloy');
   const [icon, setIcon] = useState<string | null>(null);
   const [isDefault, setIsDefault] = useState(false);
+  const [promptMode, setPromptMode] = useState<'append' | 'replace'>('append');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [iconPickerOpen, setIconPickerOpen] = useState(false);
 
   function load() {
-    api.assistantList().then(setAssistants).catch(() => {}).finally(() => setLoading(false));
+    Promise.all([
+      api.assistantList(),
+      api.assistantMeta().catch(() => ({ tools: [] as ToolMeta[], alwaysIncluded: [] as string[] })),
+    ]).then(([list, meta]) => {
+      setAssistants(list);
+      setToolMeta(meta.tools);
+      setAlwaysIncluded(meta.alwaysIncluded);
+    }).catch(() => {}).finally(() => setLoading(false));
   }
 
   useEffect(() => { load(); }, []);
@@ -140,6 +69,7 @@ export function AssistantsSettings() {
     setVoice('alloy');
     setIcon(null);
     setIsDefault(false);
+    setPromptMode('append');
     setEditingId(null);
     setIconPickerOpen(false);
     setError('');
@@ -153,22 +83,25 @@ export function AssistantsSettings() {
     setVoice(a.voice);
     setIcon(a.icon);
     setIsDefault(a.isDefault);
+    setPromptMode((a as any).promptMode || 'append');
     setEditingId(a.id);
     setIconPickerOpen(false);
     setError('');
   }
 
-  function toggleTool(name: string) {
+  function toggleTool(tname: string) {
+    if (alwaysIncluded.includes(tname)) return;
     setToolList((prev) =>
-      prev.includes(name) ? prev.filter((t) => t !== name) : [...prev, name],
+      prev.includes(tname) ? prev.filter((t) => t !== tname) : [...prev, tname],
     );
   }
 
   function toggleCategory(tools: string[]) {
+    const togglable = tools.filter((t) => !alwaysIncluded.includes(t));
     setToolList((prev) => {
-      const allSelected = tools.every((t) => prev.includes(t));
-      if (allSelected) return prev.filter((t) => !tools.includes(t));
-      return [...new Set([...prev, ...tools])];
+      const allSelected = togglable.every((t) => prev.includes(t));
+      if (allSelected) return prev.filter((t) => !togglable.includes(t));
+      return [...new Set([...prev, ...togglable])];
     });
   }
 
@@ -178,11 +111,11 @@ export function AssistantsSettings() {
     setSaving(true);
     setError('');
     try {
-      const body = { name: name.trim(), description: description.trim(), systemPrompt: systemPrompt.trim(), toolList, voice, icon: icon || undefined, isDefault };
+      const body = { name: name.trim(), description: description.trim(), systemPrompt: systemPrompt.trim(), toolList, voice, icon: icon || undefined, isDefault, promptMode };
       if (editingId) {
-        await api.assistantUpdate(editingId, body);
+        await api.assistantUpdate(editingId, body as any);
       } else {
-        await api.assistantCreate(body);
+        await api.assistantCreate(body as any);
         resetForm();
       }
       load();
@@ -205,6 +138,8 @@ export function AssistantsSettings() {
     }
   }
 
+  const categories = [...new Set(toolMeta.map((t) => t.category))].sort();
+
   return (
     <section className="settings-section">
       <h2><AppIcon name="assistant" /> Assistants</h2>
@@ -216,7 +151,6 @@ export function AssistantsSettings() {
       {error && <div className="toast toast--error">{error}</div>}
 
       <div className="assistants-layout">
-        {/* Left: assistant list */}
         <div className="assistants-list panel">
           <div className="panel__head">
             <h3>Your assistants</h3>
@@ -254,7 +188,6 @@ export function AssistantsSettings() {
           )}
         </div>
 
-        {/* Right: edit/create form */}
         <div className="assistants-editor panel">
           <div className="panel__head">
             <h3>{editingId ? 'Edit assistant' : 'New assistant'}</h3>
@@ -276,12 +209,8 @@ export function AssistantsSettings() {
               {iconPickerOpen && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6, maxWidth: 320, background: 'var(--bg-alt)', padding: 8, borderRadius: 6 }}>
                   {ASSISTANT_ICONS.map((emoji) => (
-                    <button
-                      key={emoji}
-                      type="button"
-                      onClick={() => { setIcon(emoji); setIconPickerOpen(false); }}
-                      style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', border: icon === emoji ? '2px solid var(--accent)' : '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', cursor: 'pointer', fontSize: 16 }}
-                    >
+                    <button key={emoji} type="button" onClick={() => { setIcon(emoji); setIconPickerOpen(false); }}
+                      style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', border: icon === emoji ? '2px solid var(--accent)' : '1px solid var(--border)', borderRadius: 4, background: 'var(--bg)', cursor: 'pointer', fontSize: 16 }}>
                       {emoji}
                     </button>
                   ))}
@@ -296,10 +225,26 @@ export function AssistantsSettings() {
               <span className="settings-field__label">System prompt</span>
               <textarea className="input" rows={4} value={systemPrompt} onChange={(e) => setSystemPrompt(e.target.value)} placeholder="Override the default system prompt…" />
             </label>
+            <div className="settings-field">
+              <span className="settings-field__label">Prompt mode</span>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginTop: 4 }}>
+                <input type="radio" name="promptMode" value="append" checked={promptMode === 'append'} onChange={() => setPromptMode('append')} />
+                <span>Add to the built-in prompt (recommended)</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', marginTop: 4 }}>
+                <input type="radio" name="promptMode" value="replace" checked={promptMode === 'replace'} onChange={() => setPromptMode('replace')} />
+                <span>Replace the built-in prompt (advanced — the assistant loses Dockyard's built-in tool instructions)</span>
+              </label>
+            </div>
             <label className="settings-field">
               <span className="settings-field__label">Voice</span>
               <select className="input" value={voice} onChange={(e) => setVoice(e.target.value)}>
-                {VOICES.map((v) => <option key={v} value={v}>{v}</option>)}
+                <option value="alloy">alloy</option><option value="ash">ash</option>
+                <option value="ballad">ballad</option><option value="coral">coral</option>
+                <option value="echo">echo</option><option value="fable">fable</option>
+                <option value="onyx">onyx</option><option value="nova">nova</option>
+                <option value="sage">sage</option><option value="shimmer">shimmer</option>
+                <option value="verse">verse</option>
               </select>
             </label>
             <label className="settings-field" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -307,31 +252,33 @@ export function AssistantsSettings() {
               <span>Set as default assistant</span>
             </label>
 
-            {/* Tool picker */}
             <div className="settings-field">
               <span className="settings-field__label">Tools ({toolList.length} selected)</span>
               <div className="tool-picker">
-                {TOOL_CATEGORIES.map((cat) => {
-                  const catSelected = cat.tools.filter((t) => toolList.includes(t)).length;
+                {categories.map((cat) => {
+                  const catTools = toolMeta.filter((t) => t.category === cat);
+                  const catSelected = catTools.filter((t) => toolList.includes(t.name)).length;
                   return (
-                    <details key={cat.label} className="tool-category">
+                    <details key={cat} className="tool-category">
                       <summary>
-                        <input
-                          type="checkbox"
-                          checked={cat.tools.every((t) => toolList.includes(t))}
-                          onChange={(e) => { e.stopPropagation(); toggleCategory(cat.tools); }}
-                          style={{ margin: 0 }}
-                        />
-                        <span>{cat.label}</span>
-                        <span className="muted" style={{ fontSize: 11 }}>({catSelected}/{cat.tools.length})</span>
+                        <input type="checkbox" checked={catTools.every((t) => toolList.includes(t.name) || alwaysIncluded.includes(t.name))}
+                          onChange={(e) => { e.stopPropagation(); toggleCategory(catTools.map((t) => t.name)); }}
+                          style={{ margin: 0 }} />
+                        <span>{cat}</span>
+                        <span className="muted" style={{ fontSize: 11 }}>({catSelected}/{catTools.length})</span>
                       </summary>
                       <div className="tool-category__list">
-                        {cat.tools.map((t) => (
-                          <label key={t} className="tool-chip">
-                            <input type="checkbox" checked={toolList.includes(t)} onChange={() => toggleTool(t)} />
-                            <span>{t}</span>
-                          </label>
-                        ))}
+                        {catTools.map((t) => {
+                          const isAlways = alwaysIncluded.includes(t.name);
+                          return (
+                            <label key={t.name} className="tool-chip" style={{ opacity: isAlways ? 0.6 : 1 }}>
+                              <input type="checkbox" checked={toolList.includes(t.name) || isAlways} onChange={() => toggleTool(t.name)} disabled={isAlways} />
+                              <span>{t.name}</span>
+                              {t.readOnly && <span className="badge" style={{ marginLeft: 4, fontSize: 10, background: 'var(--bg-alt)' }}>read</span>}
+                              {isAlways && <span className="badge" style={{ marginLeft: 4, fontSize: 10 }}>auto</span>}
+                            </label>
+                          );
+                        })}
                       </div>
                     </details>
                   );
