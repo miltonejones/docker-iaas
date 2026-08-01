@@ -8,6 +8,7 @@ import { HomePage } from './pages/Home';
 import { InstancesPage } from './pages/Instances';
 import { FunctionsPage } from './pages/Functions';
 import { BucketsPage } from './pages/Buckets';
+import { VolumesPage } from './pages/Volumes';
 import { GatewayPage } from './pages/Gateway';
 import { DatabasesPage } from './pages/Databases';
 import { IssuesPage } from './pages/IssuesList';
@@ -34,6 +35,7 @@ const SERVICES = [
   { path: '/containers', label: 'Instances', icon: 'container' },
   { path: '/functions', label: 'Functions', icon: 'function' },
   { path: '/buckets', label: 'Buckets', icon: 'bucket' },
+  { path: '/volumes', label: 'Volumes', icon: 'harddrive' },
   { path: '/databases', label: 'Databases', icon: 'database' },
   { path: '/gateway', label: 'Gateway', icon: 'gateway' },
   { path: '/projects', label: 'Projects', icon: 'project' },
@@ -717,6 +719,7 @@ export function App() {
               <Route path="/functions" element={<FunctionsPage />} />
               <Route path="/buckets/:name" element={<BucketsPage />} />
               <Route path="/buckets" element={<BucketsPage />} />
+              <Route path="/volumes" element={<VolumesPage />} />
               <Route path="/databases/:id" element={<DatabasesPage />} />
               <Route path="/databases" element={<DatabasesPage />} />
               <Route path="/issues" element={<IssuesPage onCreateIssue={() => setCreateIssueOpen(true)} />} />

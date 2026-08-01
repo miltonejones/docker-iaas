@@ -245,13 +245,23 @@ export interface DockerImage {
   created: number;
 }
 
+export interface VolumeUsedBy {
+  containerId: string;
+  containerName: string;
+  destination: string;
+  rw: boolean;
+}
+
 export interface DockerVolume {
   name: string;
   driver: string;
   mountpoint: string;
   createdAt: string;
-  size: number;
+  labels: Record<string, string>;
+  size: number | null;
   refCount: number;
+  system: boolean;
+  usedBy: VolumeUsedBy[];
 }
 
 export type DatabaseEngine = 'mysql' | 'mongodb';

@@ -385,6 +385,26 @@ export const api = {
 
   volumes: () => fetch('/api/volumes').then((r) => json<DockerVolume[]>(r)),
 
+  volumeInspect: (name: string) =>
+    fetch(`/api/volumes/${encodeURIComponent(name)}`).then((r) => json<DockerVolume>(r)),
+
+  volumeCreate: (name: string, driver?: string, labels?: Record<string, string>) =>
+    fetch('/api/volumes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, driver, labels }),
+    }).then((r) => json<DockerVolume>(r)),
+
+  volumeRemove: (name: string, force = false) =>
+    fetch(`/api/volumes/${encodeURIComponent(name)}?force=${force}`, { method: 'DELETE' }).then((r) =>
+      json<{ ok: true }>(r),
+    ),
+
+  volumePrune: () =>
+    fetch('/api/volumes/prune', { method: 'POST' }).then((r) =>
+      json<{ volumesDeleted: string[]; spaceReclaimed: number }>(r),
+    ),
+
   buildCache: () => fetch('/api/system/build-cache').then((r) => json<BuildCacheEntry[]>(r)),
 
   pruneBuildCache: () =>
