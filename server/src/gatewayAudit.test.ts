@@ -72,6 +72,11 @@ describe('gateway audit logging', () => {
   it('route create emits audit event', async () => {
     const app = expressModule();
     app.use(expressModule.json());
+    // Mock authUser so requireRole('operator') in the gateway router passes.
+    app.use((req: any, _res: any, next: any) => {
+      (req as any).authUser = { userId: 'test-user', email: 'test@test.com', role: 'admin' };
+      next();
+    });
     app.use('/api/gateway', gatewayRouter);
 
     const res = await jsonRequest(app, 'POST', '/api/gateway', {
@@ -105,6 +110,11 @@ describe('gateway audit logging', () => {
 
     const app = expressModule();
     app.use(expressModule.json());
+    // Mock authUser so requireRole('operator') in the gateway router passes.
+    app.use((req: any, _res: any, next: any) => {
+      (req as any).authUser = { userId: 'test-user', email: 'test@test.com', role: 'admin' };
+      next();
+    });
     app.use('/api/gateway', gatewayRouter);
 
     const res = await jsonRequest(app, 'DELETE', `/api/gateway/${route.id}`);
