@@ -59,6 +59,7 @@ export function create(
     voice: input.voice,
     icon: input.icon,
     isDefault: input.isDefault,
+    promptMode: input.promptMode,
   });
   return toJson(row);
 }
@@ -85,6 +86,7 @@ export function update(
     voice: fields.voice,
     icon: fields.icon,
     isDefault: fields.isDefault,
+    promptMode: fields.promptMode,
   });
   if (!row) throw new HttpError(404, 'Assistant not found.');
   return toJson(row);

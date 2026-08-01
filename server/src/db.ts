@@ -665,11 +665,12 @@ export function createUserAssistant(input: {
   voice?: string;
   icon?: string;
   isDefault?: boolean;
+  promptMode?: string;
 }): UserAssistantRow {
   const now = new Date().toISOString();
   db.prepare(`
-    INSERT INTO user_assistants (id, user_id, name, description, system_prompt, tool_list, voice, icon, is_default, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO user_assistants (id, user_id, name, description, system_prompt, tool_list, voice, icon, is_default, prompt_mode, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     `ast-${crypto.randomBytes(8).toString('hex')}`,
     input.userId,
@@ -680,6 +681,7 @@ export function createUserAssistant(input: {
     input.voice || 'alloy',
     input.icon || null,
     input.isDefault ? 1 : 0,
+    input.promptMode || 'append',
     now,
     now,
   );
@@ -699,6 +701,7 @@ export function updateUserAssistant(
     voice?: string;
     icon?: string | null;
     isDefault?: boolean;
+    promptMode?: string;
   },
 ): UserAssistantRow | undefined {
   const existing = getUserAssistant(id, userId);
@@ -711,13 +714,14 @@ export function updateUserAssistant(
   const voice = fields.voice ?? existing.voice;
   const icon = fields.icon !== undefined ? fields.icon : existing.icon;
   const isDefault = fields.isDefault !== undefined ? (fields.isDefault ? 1 : 0) : existing.is_default;
+  const promptMode = fields.promptMode ?? existing.prompt_mode;
   const now = new Date().toISOString();
 
   db.prepare(`
     UPDATE user_assistants
-    SET name = ?, description = ?, system_prompt = ?, tool_list = ?, voice = ?, icon = ?, is_default = ?, updated_at = ?
+    SET name = ?, description = ?, system_prompt = ?, tool_list = ?, voice = ?, icon = ?, is_default = ?, prompt_mode = ?, updated_at = ?
     WHERE id = ? AND user_id = ?
-  `).run(name, description, systemPrompt, toolList, voice, icon, isDefault, now, id, userId);
+  `).run(name, description, systemPrompt, toolList, voice, icon, isDefault, promptMode, now, id, userId);
 
   return getUserAssistant(id, userId);
 }

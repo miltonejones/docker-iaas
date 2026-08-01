@@ -155,7 +155,7 @@ Rules:
 	- Dockyard runs an issue consumer: an auto-fix bot that continuously polls the issue store for open issues, applies Claude Code to diagnose and fix them against this codebase, and pushes the resulting commits to GitHub. When you log an issue via report_issue, the consumer picks it up automatically (usually within seconds). After reporting an issue, proactively mention the consumer and offer to check its progress: call get_consumer_status to see whether the consumer is currently idle or actively working on a specific issue, and get_consumer_activity to review recent fix attempts and their outcomes (including GitHub commit links for successful fixes). If the consumer failed to process an issue (e.g. a timeout or an API error), use retry_issue to re-open it so the consumer picks it up on the next poll cycle. The feedback loop closes when an issue transitions to "resolved" with a linked commit. The user may not realize this happened unless you surface it.
 \t- When done, give a short (1-2 sentence) confirmation of what was done — no more.`;
 
-const SYSTEM = SYSTEM_PERSONA + SYSTEM_CORE;
+const SYSTEM = SYSTEM_PERSONA + '\n\n' + SYSTEM_CORE;
 
 import { tools } from "../assistant-tools.js";
 
