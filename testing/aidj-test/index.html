@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>gw/aidj — AI DJ Test Console</title>
+<style>
+  :root {
+    --bg: #f8f9fa; --card: #fff; --text: #1a1a2e; --muted: #6b7280;
+    --border: #e5e7eb; --accent: #7c3aed; --green: #059669; --red: #dc2626;
+    --radius: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; padding: 2rem 1rem; }
+  .container { max-width: 780px; margin: 0 auto; }
+  header { text-align: center; margin-bottom: 2rem; }
+  header h1 { font-size: 1.75rem; font-weight: 700; }
+  header p { color: var(--muted); font-size: 0.9rem; margin-top: 0.25rem; }
+  .endpoint-tabs { display: flex; gap: 0; margin-bottom: 1.5rem; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .endpoint-tabs button { flex: 1; font-family: inherit; font-size: 0.9rem; font-weight: 600; padding: 0.75rem 1rem; border: none; background: var(--card); cursor: pointer; transition: all 0.15s; border-right: 1px solid var(--border); }
+  .endpoint-tabs button:last-child { border-right: none; }
+  .endpoint-tabs button.active { background: var(--accent); color: #fff; }
+  .endpoint-tabs button:hover:not(.active) { background: #f3f4f6; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem; }
+  .card h2 { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.75rem; display: flex; align-items: center; gap: 0.4rem; }
+  .field { margin-bottom: 0.75rem; }
+  .field label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--muted); margin-bottom: 0.25rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .field input, .field select { width: 100%; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85rem; padding: 0.5rem 0.75rem; border: 1px solid var(--border); border-radius: var(--radius); outline: none; background: var(--card); }
+  .field input:focus, .field select:focus { border-color: var(--accent); }
+  .row { display: flex; gap: 0.75rem; }
+  .row .field { flex: 1; }
+  button { font-family: inherit; font-size: 0.85rem; font-weight: 500; padding: 0.5rem 1rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); cursor: pointer; transition: all 0.15s; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); width: 100%; padding: 0.65rem; font-size: 0.9rem; }
+  button.primary:hover { opacity: 0.9; }
+  button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .response { margin-top: 0.75rem; padding: 0.75rem; background: #1e1e2e; color: #cdd6f4; border-radius: var(--radius); font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.8rem; white-space: pre-wrap; word-break: break-all; max-height: 400px; overflow-y: auto; }
+  .response:empty { display: none; }
+  .response.loading { color: #fbbf24; }
+  .response.error { color: #fca5a5; }
+  .badge { display: inline-block; font-size: 0.7rem; font-weight: 700; padding: 0.15rem 0.5rem; border-radius: 999px; text-transform: uppercase; }
+  .badge.post { background: #dbeafe; color: #1d4ed8; }
+  .badge.path { background: #f3f4f6; color: var(--muted); font-family: 'SF Mono', 'Fira Code', monospace; }
+  .hint { font-size: 0.8rem; color: var(--muted); margin-top: 0.25rem; }
+  .status-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; font-size: 0.8rem; color: var(--muted); }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .status-dot.idle { background: #d1d5db; }
+  .status-dot.ok { background: var(--green); }
+  .status-dot.err { background: var(--red); }
+  footer { margin-top: 2rem; text-align: center; color: var(--muted); font-size: 0.75rem; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>🎧 AI DJ Test Console</h1>
+    <p>Test harness for <code>/gw/aidj/*</code> Lambda-backed gateway endpoints</p>
+  </header>
+
+  <div class="endpoint-tabs">
+    <button class="active" data-tab="introduce">🎙️ /introduce</button>
+    <button data-tab="trivia">📚 /trivia</button>
+    <button data-tab="lyrics">🎵 /lyrics</button>
+  </div>
+
+  <!-- Shared fields -->
+  <div class="card">
+    <h2>📋 Request</h2>
+    <div class="row">
+      <div class="field"><label>Title *</label><input id="title" placeholder="Bohemian Rhapsody"></div>
+      <div class="field"><label>Artist *</label><input id="artist" placeholder="Queen"></div>
+    </div>
+    <div class="row">
+      <div class="field"><label>AI Service</label>
+        <select id="service">
+          <option value="deepseek">DeepSeek (default)</option>
+          <option value="openai">OpenAI</option>
+          <option value="claude">Claude</option>
+        </select>
+      </div>
+      <div class="field" id="name-field"><label>Listener Name</label><input id="name" placeholder="Milton"></div>
+    </div>
+    <div class="row" id="extra-fields">
+      <div class="field"><label>Location (for weather)</label><input id="location" placeholder="Austin, TX"></div>
+      <div class="field"><label>Time</label><input id="time" placeholder="9:42 PM"></div>
+    </div>
+    <button class="primary" id="send-btn" onclick="sendRequest()">▶ Send Request</button>
+    <div class="status-row" id="status-row" style="display:none">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-text"></span>
+    </div>
+  </div>
+
+  <!-- Response -->
+  <div class="card">
+    <h2>📬 Response</h2>
+    <div class="response" id="response"></div>
+  </div>
+
+  <footer>Served from an Alpine Linux container via Dockyard gateway proxy</footer>
+</div>
+
+<script>
+// Always hit the Dockyard gateway, whether served through it or directly
+const DOCKYARD = window.location.port === '4300'
+  ? window.location.origin
+  : window.location.origin.replace(/:\d+$/, ':4300');
+const BASE = DOCKYARD + '/gw/aidj';
+let activeTab = 'introduce';
+
+document.querySelectorAll('.endpoint-tabs button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.endpoint-tabs button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeTab = btn.dataset.tab;
+    // Show/hide introduce-only fields
+    const extra = document.getElementById('extra-fields');
+    const nameField = document.getElementById('name-field');
+    if (activeTab === 'introduce') {
+      extra.style.display = '';
+      nameField.style.display = '';
+    } else {
+      extra.style.display = 'none';
+      nameField.style.display = 'none';
+    }
+    document.getElementById('response').textContent = '';
+    document.getElementById('status-row').style.display = 'none';
+  });
+});
+
+async function sendRequest() {
+  const title = document.getElementById('title').value.trim();
+  const artist = document.getElementById('artist').value.trim();
+  if (!title || !artist) {
+    document.getElementById('response').textContent = '❌ title and artist are required.';
+    document.getElementById('response').className = 'response error';
+    return;
+  }
+
+  const body = {
+    title,
+    artist,
+    service: document.getElementById('service').value || undefined,
+  };
+
+  if (activeTab === 'introduce') {
+    const name = document.getElementById('name').value.trim();
+    const location = document.getElementById('location').value.trim();
+    const time = document.getElementById('time').value.trim();
+    if (name) body.name = name;
+    if (location) body.location = location;
+    if (time) body.time = time;
+  }
+
+  const url = BASE + '/' + activeTab;
+  const respEl = document.getElementById('response');
+  const statusRow = document.getElementById('status-row');
+  const statusDot = document.getElementById('status-dot');
+  const statusText = document.getElementById('status-text');
+
+  respEl.textContent = '⏳ Calling ' + url + '…';
+  respEl.className = 'response loading';
+  statusRow.style.display = 'flex';
+  statusDot.className = 'status-dot idle';
+  statusText.textContent = 'Sending…';
+
+  try {
+    const start = Date.now();
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const elapsed = Date.now() - start;
+
+    let text;
+    const ct = res.headers.get('content-type') || '';
+    if (ct.includes('application/json')) {
+      const json = await res.json();
+      text = JSON.stringify(json, null, 2);
+    } else {
+      text = await res.text();
+    }
+
+    const status = res.status;
+    let display = 'HTTP ' + status + ' ' + res.statusText + '  (' + elapsed + 'ms)\n';
+    display += 'Content-Type: ' + ct + '\n';
+    display += '───\n';
+    display += text.length > 3000 ? text.slice(0, 3000) + '\n… (truncated)' : text;
+
+    respEl.textContent = display;
+    respEl.className = 'response' + (status >= 400 ? ' error' : '');
+
+    statusDot.className = 'status-dot ' + (status < 400 ? 'ok' : 'err');
+    statusText.textContent = status < 400
+      ? 'OK — ' + elapsed + 'ms'
+      : 'Error ' + status + ' — ' + elapsed + 'ms';
+  } catch (err) {
+    respEl.textContent = '❌ Network error: ' + err.message;
+    respEl.className = 'response error';
+    statusDot.className = 'status-dot err';
+    statusText.textContent = 'Failed';
+  }
+}
+
+// Allow Enter to submit
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && e.target.tagName === 'INPUT') sendRequest();
+});
+</script>
+</body>
+</html>
