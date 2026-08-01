@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { getAuthUser } from '../auth.js';
+import { getAuthUser, requireRole } from '../auth.js';
 import { HttpError } from '../services/HttpError.js';
 import * as projectService from '../services/projects.js';
 
@@ -19,7 +19,7 @@ projectsRouter.get('/', async (req: Request, res: Response) => {
   }
 });
 
-projectsRouter.post('/', (req: Request, res: Response) => {
+projectsRouter.post('/', requireRole('operator'), (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
     if (!userId) { res.status(401).json({ error: 'Authentication required.' }); return; }
@@ -41,7 +41,7 @@ projectsRouter.get('/:id', (req: Request, res: Response) => {
   }
 });
 
-projectsRouter.put('/:id', (req: Request, res: Response) => {
+projectsRouter.put('/:id', requireRole('operator'), (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
     if (!userId) { res.status(401).json({ error: 'Authentication required.' }); return; }
@@ -52,7 +52,7 @@ projectsRouter.put('/:id', (req: Request, res: Response) => {
   }
 });
 
-projectsRouter.delete('/:id', (req: Request, res: Response) => {
+projectsRouter.delete('/:id', requireRole('operator'), (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
     projectService.remove(req.params.id, userId);
@@ -62,7 +62,7 @@ projectsRouter.delete('/:id', (req: Request, res: Response) => {
   }
 });
 
-projectsRouter.put('/:id/resources', async (req: Request, res: Response) => {
+projectsRouter.put('/:id/resources', requireRole('operator'), async (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
     if (!userId) { res.status(401).json({ error: 'Authentication required.' }); return; }
@@ -77,7 +77,7 @@ projectsRouter.put('/:id/resources', async (req: Request, res: Response) => {
   }
 });
 
-projectsRouter.delete('/:id/resources', async (req: Request, res: Response) => {
+projectsRouter.delete('/:id/resources', requireRole('operator'), async (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
     if (!userId) { res.status(401).json({ error: 'Authentication required.' }); return; }

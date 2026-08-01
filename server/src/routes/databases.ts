@@ -1,5 +1,5 @@
-import { Router, type Request, type Response } from 'express';
-import { getAuthUser } from '../auth.js';
+import { Router, type Request, type Response, type NextFunction } from 'express';
+import { getAuthUser, requireRole } from '../auth.js';
 import { HttpError } from '../services/HttpError.js';
 import * as databaseService from '../services/databases.js';
 
@@ -18,9 +18,18 @@ function queryLimit(value: unknown, fallback = 25): number {
   return num;
 }
 
+/** Escalate to admin if `req.body.confirmed === true`.  Assumes `requireAuth` already ran. */
+function requireAdminIfConfirmed(req: Request, res: Response, next: NextFunction): void {
+  if (req.body?.confirmed === true) {
+    requireRole('admin')(req, res, next);
+  } else {
+    next();
+  }
+}
+
 // ── Overview ──────────────────────────────────────────────────
 
-databasesRouter.get('/overview', (_req: Request, res: Response) => {
+databasesRouter.get('/overview', requireRole('operator'), (_req: Request, res: Response) => {
   try {
     res.json(databaseService.listOperations());
   } catch (err) {
@@ -30,7 +39,7 @@ databasesRouter.get('/overview', (_req: Request, res: Response) => {
 
 // ── Connections CRUD ──────────────────────────────────────────
 
-databasesRouter.get('/connections', (req: Request, res: Response) => {
+databasesRouter.get('/connections', requireRole('operator'), (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
     const projectId = typeof req.query.projectId === 'string' && req.query.projectId.trim()
@@ -42,7 +51,7 @@ databasesRouter.get('/connections', (req: Request, res: Response) => {
   }
 });
 
-databasesRouter.post('/connections', (req: Request, res: Response) => {
+databasesRouter.post('/connections', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
     const projectId = (req.body as { projectId?: string }).projectId?.trim() || undefined;
@@ -53,7 +62,7 @@ databasesRouter.post('/connections', (req: Request, res: Response) => {
   }
 });
 
-databasesRouter.get('/connections/:id', (req: Request, res: Response) => {
+databasesRouter.get('/connections/:id', requireRole('operator'), (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
     res.json(databaseService.getConnection(req.params.id, userId));
@@ -62,7 +71,7 @@ databasesRouter.get('/connections/:id', (req: Request, res: Response) => {
   }
 });
 
-databasesRouter.put('/connections/:id', (req: Request, res: Response) => {
+databasesRouter.put('/connections/:id', requireRole('admin'), (req: Request, res: Response) => {
   try {
     res.json(databaseService.updateConnection(req.params.id, req.body));
   } catch (err) {
@@ -70,7 +79,7 @@ databasesRouter.put('/connections/:id', (req: Request, res: Response) => {
   }
 });
 
-databasesRouter.delete('/connections/:id', (req: Request, res: Response) => {
+databasesRouter.delete('/connections/:id', requireRole('admin'), (req: Request, res: Response) => {
   try {
     databaseService.deleteConnection(req.params.id);
     res.json({ ok: true });
@@ -81,7 +90,7 @@ databasesRouter.delete('/connections/:id', (req: Request, res: Response) => {
 
 // ── Connection actions ────────────────────────────────────────
 
-databasesRouter.post('/connections/:id/test', async (req: Request, res: Response) => {
+databasesRouter.post('/connections/:id/test', requireRole('admin'), async (req: Request, res: Response) => {
   try {
     res.json(await databaseService.testConnection(req.params.id));
   } catch (err) {
@@ -89,7 +98,7 @@ databasesRouter.post('/connections/:id/test', async (req: Request, res: Response
   }
 });
 
-databasesRouter.get('/connections/:id/schema', async (req: Request, res: Response) => {
+databasesRouter.get('/connections/:id/schema', requireRole('operator'), async (req: Request, res: Response) => {
   try {
     res.json(await databaseService.inspectSchema(req.params.id, req.query.database));
   } catch (err) {
@@ -97,7 +106,7 @@ databasesRouter.get('/connections/:id/schema', async (req: Request, res: Respons
   }
 });
 
-databasesRouter.post('/connections/:id/read', async (req: Request, res: Response) => {
+databasesRouter.post('/connections/:id/read', requireRole('operator'), async (req: Request, res: Response) => {
   try {
     res.json(await databaseService.runRead(req.params.id, req.body));
   } catch (err) {
@@ -107,7 +116,7 @@ databasesRouter.post('/connections/:id/read', async (req: Request, res: Response
 
 // ── Grant ─────────────────────────────────────────────────────
 
-databasesRouter.post('/connections/:id/grant', async (req: Request, res: Response) => {
+databasesRouter.post('/connections/:id/grant', requireAdminIfConfirmed, async (req: Request, res: Response) => {
   try {
     res.json(await databaseService.executeGrant(req.params.id, req.body, getAuthUser(req)?.userId));
   } catch (err) {
@@ -117,7 +126,7 @@ databasesRouter.post('/connections/:id/grant', async (req: Request, res: Respons
 
 // ── Mutate ────────────────────────────────────────────────────
 
-databasesRouter.post('/connections/:id/mutate', async (req: Request, res: Response) => {
+databasesRouter.post('/connections/:id/mutate', requireAdminIfConfirmed, async (req: Request, res: Response) => {
   try {
     res.json(await databaseService.executeMutation(req.params.id, req.body));
   } catch (err) {
@@ -127,7 +136,7 @@ databasesRouter.post('/connections/:id/mutate', async (req: Request, res: Respon
 
 // ── Migrate ───────────────────────────────────────────────────
 
-databasesRouter.post('/connections/:id/migrate', async (req: Request, res: Response) => {
+databasesRouter.post('/connections/:id/migrate', requireAdminIfConfirmed, async (req: Request, res: Response) => {
   try {
     res.json(await databaseService.executeMigration(req.params.id, req.body));
   } catch (err) {
@@ -137,7 +146,7 @@ databasesRouter.post('/connections/:id/migrate', async (req: Request, res: Respo
 
 // ── Operations ────────────────────────────────────────────────
 
-databasesRouter.get('/operations', (req: Request, res: Response) => {
+databasesRouter.get('/operations', requireRole('operator'), (req: Request, res: Response) => {
   try {
     res.json(databaseService.listOperationHistoryList(queryLimit(req.query.limit)));
   } catch (err) {
@@ -147,7 +156,7 @@ databasesRouter.get('/operations', (req: Request, res: Response) => {
 
 // ── Jobs ──────────────────────────────────────────────────────
 
-databasesRouter.get('/jobs', (req: Request, res: Response) => {
+databasesRouter.get('/jobs', requireRole('operator'), (req: Request, res: Response) => {
   try {
     res.json(databaseService.listJobs(queryLimit(req.query.limit)));
   } catch (err) {
@@ -155,7 +164,7 @@ databasesRouter.get('/jobs', (req: Request, res: Response) => {
   }
 });
 
-databasesRouter.get('/jobs/:id', (req: Request, res: Response) => {
+databasesRouter.get('/jobs/:id', requireRole('operator'), (req: Request, res: Response) => {
   try {
     res.json(databaseService.getJob(req.params.id));
   } catch (err) {
@@ -163,7 +172,7 @@ databasesRouter.get('/jobs/:id', (req: Request, res: Response) => {
   }
 });
 
-databasesRouter.get('/jobs/:id/download', async (req: Request, res: Response) => {
+databasesRouter.get('/jobs/:id/download', requireRole('operator'), async (req: Request, res: Response) => {
   try {
     const artifact = await databaseService.getJobArtifactDownloadData(req.params.id);
     res.setHeader('Content-Type', artifact.contentType);
@@ -176,7 +185,7 @@ databasesRouter.get('/jobs/:id/download', async (req: Request, res: Response) =>
 
 // ── Backup / Restore ──────────────────────────────────────────
 
-databasesRouter.post('/connections/:id/backup', async (req: Request, res: Response) => {
+databasesRouter.post('/connections/:id/backup', requireAdminIfConfirmed, async (req: Request, res: Response) => {
   try {
     res.json(await databaseService.createBackup(req.params.id, req.body, getAuthUser(req)?.userId));
   } catch (err) {
@@ -184,7 +193,7 @@ databasesRouter.post('/connections/:id/backup', async (req: Request, res: Respon
   }
 });
 
-databasesRouter.post('/connections/:id/restore', async (req: Request, res: Response) => {
+databasesRouter.post('/connections/:id/restore', requireAdminIfConfirmed, async (req: Request, res: Response) => {
   try {
     res.json(await databaseService.restoreBackup(req.params.id, req.body, getAuthUser(req)?.userId));
   } catch (err) {

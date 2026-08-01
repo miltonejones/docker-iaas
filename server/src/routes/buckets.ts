@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import express from 'express';
-import { getAuthUser } from '../auth.js';
+import { getAuthUser, requireRole } from '../auth.js';
 import { HttpError } from '../services/HttpError.js';
 import * as bucketService from '../services/buckets.js';
 
@@ -24,7 +24,7 @@ bucketsRouter.get('/:name', (req: Request, res: Response) => {
   res.json(bucketService.get(req.params.name));
 });
 
-bucketsRouter.post('/:name/protected', express.json(), (req: Request, res: Response) => {
+bucketsRouter.post('/:name/protected', requireRole('operator'), express.json(), (req: Request, res: Response) => {
   const protect = !!req.body?.protected;
   const projectId = typeof req.body?.projectId === 'string' ? req.body.projectId.trim() : undefined;
   const userId = getAuthUser(req)?.userId;
@@ -32,7 +32,7 @@ bucketsRouter.post('/:name/protected', express.json(), (req: Request, res: Respo
   res.json({ name: req.params.name, protected: protect });
 });
 
-bucketsRouter.post('/', express.json(), async (req: Request, res: Response) => {
+bucketsRouter.post('/', requireRole('operator'), express.json(), async (req: Request, res: Response) => {
   const name = (req.body?.name || '').trim();
   const userId = getAuthUser(req)?.userId;
   const protect = !!req.body?.protected;
@@ -45,7 +45,7 @@ bucketsRouter.post('/', express.json(), async (req: Request, res: Response) => {
   }
 });
 
-bucketsRouter.delete('/:name', async (req: Request, res: Response) => {
+bucketsRouter.delete('/:name', requireRole('operator'), async (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
     await bucketService.remove(req.params.name, userId);

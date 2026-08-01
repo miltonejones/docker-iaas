@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { requireRole } from '../auth.js';
 import { HttpError } from '../services/HttpError.js';
 import * as imageService from '../services/images.js';
 
@@ -28,7 +29,7 @@ imagesRouter.delete('/:id', async (req: Request, res: Response) => {
 });
 
 // Prune reclaimable space (dangling images + stopped containers).
-imagesRouter.post('/prune', async (_req: Request, res: Response) => {
+imagesRouter.post('/prune', requireRole('admin'), async (_req: Request, res: Response) => {
   try {
     res.json(await imageService.prune());
   } catch (err) {

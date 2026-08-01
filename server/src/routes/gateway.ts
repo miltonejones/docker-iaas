@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { getAuthUser } from '../auth.js';
+import { getAuthUser, requireRole } from '../auth.js';
 import { HttpError } from '../services/HttpError.js';
 import * as gatewayService from '../services/gateway.js';
 
@@ -27,7 +27,7 @@ gatewayRouter.get('/', (req: Request, res: Response) => {
   }
 });
 
-gatewayRouter.post('/', (req: Request, res: Response) => {
+gatewayRouter.post('/', requireRole('operator'), (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
     res.status(201).json(gatewayService.createRoute(userId, req.body));
@@ -36,7 +36,7 @@ gatewayRouter.post('/', (req: Request, res: Response) => {
   }
 });
 
-gatewayRouter.put('/:id', (req: Request, res: Response) => {
+gatewayRouter.put('/:id', requireRole('operator'), (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
     res.json(gatewayService.updateRoute(req.params.id, userId, req.body));
@@ -45,7 +45,7 @@ gatewayRouter.put('/:id', (req: Request, res: Response) => {
   }
 });
 
-gatewayRouter.delete('/:id', (req: Request, res: Response) => {
+gatewayRouter.delete('/:id', requireRole('operator'), (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
     gatewayService.deleteGatewayRoute(req.params.id, userId);

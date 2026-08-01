@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { getAuthUser } from '../auth.js';
+import { getAuthUser, requireRole } from '../auth.js';
 import { HttpError } from '../services/HttpError.js';
 import * as containerService from '../services/containers.js';
 
@@ -29,7 +29,7 @@ containersRouter.get('/', async (req: Request, res: Response) => {
 
 // ── Launch ────────────────────────────────────────────────────
 
-containersRouter.post('/', async (req: Request, res: Response) => {
+containersRouter.post('/', requireRole('operator'), async (req: Request, res: Response) => {
   try {
     const userId = getAuthUser(req)?.userId;
     const result = await containerService.launch(userId, req.body);
@@ -224,7 +224,7 @@ containersRouter.post('/:id/files/bulk', async (req: Request, res: Response) => 
 // ── Lifecycle ─────────────────────────────────────────────────
 
 for (const action of ['start', 'stop', 'restart'] as const) {
-  containersRouter.post(`/:id/${action}`, async (req: Request, res: Response) => {
+  containersRouter.post(`/:id/${action}`, requireRole('operator'), async (req: Request, res: Response) => {
     try {
       const userId = getAuthUser(req)?.userId;
       await containerService[action](req.params.id, userId);
@@ -235,7 +235,7 @@ for (const action of ['start', 'stop', 'restart'] as const) {
   });
 }
 
-containersRouter.delete('/:id', async (req: Request, res: Response) => {
+containersRouter.delete('/:id', requireRole('operator'), async (req: Request, res: Response) => {
   const force = req.query.force === 'true';
   try {
     const userId = getAuthUser(req)?.userId;
