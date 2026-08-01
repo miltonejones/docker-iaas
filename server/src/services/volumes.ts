@@ -1,8 +1,18 @@
 import { docker } from '../docker.js';
 import { HttpError } from './HttpError.js';
 
-const NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
+export const NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
 const SYSTEM_LABEL_KEY = 'iaas.system';
+
+// Volumes matching this name are system-managed and must not be deleted.
+export const SYSTEM_VOLUME_NAMES = new Set(['iaas-minio-data']);
+
+/** Returns true if the volume is system-managed (label or known system name). */
+export function isSystemVolume(name: string, labels?: Record<string, string>): boolean {
+  if (SYSTEM_VOLUME_NAMES.has(name)) return true;
+  if (labels && labels[SYSTEM_LABEL_KEY]) return true;
+  return false;
+}
 
 export interface VolumeInfo {
   name: string;
@@ -17,7 +27,7 @@ export interface VolumeInfo {
 }
 
 /** Fetch all running/exited containers once and derive per-volume usedBy lists. */
-async function buildUsedByMap(): Promise<Map<string, VolumeInfo['usedBy']>> {
+export async function buildUsedByMap(): Promise<Map<string, VolumeInfo['usedBy']>> {
   const map = new Map<string, VolumeInfo['usedBy']>();
   try {
     const containers = await docker.listContainers({ all: true });
@@ -36,14 +46,14 @@ async function buildUsedByMap(): Promise<Map<string, VolumeInfo['usedBy']>> {
 }
 
 /** Fetch df for volume sizes. */
-async function fetchDf(): Promise<Map<string, { size: number; refCount: number }>> {
-  const map = new Map<string, { size: number; refCount: number }>();
+async function fetchDf(): Promise<Map<string, { size: number | null; refCount: number }>> {
+  const map = new Map<string, { size: number | null; refCount: number }>();
   try {
     const df = await docker.df();
     for (const v of (df as any).Volumes || []) {
       const size = v.UsageData?.Size;
       map.set(v.Name, {
-        size: (size == null || size === -1) ? null as unknown as number : size,
+        size: (size == null || size === -1) ? null : size,
         refCount: v.UsageData?.RefCount || 0,
       });
     }
@@ -68,7 +78,7 @@ export async function list(): Promise<VolumeInfo[]> {
     if (v.Labels) {
       for (const [k, val] of Object.entries(v.Labels)) labels[k] = val as string;
     }
-    const system = !!labels[SYSTEM_LABEL_KEY] || name.startsWith('dockyard_minio_');
+    const system = isSystemVolume(name, labels);
     return {
       name,
       driver: v.Driver || '',
@@ -103,7 +113,7 @@ export async function inspect(name: string): Promise<VolumeInfo> {
   if (raw.Labels) {
     for (const [k, val] of Object.entries(raw.Labels)) labels[k] = val as string;
   }
-  const system = !!labels[SYSTEM_LABEL_KEY] || name.startsWith('dockyard_minio_');
+  const system = isSystemVolume(raw.Name || name, labels);
 
   return {
     name: raw.Name || name,

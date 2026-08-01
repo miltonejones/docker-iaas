@@ -1,10 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-
-// Test the name validation regex and usedBy cross-referencing logic.
-// These are pure functions exported from the service for testability.
-
-const NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/;
+import { NAME_RE, isSystemVolume } from './services/volumes.js';
 
 describe('volume name validation', () => {
   it('accepts valid names', () => {
@@ -23,6 +19,23 @@ describe('volume name validation', () => {
     assert.ok(!NAME_RE.test('.leading-dot'));
     assert.ok(!NAME_RE.test('has spaces'));
     assert.ok(!NAME_RE.test('special!'));
+  });
+});
+
+describe('isSystemVolume', () => {
+  it('flags iaas-minio-data as system regardless of labels', () => {
+    assert.ok(isSystemVolume('iaas-minio-data'));
+    assert.ok(isSystemVolume('iaas-minio-data', {}));
+  });
+
+  it('flags volumes with iaas.system label', () => {
+    assert.ok(isSystemVolume('some-volume', { 'iaas.system': 'true' }));
+  });
+
+  it('does not flag ordinary volumes', () => {
+    assert.ok(!isSystemVolume('my-data'));
+    assert.ok(!isSystemVolume('my-data', {}));
+    assert.ok(!isSystemVolume('my-data', { 'some.label': 'value' }));
   });
 });
 
@@ -46,7 +59,7 @@ describe('usedBy cross-reference logic', () => {
       },
     ];
 
-    // Simulate the buildUsedByMap logic
+    // Replicate buildUsedByMap logic (pure function — tests the algorithm).
     const map = new Map<string, Array<{ containerId: string; containerName: string; destination: string; rw: boolean }>>();
     for (const c of containers) {
       for (const m of c.Mounts || []) {
@@ -65,7 +78,6 @@ describe('usedBy cross-reference logic', () => {
     assert.equal(dataUsers[0].containerName, 'web-app');
     assert.equal(dataUsers[1].containerName, 'db-server');
 
-    // Non-existent volume should have no entries
     assert.equal(map.get('nonexistent'), undefined);
   });
 
