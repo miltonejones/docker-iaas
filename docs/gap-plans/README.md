@@ -1,12 +1,14 @@
 # Dockyard Gap-Closure Plan — Prompt Library
 
-This directory contains **11 implementation prompts** (numbered `00` through `10`).
+This directory contains **13 implementation prompts** (numbered `00` through `12`).
 Each file is a complete, self-contained prompt intended to be handed to an LLM
 (such as the Dockyard issue consumer, Claude Code, or any coding agent) as the
 **entire task description** for one unit of work.
 
 These prompts were produced from a project evaluation performed on 2026-08-01.
-They close the gaps identified in that evaluation.
+They close the gaps identified in that evaluation. Prompts 11 and 12 come
+from a follow-up deep review of the assistant subsystem (chat pipeline and
+user-created custom assistants) on the same date.
 
 ---
 
@@ -39,9 +41,13 @@ They close the gaps identified in that evaluation.
 | 08 | `08-structured-logging.md` | Structured JSON logging with request/issue correlation IDs | 00 |
 | 09 | `09-protected-files-hard-enforcement.md` | Hard (non-prompt) enforcement of the protected-files list | 00 |
 | 10 | `10-dependency-updates.md` | Dependabot configuration and dependency update policy | 00 |
+| 11 | `11-assistant-security-fixes.md` | Assistant security: session ownership (IDOR), scoped tool reads, fail-closed custom assistants | 00 (and 00's `mcp/` restore for one optional sub-step) |
+| 12 | `12-custom-assistant-workflow.md` | Custom-assistant workflow: prompt composition, tool-picker integrity, @name routing, dead features | 11 (hard dependency — do not start 12 before 11 is merged) |
 
-Recommended sequence for a single worker: `00 → 04 → 09 → 08 → 07 → 06 → 01 →
-05 → 02 → 03 → 10`. Security and safety-net items first, features after.
+Recommended sequence for a single worker: `00 → 11 → 04 → 09 → 12 → 08 → 07 →
+06 → 01 → 05 → 02 → 03 → 10`. Security and safety-net items first, features
+after. Prompt 11 ranks immediately after 00 because it fixes live
+cross-user defects (session IDOR, unscoped resource listing in chat).
 
 ## Global rules (repeated inside every prompt)
 
