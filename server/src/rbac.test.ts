@@ -1,45 +1,85 @@
+// Must set before dynamic imports — auth.ts fails fast without it.
+process.env.JWT_SECRET = 'dockyard-test-secret';
+
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
-import express, { type Request, type Response } from 'express';
-import request from 'supertest';
-import jwt from 'jsonwebtoken';
-import { initDb, createUser, countUsersByRole, setUserRole } from './db.js';
-import { requireAuth, requireRole } from './auth.js';
+import type express from 'express';
+import http from 'node:http';
 
-process.env.JWT_SECRET = 'test-secret-rbac';
+function jsonRequest(
+  app: express.Express,
+  method: string,
+  path: string,
+  headers?: Record<string, string>,
+  body?: unknown,
+): Promise<{ status: number; data: unknown }> {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer(app);
+    server.listen(0, () => {
+      const addr = server.address() as { port: number };
+      const bodyStr = body ? JSON.stringify(body) : undefined;
+      const opts: http.RequestOptions = {
+        hostname: '127.0.0.1',
+        port: addr.port,
+        path,
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(bodyStr ? { 'Content-Length': String(Buffer.byteLength(bodyStr)) } : {}),
+          ...(headers || {}),
+        },
+      };
 
-before(() => {
-  initDb(':memory:');
-});
-
-function createRbacApp() {
-  const app = express();
-  app.use(express.json());
-
-  app.get('/api/test/public', requireAuth, (_req: Request, res: Response) => {
-    res.json({ ok: true });
+      const req = http.request(opts, (res) => {
+        let data = '';
+        res.on('data', (chunk: Buffer) => { data += chunk; });
+        res.on('end', () => {
+          server.close();
+          try {
+            resolve({ status: res.statusCode ?? 0, data: JSON.parse(data) });
+          } catch {
+            resolve({ status: res.statusCode ?? 0, data: data || null });
+          }
+        });
+      });
+      req.on('error', (err) => {
+        server.close();
+        reject(err);
+      });
+      if (bodyStr) req.write(bodyStr);
+      req.end();
+    });
   });
-
-  app.post('/api/test/write', requireAuth, requireRole('operator'), (_req: Request, res: Response) => {
-    res.json({ ok: true });
-  });
-
-  app.delete('/api/test/admin', requireAuth, requireRole('admin'), (_req: Request, res: Response) => {
-    res.json({ ok: true });
-  });
-
-  return app;
 }
 
-const app = createRbacApp();
-
 describe('requireRole middleware', () => {
+  let jwt: typeof import('jsonwebtoken').default;
+  let expressModule: typeof express;
+  let requireAuth: typeof import('./auth.js').requireAuth;
+  let requireRole: typeof import('./auth.js').requireRole;
+  let initDb: typeof import('./db.js').initDb;
+  let createUser: typeof import('./db.js').createUser;
+  let setUserRole: typeof import('./db.js').setUserRole;
+  let countUsersByRole: typeof import('./db.js').countUsersByRole;
+
   let adminToken: string;
   let operatorToken: string;
   let viewerToken: string;
   let oldToken: string;
+  let app: express.Express;
 
-  before(() => {
+  before(async () => {
+    jwt = (await import('jsonwebtoken')).default;
+    expressModule = (await import('express')).default;
+    const auth = await import('./auth.js');
+    requireAuth = auth.requireAuth;
+    requireRole = auth.requireRole;
+    const db = await import('./db.js');
+    initDb = db.initDb;
+    createUser = db.createUser;
+    setUserRole = db.setUserRole;
+    countUsersByRole = db.countUsersByRole;
+
     initDb(':memory:');
     const admin = createUser('admin@test.com', 'hash');
     const operator = createUser('operator@test.com', 'hash');
@@ -48,50 +88,85 @@ describe('requireRole middleware', () => {
     setUserRole(operator.id, 'operator');
     setUserRole(viewer.id, 'viewer');
 
-    adminToken = jwt.sign({ userId: admin.id, email: admin.email, role: 'admin' }, 'test-secret-rbac', { expiresIn: '1h' });
-    operatorToken = jwt.sign({ userId: operator.id, email: operator.email, role: 'operator' }, 'test-secret-rbac', { expiresIn: '1h' });
-    viewerToken = jwt.sign({ userId: viewer.id, email: viewer.email, role: 'viewer' }, 'test-secret-rbac', { expiresIn: '1h' });
-    oldToken = jwt.sign({ userId: admin.id, email: admin.email }, 'test-secret-rbac', { expiresIn: '1h' });
+    const secret = process.env.JWT_SECRET!;
+    adminToken = jwt.sign({ userId: admin.id, email: admin.email, role: 'admin' }, secret, { expiresIn: '1h' });
+    operatorToken = jwt.sign({ userId: operator.id, email: operator.email, role: 'operator' }, secret, { expiresIn: '1h' });
+    viewerToken = jwt.sign({ userId: viewer.id, email: viewer.email, role: 'viewer' }, secret, { expiresIn: '1h' });
+    oldToken = jwt.sign({ userId: admin.id, email: admin.email }, secret, { expiresIn: '1h' });
+    app = createApp();
   });
 
+  function createApp() {
+    const app = expressModule();
+    app.use(expressModule.json());
+
+    app.get('/api/test/public', requireAuth, (_req: any, res: any) => {
+      res.json({ ok: true });
+    });
+
+    app.post('/api/test/write', requireAuth, requireRole('operator'), (_req: any, res: any) => {
+      res.json({ ok: true });
+    });
+
+    app.delete('/api/test/admin', requireAuth, requireRole('admin'), (_req: any, res: any) => {
+      res.json({ ok: true });
+    });
+
+    return app;
+  }
+
+
   it('admin is implicitly allowed everywhere', async () => {
-    let res = await request(app).get('/api/test/public').set('Authorization', `Bearer ${adminToken}`);
+    let res = await jsonRequest(app, 'GET', '/api/test/public', { Authorization: `Bearer ${adminToken}` });
     assert.equal(res.status, 200);
-    res = await request(app).post('/api/test/write').set('Authorization', `Bearer ${adminToken}`);
+    res = await jsonRequest(app, 'POST', '/api/test/write', { Authorization: `Bearer ${adminToken}` });
     assert.equal(res.status, 200);
-    res = await request(app).delete('/api/test/admin').set('Authorization', `Bearer ${adminToken}`);
+    res = await jsonRequest(app, 'DELETE', '/api/test/admin', { Authorization: `Bearer ${adminToken}` });
     assert.equal(res.status, 200);
   });
 
   it('operator can access operator+ routes but not admin', async () => {
-    const res1 = await request(app).post('/api/test/write').set('Authorization', `Bearer ${operatorToken}`);
+    const res1 = await jsonRequest(app, 'POST', '/api/test/write', { Authorization: `Bearer ${operatorToken}` });
     assert.equal(res1.status, 200);
-    const res2 = await request(app).delete('/api/test/admin').set('Authorization', `Bearer ${operatorToken}`);
+    const res2 = await jsonRequest(app, 'DELETE', '/api/test/admin', { Authorization: `Bearer ${operatorToken}` });
     assert.equal(res2.status, 403);
-    assert.ok(res2.body.error?.includes('Requires role'));
+    assert.ok((res2.data as any).error?.includes('Requires role'));
   });
 
   it('viewer can only access GET routes', async () => {
-    let res = await request(app).get('/api/test/public').set('Authorization', `Bearer ${viewerToken}`);
+    let res = await jsonRequest(app, 'GET', '/api/test/public', { Authorization: `Bearer ${viewerToken}` });
     assert.equal(res.status, 200);
-    res = await request(app).post('/api/test/write').set('Authorization', `Bearer ${viewerToken}`);
+    res = await jsonRequest(app, 'POST', '/api/test/write', { Authorization: `Bearer ${viewerToken}` });
     assert.equal(res.status, 403);
   });
 
   it('returns 500 when requireRole is mounted without requireAuth', async () => {
-    const app2 = express();
-    app2.get('/test', requireRole('admin'), (_req: Request, res: Response) => res.json({ ok: true }));
-    const res = await request(app2).get('/test');
+    const app2 = expressModule();
+    app2.get('/test', requireRole('admin'), (_req: any, res: any) => res.json({ ok: true }));
+    const res = await jsonRequest(app2, 'GET', '/test');
     assert.equal(res.status, 500);
   });
 
   it('old JWT without role claim still works (backwards compat)', async () => {
-    const res = await request(app).delete('/api/test/admin').set('Authorization', `Bearer ${oldToken}`);
+    const res = await jsonRequest(app, 'DELETE', '/api/test/admin', { Authorization: `Bearer ${oldToken}` });
     assert.equal(res.status, 200, 'Old role-less token should work when DB user is admin');
   });
 });
 
 describe('last-admin guard', () => {
+  let initDb: typeof import('./db.js').initDb;
+  let createUser: typeof import('./db.js').createUser;
+  let setUserRole: typeof import('./db.js').setUserRole;
+  let countUsersByRole: typeof import('./db.js').countUsersByRole;
+
+  before(async () => {
+    const db = await import('./db.js');
+    initDb = db.initDb;
+    createUser = db.createUser;
+    setUserRole = db.setUserRole;
+    countUsersByRole = db.countUsersByRole;
+  });
+
   it('last remaining admin cannot be demoted', () => {
     initDb(':memory:');
     const admin = createUser('admin2@test.com', 'hash');

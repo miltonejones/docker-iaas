@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { requireAuth, getAuthUser, requireRole } from '../auth.js';
 import { HttpError } from '../services/HttpError.js';
 import * as authService from '../services/auth.js';
-import { listUsers, setUserRole, countUsersByRole, deleteUser } from '../db.js';
+import { listUsers, setUserRole, countUsersByRole, deleteUser, getUserById } from '../db.js';
 
 export const authRouter = Router();
 
@@ -110,14 +110,17 @@ authRouter.delete('/users/:id', requireAuth, requireRole('admin'), (req: Request
       return;
     }
 
-    if (!deleteUser(req.params.id)) {
-      res.status(404).json({ error: 'User not found.' });
-      return;
+    // Check BEFORE deleting: cannot remove the last remaining admin.
+    if (countUsersByRole('admin') <= 1) {
+      const target = getUserById(req.params.id);
+      if (target && target.role === 'admin') {
+        res.status(400).json({ error: 'You cannot delete the last remaining admin.' });
+        return;
+      }
     }
 
-    // If the last admin was deleted, don't leave the system admin-less.
-    if (countUsersByRole('admin') === 0) {
-      res.status(400).json({ error: 'You cannot delete the last remaining admin.' });
+    if (!deleteUser(req.params.id)) {
+      res.status(404).json({ error: 'User not found.' });
       return;
     }
 

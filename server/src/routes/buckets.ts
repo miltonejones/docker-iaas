@@ -67,6 +67,7 @@ bucketsRouter.get('/:name/objects', async (req: Request, res: Response) => {
 // Raw-body upload — Express middleware handles body parsing.
 bucketsRouter.put(
   '/:name/objects/:key(.*)',
+  requireRole('operator'),
   express.raw({ type: '*/*', limit: '200mb' }),
   async (req: Request, res: Response) => {
     const key = req.params.key;
@@ -98,7 +99,7 @@ bucketsRouter.get('/:name/objects/:key(.*)', async (req: Request, res: Response)
   }
 });
 
-bucketsRouter.delete('/:name/objects/:key(.*)', async (req: Request, res: Response) => {
+bucketsRouter.delete('/:name/objects/:key(.*)', requireRole('operator'), async (req: Request, res: Response) => {
   const key = req.params.key;
   try {
     await bucketService.deleteObject(req.params.name, key);
@@ -108,7 +109,7 @@ bucketsRouter.delete('/:name/objects/:key(.*)', async (req: Request, res: Respon
   }
 });
 
-bucketsRouter.post('/:name/objects/replace', express.json(), async (req: Request, res: Response) => {
+bucketsRouter.post('/:name/objects/replace', requireRole('operator'), express.json(), async (req: Request, res: Response) => {
   const key = String(req.body?.key ?? '').trim();
   const search = String(req.body?.search ?? '');
   const replace = String(req.body?.replace ?? '');
@@ -120,7 +121,7 @@ bucketsRouter.post('/:name/objects/replace', express.json(), async (req: Request
   }
 });
 
-bucketsRouter.post('/:name/objects/bulk', express.json(), async (req: Request, res: Response) => {
+bucketsRouter.post('/:name/objects/bulk', requireRole('operator'), express.json(), async (req: Request, res: Response) => {
   const objects = req.body?.objects;
   try {
     res.json(await bucketService.writeObjects(req.params.name, objects));

@@ -116,7 +116,7 @@ databasesRouter.post('/connections/:id/read', requireRole('operator'), async (re
 
 // ── Grant ─────────────────────────────────────────────────────
 
-databasesRouter.post('/connections/:id/grant', requireAdminIfConfirmed, async (req: Request, res: Response) => {
+databasesRouter.post('/connections/:id/grant', requireRole('operator'), requireAdminIfConfirmed, async (req: Request, res: Response) => {
   try {
     res.json(await databaseService.executeGrant(req.params.id, req.body, getAuthUser(req)?.userId));
   } catch (err) {
@@ -126,7 +126,7 @@ databasesRouter.post('/connections/:id/grant', requireAdminIfConfirmed, async (r
 
 // ── Mutate ────────────────────────────────────────────────────
 
-databasesRouter.post('/connections/:id/mutate', requireAdminIfConfirmed, async (req: Request, res: Response) => {
+databasesRouter.post('/connections/:id/mutate', requireRole('operator'), requireAdminIfConfirmed, async (req: Request, res: Response) => {
   try {
     res.json(await databaseService.executeMutation(req.params.id, req.body));
   } catch (err) {
@@ -136,7 +136,7 @@ databasesRouter.post('/connections/:id/mutate', requireAdminIfConfirmed, async (
 
 // ── Migrate ───────────────────────────────────────────────────
 
-databasesRouter.post('/connections/:id/migrate', requireAdminIfConfirmed, async (req: Request, res: Response) => {
+databasesRouter.post('/connections/:id/migrate', requireRole('operator'), requireAdminIfConfirmed, async (req: Request, res: Response) => {
   try {
     res.json(await databaseService.executeMigration(req.params.id, req.body));
   } catch (err) {
@@ -185,7 +185,7 @@ databasesRouter.get('/jobs/:id/download', requireRole('operator'), async (req: R
 
 // ── Backup / Restore ──────────────────────────────────────────
 
-databasesRouter.post('/connections/:id/backup', requireAdminIfConfirmed, async (req: Request, res: Response) => {
+databasesRouter.post('/connections/:id/backup', requireRole('operator'), requireAdminIfConfirmed, async (req: Request, res: Response) => {
   try {
     res.json(await databaseService.createBackup(req.params.id, req.body, getAuthUser(req)?.userId));
   } catch (err) {
@@ -193,7 +193,7 @@ databasesRouter.post('/connections/:id/backup', requireAdminIfConfirmed, async (
   }
 });
 
-databasesRouter.post('/connections/:id/restore', requireAdminIfConfirmed, async (req: Request, res: Response) => {
+databasesRouter.post('/connections/:id/restore', requireRole('operator'), requireAdminIfConfirmed, async (req: Request, res: Response) => {
   try {
     res.json(await databaseService.restoreBackup(req.params.id, req.body, getAuthUser(req)?.userId));
   } catch (err) {
