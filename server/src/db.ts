@@ -166,6 +166,7 @@ export function initDb(dbPath?: string): void {
       voice TEXT NOT NULL DEFAULT 'alloy',
       icon TEXT,
       is_default INTEGER NOT NULL DEFAULT 0,
+      prompt_mode TEXT NOT NULL DEFAULT 'append',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id)
@@ -173,6 +174,11 @@ export function initDb(dbPath?: string): void {
   `);
   // Migration: add icon column for assistant emoji.
   try { db.exec("ALTER TABLE user_assistants ADD COLUMN icon TEXT"); } catch { /* ok */ }
+  // Migration: add prompt_mode column and backfill existing assistants.
+  try {
+    db.exec("ALTER TABLE user_assistants ADD COLUMN prompt_mode TEXT NOT NULL DEFAULT 'append'");
+    db.exec("UPDATE user_assistants SET prompt_mode = 'replace' WHERE system_prompt != ''");
+  } catch { /* ok */ }
 
   initAssistantSessionTables(db);
   initDatabaseOpsTables(db);
@@ -633,6 +639,7 @@ export interface UserAssistantRow {
   voice: string;
   icon: string | null;
   is_default: number;
+  prompt_mode: string;
   created_at: string;
   updated_at: string;
 }

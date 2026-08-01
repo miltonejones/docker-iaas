@@ -18,6 +18,7 @@ function toJson(r: UserAssistantRow) {
     voice: r.voice,
     icon: r.icon ?? null,
     isDefault: r.is_default === 1,
+    promptMode: r.prompt_mode,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -45,6 +46,7 @@ export function create(
     voice?: string;
     icon?: string;
     isDefault?: boolean;
+    promptMode?: string;
   },
 ) {
   if (!input.name?.trim()) throw new HttpError(400, 'Name is required.');
@@ -72,6 +74,7 @@ export function update(
     voice?: string;
     icon?: string | null;
     isDefault?: boolean;
+    promptMode?: string;
   },
 ) {
   const row = updateRow(id, userId, {
