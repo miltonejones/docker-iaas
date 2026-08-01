@@ -743,12 +743,13 @@ assistantRouter.post("/sessions", (req: Request, res: Response) => {
 
 assistantRouter.put("/sessions/:id", (req: Request, res: Response) => {
   try {
+    const userId = getAuthUser(req)?.userId;
     const { name, state, assistantId } = req.body as { name?: string; state?: unknown; assistantId?: string | null };
     const row = updateAssistantSession(req.params.id, {
       name: name?.trim() || undefined,
       state: state !== undefined ? JSON.stringify(state) : undefined,
       assistantId: assistantId === null ? null : assistantId || undefined,
-    });
+    }, userId);
     if (!row) {
       res.status(404).json({ error: "Session not found." });
       return;
@@ -761,7 +762,8 @@ assistantRouter.put("/sessions/:id", (req: Request, res: Response) => {
 
 assistantRouter.delete("/sessions/:id", (req: Request, res: Response) => {
   try {
-    const deleted = deleteAssistantSession(req.params.id);
+    const userId = getAuthUser(req)?.userId;
+    const deleted = deleteAssistantSession(req.params.id, userId);
     if (!deleted) {
       res.status(404).json({ error: "Session not found." });
       return;
@@ -1161,6 +1163,12 @@ assistantRouter.post("/sessions/:id/send", async (req: Request, res: Response) =
 
 /** Abort the current turn in a session. */
 assistantRouter.post("/sessions/:id/abort", (req: Request, res: Response) => {
+  const userId = getAuthUser(req)?.userId;
+  const row = getAssistantSession(req.params.id, userId);
+  if (!row) {
+    res.status(404).json({ error: "Session not found." });
+    return;
+  }
   const runner = sessionRegistry.get(req.params.id);
   if (runner) runner.abort();
   res.json({ ok: true });
