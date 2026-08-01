@@ -1850,6 +1850,7 @@ export async function executeRestoreJob(connectionId: string, request: RestoreRe
         for (const rawIndex of collectionData.indexes) {
           const index = rawIndex as Record<string, unknown>;
           if (index.name === '_id_') continue;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- TODO(gap-00)
           const { key, v, ns, background, ...options } = index;
           if (key && isPlainObject(key)) {
             await collection.createIndex(key as Record<string, 1 | -1 | 'text' | 'hashed' | '2dsphere'>, options);

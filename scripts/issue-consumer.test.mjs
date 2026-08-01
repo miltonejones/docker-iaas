@@ -29,6 +29,7 @@ delete process.env.EC2_HOST;
 const SANDBOX = fs.mkdtempSync(path.join(os.tmpdir(), "consumer-sandbox-"));
 try { execSync("git init -q", { cwd: SANDBOX }); } catch { /* git may be unavailable */ }
 process.env.CODEBASE_PATH = SANDBOX;
+// eslint-disable-next-line no-empty -- TODO(gap-00)
 process.on("exit", () => { try { fs.rmSync(SANDBOX, { recursive: true, force: true }); } catch {} });
 
 const {

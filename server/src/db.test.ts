@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- TODO(gap-00)
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { initDb, createUser, getUserById, getUserByEmail, hasUsers, getFirstUser } from './db.js';
@@ -104,6 +105,7 @@ describe('db (in-memory)', () => {
     it('getSetting returns undefined for unknown key', async () => {
       // getSetting/setSetting are in db.ts but need the `db` variable which
       // is set by initDb. They use the module-level `db` reference.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- TODO(gap-00)
       const { getSetting, setSetting } = await import('./db.js');
       assert.equal(getSetting('nonexistent_key'), undefined);
     });

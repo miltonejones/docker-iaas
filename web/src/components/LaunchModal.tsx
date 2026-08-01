@@ -15,6 +15,7 @@ interface Props {
 }
 
 export function LaunchModal({ preset, onClose, onLaunched, prefill, replaceId }: Props) {
+// eslint-disable-next-line react-hooks/purity -- TODO(gap-00)
   const [name, setName] = useState(prefill?.name || `${preset.id}-${Math.random().toString(36).slice(2, 6)}`);
   const [description, setDescription] = useState(prefill?.description || '');
   const [ports, setPorts] = useState(

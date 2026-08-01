@@ -143,6 +143,7 @@ export function previewGrantOp(id: string, body: unknown) {
   return previewGrant(id, body);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- TODO(gap-00)
 export async function executeGrant(id: string, body: Record<string, unknown>, userId?: string) {
   const preview = previewGrant(id, body);
   if (body.confirmed !== true) {
@@ -272,6 +273,7 @@ export function listOperations() {
 export async function createBackup(
   connectionId: string,
   input: BackupRequest & Record<string, unknown>,
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- TODO(gap-00)
   userId?: string,
 ) {
   const existing = getDatabaseConnection(ensureConnectionId(connectionId));
@@ -329,6 +331,7 @@ export async function createBackup(
 export async function restoreBackup(
   connectionId: string,
   input: RestoreRequest & Record<string, unknown>,
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- TODO(gap-00)
   userId?: string,
 ) {
   const existing = getDatabaseConnection(ensureConnectionId(connectionId));

@@ -19,6 +19,17 @@
     "start": "npm --workspace server run start",
     "start:relay": "npm --workspace relay run start",
     "typecheck": "npm --workspace server run typecheck && npm --workspace web run typecheck && npm --workspace relay run typecheck && npm --workspace mcp run typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test": "npm --workspace server run test && npm --workspace web run test && npm --workspace relay run test && node --test scripts/*.test.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.8.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "prettier": "^3.9.6",
+    "typescript-eslint": "^8.65.0"
   }
 }

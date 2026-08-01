@@ -113,6 +113,7 @@ export async function launch(userId: string | undefined, input: LaunchInput): Pr
 
   await ensureImage(image);
 
+  // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- TODO(gap-00): Docker API types use {}
   const exposedPorts: Record<string, {}> = {};
   const portBindings: Record<string, { HostPort: string }[]> = {};
   for (const p of input.ports ?? []) {
@@ -171,7 +172,7 @@ export async function launch(userId: string | undefined, input: LaunchInput): Pr
   return { id: container.id };
 }
 
-export async function start(id: string, userId?: string): Promise<void> {
+export async function start(id: string, _userId?: string): Promise<void> {
   const container = docker.getContainer(id);
   const info = await container.inspect();
   if (info.Config?.Labels?.['iaas.system']) throw new HttpError(403, 'This container is system-managed and cannot be controlled here.');
@@ -179,7 +180,7 @@ export async function start(id: string, userId?: string): Promise<void> {
   await lifecycle(id, 'start');
 }
 
-export async function stop(id: string, userId?: string): Promise<void> {
+export async function stop(id: string, _userId?: string): Promise<void> {
   const container = docker.getContainer(id);
   const info = await container.inspect();
   if (info.Config?.Labels?.['iaas.system']) throw new HttpError(403, 'This container is system-managed and cannot be controlled here.');
@@ -187,7 +188,7 @@ export async function stop(id: string, userId?: string): Promise<void> {
   await lifecycle(id, 'stop');
 }
 
-export async function restart(id: string, userId?: string): Promise<void> {
+export async function restart(id: string, _userId?: string): Promise<void> {
   const container = docker.getContainer(id);
   const info = await container.inspect();
   if (info.Config?.Labels?.['iaas.system']) throw new HttpError(403, 'This container is system-managed and cannot be controlled here.');

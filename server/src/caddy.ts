@@ -1,17 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { docker } from './docker.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Custom-domain site blocks are stored as individual files so that one bad
 // block can't break the base site.  Caddy imports them via:
 //     import /data/sites/*.caddy
 // In Docker, the sites directory lives in the Caddy container's /data volume.
 // The console writes files into the Caddy container via Docker exec.
-const CADDY_SITES_DIR = '/data/sites';
 
 // Local dev: write per-domain files to a local directory that Caddy imports.
 const LOCAL_SITES_DIR = process.env.CADDY_SITES_PATH

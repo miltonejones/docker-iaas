@@ -76,6 +76,7 @@ export async function route53Preflight(domain: string): Promise<PreflightResult>
     return { available: false, error: _clientError || "Route 53 client unavailable", zones: [], isApex: false };
   }
 
+  // eslint-disable-next-line no-useless-assignment -- TODO(gap-00): zones is populated in a retry loop below
   let zones: HostedZoneInfo[] = [];
   try {
     const res = await client.send(new ListHostedZonesCommand({}));

@@ -13,10 +13,12 @@
 //   NOTIFY_LOG     – remote log path (default: /home/ec2-user/docker-iaas/scripts/issue-logs/notifications.jsonl)
 
 import { spawn } from "node:child_process";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- TODO(gap-00)
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- TODO(gap-00)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const EC2_HOST = process.env.EC2_HOST || "ec2-user@54.162.111.41";

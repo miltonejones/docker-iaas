@@ -40,6 +40,7 @@ export function ProjectSelector({ value, onChange }: Props) {
 
   function select(id: string | null) {
     onChange(id);
+// eslint-disable-next-line no-empty -- TODO(gap-00)
     try { if (id) localStorage.setItem(STORAGE_KEY, id); else localStorage.removeItem(STORAGE_KEY); } catch {}
     setOpen(false);
     if (id) navigate(`/projects/${id}`);

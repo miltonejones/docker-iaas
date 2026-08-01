@@ -4,7 +4,6 @@ import path from "node:path";
 import { Router, type Request, type Response } from "express";
 import { getAuthUser } from "../auth.js";
 import Anthropic from "@anthropic-ai/sdk";
-import { stripLogHeaders } from "./containers.js";
 import {
   listContainerFiles,
   probeContainerEndpoint,
@@ -35,11 +34,13 @@ import { listHostBuildPresets } from "./hostBuilds.js";
 import { listHostDirectory, readHostTextFile } from "./hostFiles.js";
 import {
   DATABASE_ASSISTANT_READ_ONLY_TOOLS,
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- TODO(gap-00)
   DATABASE_ASSISTANT_TOOLS,
   executeDatabaseAssistantReadOnlyTool,
 } from "../databaseAssistantTools.js";
 import {
   GITHUB_ASSISTANT_READ_ONLY_TOOLS,
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- TODO(gap-00)
   GITHUB_ASSISTANT_TOOLS,
   executeGithubAssistantReadOnlyTool,
 } from "../githubAssistantTools.js";
@@ -134,7 +135,7 @@ Rules:
 - For multi-step requests (e.g. "create a function and attach a gateway route to it"), call one tool at a time and wait for its real result before calling the next one — never invent an id.
 - Default runtime is "node" unless the user names another ("python" or "sh").
 - When writing a function's "code", write complete, runnable source for the chosen runtime. Functions invoked through a gateway route follow this contract: the incoming request arrives as JSON in the DOCKYARD_REQUEST environment variable, shaped like { httpMethod, path, headers, queryStringParameters, body, isBase64Encoded } (body may be null). The function must print exactly one JSON object to stdout shaped like { "statusCode": number, "headers"?: object, "body": string, "isBase64Encoded"?: boolean }. Do not print anything else to stdout.
-- When a gateway route targets a lambda function, targetType must be \"lambda\" and targetId must be the id returned by the create_lambda_function call. When it targets a bucket, targetType must be \"bucket\" and targetId is simply the bucket's name.\n    - All gateway routes are reachable at /gw/{name} — always tell the user the full URL when confirming a route was created. Critical: the backend receives the request with /gw/ stripped but the route name preserved — /gw/my-site/about → /my-site/about on the backend. When configuring a reverse proxy (nginx, etc.) or SPA, account for the /{name}/ path prefix (base href, asset paths, API endpoint prefixes all need it).
+- When a gateway route targets a lambda function, targetType must be "lambda" and targetId must be the id returned by the create_lambda_function call. When it targets a bucket, targetType must be "bucket" and targetId is simply the bucket's name.\n    - All gateway routes are reachable at /gw/{name} — always tell the user the full URL when confirming a route was created. Critical: the backend receives the request with /gw/ stripped but the route name preserved — /gw/my-site/about → /my-site/about on the backend. When configuring a reverse proxy (nginx, etc.) or SPA, account for the /{name}/ path prefix (base href, asset paths, API endpoint prefixes all need it).
 - gateway route "pathPattern" is matched by EXACT string equality against the incoming request path (with the route's own name already stripped from the front) — there is no wildcard, glob, or prefix support. A trailing "/*" or "/:id" will never match anything real; do not use them. To match every path and method under a route (a whole static site, or a REST resource with multiple sub-paths like "/todos" and "/todos/{id}"), omit both "method" and "pathPattern" entirely rather than guessing a pattern.
 - A gateway route "name" is a group that can hold multiple method/pathPattern/target combinations — e.g. GET /todos going to one target and POST /todos/{id} going to another, all under the same name. create_gateway_route only accepts one method/pathPattern/targetId combination per call, so build up a multi-endpoint route by calling create_gateway_route once per combination, reusing the same "name" each time (this mirrors the "+ Add endpoint" button in the Gateway UI, which adds one endpoint to an existing named route). Never claim this isn't supported — it is; it just takes one tool call per endpoint, same as any other multi-step request.
 - To host a static website on a BUCKET (the default, simplest path): create the bucket first if it doesn't already exist (check with list_buckets), write the files with write_bucket_objects (accepts an array of { key, content } — prefer this bulk form for multi-file sites), then create_gateway_route with targetType "bucket" and targetId set to the bucket name, omitting method and pathPattern so every file in the site is reachable. Requests to "/" or a path with no file extension serve "index.html" (SPA-style fallback). For a quick single-file edit, use replace_in_bucket_object instead of reading and rewriting the whole file.
@@ -281,7 +282,7 @@ async function executeReadOnlyTool(
     case "read_function": {
       try {
         return lambdaService.getFunc(String(input.id ?? ""), userId);
-      } catch { return { error: `Function \"${input.id}\" not found.` }; }
+      } catch { return { error: `Function "${input.id}" not found.` }; }
     }
     case "get_container_logs": {
       const tail = Math.max(1, Math.min(500, Math.trunc(Number(input.tail) || 200)));
@@ -454,6 +455,7 @@ interface ResolvedResult {
   content: unknown;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- TODO(gap-00)
 interface TurnResponse {
   messages: Anthropic.MessageParam[];
   pending: PendingAction[];

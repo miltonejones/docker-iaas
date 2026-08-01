@@ -79,6 +79,7 @@ export async function reconcileNetwork(): Promise<number> {
 }
 
 /** NetworkingConfig fragment that attaches a container to the shared network. */
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type -- TODO(gap-00): Docker API types use {}
 export function dockyardNetworkConfig(): { NetworkingConfig: { EndpointsConfig: Record<string, {}> } } {
   return {
     NetworkingConfig: {

@@ -11,6 +11,7 @@ import {
   setFunctionEnv,
   getFunctionFiles,
   setFunctionFiles,
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- TODO(gap-00)
   type FunctionFileRow,
   getProject,
 } from '../db.js';
@@ -430,6 +431,7 @@ export async function runCode(params: {
   const allFiles: FunctionFile[] = [{ path: entryPath, content: code }, ...extraFiles];
 
   const pkgList = (packages || '').trim().split(/\s+/).filter(Boolean);
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- TODO(gap-00)
   const started = Date.now();
 
   try {

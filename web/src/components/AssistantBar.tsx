@@ -392,6 +392,7 @@ export function AssistantBar({
           await api.assistantUpdateSession(sessionIdRef.current, { state, assistantId: state.assistantId ?? null });
           localStorage.removeItem(fallbackKey());
         }
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- TODO(gap-00)
       } catch (_err) {
         // Server save failed — stash state in localStorage as a fallback so
         // the session can be recovered on next mount.
@@ -455,6 +456,7 @@ export function AssistantBar({
         state: { messages: rawMessages, log, pending, resolved } as AssistantSessionState,
         at: Date.now(),
       };
+// eslint-disable-next-line no-empty -- TODO(gap-00)
       try { localStorage.setItem(key, JSON.stringify(payload)); } catch {}
     };
     window.addEventListener('beforeunload', onUnload);

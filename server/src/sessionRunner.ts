@@ -92,6 +92,7 @@ export class SessionRunner extends EventEmitter {
   ): Promise<SessionRunner> {
     let row = getAssistantSession(id, userId);
     if (!row) {
+// eslint-disable-next-line no-useless-assignment -- TODO(gap-00)
       row = createAssistantSession(id, name, JSON.stringify({ messages: [], log: [], pending: [], resolved: [] }), userId);
     }
     return new SessionRunner(id, userId, respondStream, client);

@@ -7,6 +7,7 @@ import { getUserById, getSetting, setSetting } from './db.js';
 // Extend Express Request with auth properties so middleware and handlers can
 // access req.authUser / req.webhookAuthenticated without unsafe casts.
 declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
       authUser?: AuthUser;
@@ -14,8 +15,6 @@ declare global {
     }
   }
 }
-
-let JWT_SECRET: string;
 
 /** Load the JWT secret from the Docker secret file or environment.
  *  Exported so tests can validate the loading logic in isolation. */
@@ -28,7 +27,8 @@ export function loadJwtSecret(secretPath?: string, envValue?: string): string {
   }
 }
 
-JWT_SECRET = loadJwtSecret();
+const JWT_SECRET: string = loadJwtSecret();
+
 if (!JWT_SECRET) {
   console.error(`FATAL: JWT secret not found at /run/secrets/jwt_secret or in JWT_SECRET env var.`);
   process.exit(1);
