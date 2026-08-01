@@ -120,6 +120,7 @@ function getBrowser() {
   return browserPromise;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- TODO(gap-00)
 function routeHash(name: string): string {
   const routes = gatewayService.list();
   return crypto.createHash('sha1').update(JSON.stringify(routes)).digest('hex').slice(0, 12);

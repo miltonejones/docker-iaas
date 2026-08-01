@@ -548,7 +548,7 @@ async function git(cwd: string, args: string[]): Promise<{ stdout: string; stder
     return await execFileAsync('git', ['-c', 'safe.directory=*', ...args], { cwd, timeout: GIT_TIMEOUT_MS, maxBuffer: 32 * 1024 * 1024 });
   } catch (err) {
     const e = err as { stdout?: string; stderr?: string; message: string };
-    throw new Error(`git ${args[0]} failed: ${(e.stderr || e.stdout || e.message).trim().slice(0, 2000)}`);
+    throw new Error(`git ${args[0]} failed: ${(e.stderr || e.stdout || e.message).trim().slice(0, 2000)}`, { cause: err });
   }
 }
 

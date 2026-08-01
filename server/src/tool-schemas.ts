@@ -413,7 +413,7 @@ const GATEWAY_TOOLS: ToolSchema[] = [
     description: 'Create a DNS CNAME record in a Route 53 hosted zone.',
     properties: {
       zoneId: { type: 'string', description: 'Route 53 hosted zone ID' },
-      name: { type: 'string', description: 'Record name (e.g. \"www.example.com\")' },
+      name: { type: 'string', description: 'Record name (e.g. "www.example.com")' },
     },
     required: ['zoneId', 'name'],
   },

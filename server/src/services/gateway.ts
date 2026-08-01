@@ -138,6 +138,7 @@ export function updateRoute(id: string, userId: string | undefined, input: Updat
   return toJson(row);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- TODO(gap-00)
 export function deleteGatewayRoute(id: string, userId?: string) {
   const deleted = deleteRouteRow(id);
   if (!deleted) throw new HttpError(404, 'Route not found.');

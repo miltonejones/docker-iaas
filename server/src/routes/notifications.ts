@@ -12,6 +12,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const NOTIFY_LOG = path.join(__dirname, '..', '..', '..', 'scripts', 'issue-logs', 'notifications.jsonl');
 
 const POLL_MS = 2000;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- TODO(gap-00)
 const MAX_HISTORY = 200;
 
 /** Return the most recent notifications (newest last). */

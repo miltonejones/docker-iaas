@@ -1,12 +1,9 @@
 import type { Request, Response } from 'express';
-import express from 'express';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { docker, isSelfContainerized, remoteDockerHost } from './docker.js';
 import { getS3Client } from './minio.js';
 import {
-  getRoutesByName,
-  recordGatewayTrafficEvent,
   type RouteRow,
 } from './db/gateway.js';
 import { getFunction, getFunctionEnv } from './db.js';

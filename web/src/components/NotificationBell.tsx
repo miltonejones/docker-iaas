@@ -167,7 +167,7 @@ export function NotificationBell({ onDeployNotification, onStreamReconnect }: No
       },
     );
     return unsubscribe;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [notify, onStreamReconnect]);
 
   const requestPermission = useCallback(async () => {

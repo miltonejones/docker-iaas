@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { getAuthUser, requireAuth } from '../auth.js';
+import { getAuthUser } from '../auth.js';
 import { HttpError } from '../services/HttpError.js';
 import * as projectService from '../services/projects.js';
 
