@@ -166,6 +166,7 @@ export function initDb(dbPath?: string): void {
       voice TEXT NOT NULL DEFAULT 'alloy',
       icon TEXT,
       is_default INTEGER NOT NULL DEFAULT 0,
+      prompt_mode TEXT NOT NULL DEFAULT 'append',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id)
@@ -173,6 +174,11 @@ export function initDb(dbPath?: string): void {
   `);
   // Migration: add icon column for assistant emoji.
   try { db.exec("ALTER TABLE user_assistants ADD COLUMN icon TEXT"); } catch { /* ok */ }
+  // Migration: add prompt_mode column and backfill existing assistants.
+  try {
+    db.exec("ALTER TABLE user_assistants ADD COLUMN prompt_mode TEXT NOT NULL DEFAULT 'append'");
+    db.exec("UPDATE user_assistants SET prompt_mode = 'replace' WHERE system_prompt != ''");
+  } catch { /* ok */ }
 
   initAssistantSessionTables(db);
   initDatabaseOpsTables(db);
@@ -633,6 +639,7 @@ export interface UserAssistantRow {
   voice: string;
   icon: string | null;
   is_default: number;
+  prompt_mode: string;
   created_at: string;
   updated_at: string;
 }
@@ -658,11 +665,12 @@ export function createUserAssistant(input: {
   voice?: string;
   icon?: string;
   isDefault?: boolean;
+  promptMode?: string;
 }): UserAssistantRow {
   const now = new Date().toISOString();
   db.prepare(`
-    INSERT INTO user_assistants (id, user_id, name, description, system_prompt, tool_list, voice, icon, is_default, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO user_assistants (id, user_id, name, description, system_prompt, tool_list, voice, icon, is_default, prompt_mode, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     `ast-${crypto.randomBytes(8).toString('hex')}`,
     input.userId,
@@ -673,6 +681,7 @@ export function createUserAssistant(input: {
     input.voice || 'alloy',
     input.icon || null,
     input.isDefault ? 1 : 0,
+    input.promptMode || 'append',
     now,
     now,
   );
@@ -692,6 +701,7 @@ export function updateUserAssistant(
     voice?: string;
     icon?: string | null;
     isDefault?: boolean;
+    promptMode?: string;
   },
 ): UserAssistantRow | undefined {
   const existing = getUserAssistant(id, userId);
@@ -704,13 +714,14 @@ export function updateUserAssistant(
   const voice = fields.voice ?? existing.voice;
   const icon = fields.icon !== undefined ? fields.icon : existing.icon;
   const isDefault = fields.isDefault !== undefined ? (fields.isDefault ? 1 : 0) : existing.is_default;
+  const promptMode = fields.promptMode ?? existing.prompt_mode;
   const now = new Date().toISOString();
 
   db.prepare(`
     UPDATE user_assistants
-    SET name = ?, description = ?, system_prompt = ?, tool_list = ?, voice = ?, icon = ?, is_default = ?, updated_at = ?
+    SET name = ?, description = ?, system_prompt = ?, tool_list = ?, voice = ?, icon = ?, is_default = ?, prompt_mode = ?, updated_at = ?
     WHERE id = ? AND user_id = ?
-  `).run(name, description, systemPrompt, toolList, voice, icon, isDefault, now, id, userId);
+  `).run(name, description, systemPrompt, toolList, voice, icon, isDefault, promptMode, now, id, userId);
 
   return getUserAssistant(id, userId);
 }

@@ -866,6 +866,11 @@ export const api = {
     ).then((r) => json<{ ok: true }>(r)),
 
   // User-defined assistants
+  assistantMeta: () =>
+    fetch('/api/assistants/meta').then((r) =>
+      json<{ tools: Array<{ name: string; description: string; category: string; readOnly: boolean }>; alwaysIncluded: string[] }>(r),
+    ),
+
   assistantList: () =>
     fetch('/api/assistants').then((r) => json<UserAssistant[]>(r)),
 

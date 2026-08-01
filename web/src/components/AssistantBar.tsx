@@ -818,13 +818,18 @@ export function AssistantBar({
   useEffect(() => { api.assistantList().then(setAssistants).catch(() => {}); }, []);
 
   function resolveAssistant(text: string): { text: string; assistantId?: string } {
-    const match = text.match(/^@(\S+)/);
-    if (match) {
-      const name = match[1].toLowerCase();
-      const found = assistants.find((a) => a.name.toLowerCase() === name);
-      if (found) {
-        setActiveAssistantId(found.id);
-        return { text: text.slice(match[0].length).trim(), assistantId: found.id };
+    if (!text.startsWith('@')) return { text };
+    // Longest-match-first, case-insensitive, supports multi-word names.
+    const candidates = [...assistants]
+      .sort((a, b) => b.name.length - a.name.length);
+    for (const a of candidates) {
+      const prefix = `@${a.name}`;
+      if (text.toLowerCase().startsWith(prefix.toLowerCase())) {
+        const after = text.slice(prefix.length);
+        if (after === '' || after.startsWith(' ')) {
+          setActiveAssistantId(a.id);
+          return { text: after.trim(), assistantId: a.id };
+        }
       }
     }
     return { text };
