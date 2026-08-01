@@ -519,4 +519,14 @@ Notes:
 - Adding auth, volume management UI, and container stats (CPU/mem) streaming
   are natural next steps.
 
+### Custom assistant tool-list trust model
+
+A custom assistant's tool list constrains which tools are **offered** to the
+model, but mutating tools are executed by the browser with the signed-in
+user's full API authority after per-call confirmation. The tool list is a UX
+shaping mechanism, not a security boundary — the security boundary is the
+user's own JWT (and their role, once RBAC lands). Server-side per-assistant
+tool enforcement (where the server itself executes mutating tools on the
+user's behalf) is possible future work.
+
 The Ask Dockyard assistant runs on DeepSeek.

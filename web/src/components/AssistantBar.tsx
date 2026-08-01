@@ -859,7 +859,13 @@ export function AssistantBar({
       await consumeTurnStream(stream, effectiveAssistantId);
     } catch (err) {
       if ((err as Error).name === 'AbortError') return;
-      setError((err as Error).message);
+      const msg = (err as Error).message;
+      setError(msg);
+      // 410 Gone means the session's assistant was deleted. Reset so the next
+      // turn uses the default assistant instead of silently failing again.
+      if (msg.includes('no longer exists')) {
+        setActiveAssistantId(null);
+      }
     } finally {
       setBusy(false);
     }

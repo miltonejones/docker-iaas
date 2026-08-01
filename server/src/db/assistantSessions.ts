@@ -94,9 +94,17 @@ export function createAssistantSession(id: string, name: string, state: string, 
 export function updateAssistantSession(
   id: string,
   fields: { name?: string; state?: string; assistantId?: string | null },
+  /** Optional only for internal, already-authorized callers (e.g. SessionRunner.persistState);
+   *  HTTP handlers must always pass the caller's userId. */
+  userId?: string,
 ): AssistantSessionRow | undefined {
+  // Fetch the raw row (no userId filter) so legacy NULL-owner rows are reachable.
   const existing = getAssistantSession(id);
   if (!existing) return undefined;
+
+  // Ownership policy: NULL-owner = legacy (anyone can claim); non-null = only owner.
+  const rowUserId = (existing as unknown as { user_id: string | null }).user_id;
+  if (userId && rowUserId !== null && rowUserId !== userId) return undefined;
 
   const updates: string[] = [];
   const params: (string | null)[] = [];
@@ -114,6 +122,12 @@ export function updateAssistantSession(
     params.push(fields.assistantId);
   }
 
+  // Legacy NULL-owner sessions: on first authenticated PUT, claim ownership.
+  if (userId && rowUserId === null) {
+    updates.push('user_id = ?');
+    params.push(userId);
+  }
+
   if (updates.length === 0) return existing;
 
   updates.push('updated_at = ?');
@@ -124,7 +138,19 @@ export function updateAssistantSession(
   return getAssistantSession(id)!;
 }
 
-export function deleteAssistantSession(id: string): boolean {
+export function deleteAssistantSession(
+  id: string,
+  /** Optional only for internal callers; HTTP handlers must always pass the caller's userId. */
+  userId?: string,
+): boolean {
+  // Fetch the raw row (no userId filter) so legacy NULL-owner rows are reachable.
+  const existing = getAssistantSession(id);
+  if (!existing) return false;
+
+  // Ownership policy: NULL-owner = legacy (anyone can delete); non-null = only owner.
+  const rowUserId = (existing as unknown as { user_id: string | null }).user_id;
+  if (userId && rowUserId !== null && rowUserId !== userId) return false;
+
   const result = db.prepare('DELETE FROM assistant_sessions WHERE id = ?').run(id);
   return result.changes > 0;
 }
