@@ -20,13 +20,5 @@
     "start:relay": "npm --workspace relay run start",
     "typecheck": "npm --workspace server run typecheck && npm --workspace web run typecheck && npm --workspace relay run typecheck",
     "test": "npm --workspace server run test && npm --workspace web run test && npm --workspace relay run test && node --test scripts/*.test.mjs"
-  },
-  "dependencies": {
-    "bcryptjs": "^3.0.3",
-    "jsonwebtoken": "^9.0.3"
-  },
-  "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
-    "@types/jsonwebtoken": "^9.0.10"
   }
 }
