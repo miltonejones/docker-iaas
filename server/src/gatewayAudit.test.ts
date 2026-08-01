@@ -52,21 +52,26 @@ function jsonRequest(
 
 describe('gateway audit logging', () => {
   let initDb: typeof import('./db.js').initDb;
+  let createUser: typeof import('./db.js').createUser;
   let createRoute: typeof import('./db/gateway.js').createRoute;
   let listAuditLogs: typeof import('./db/audit.js').listAuditLogs;
   let gatewayRouter: import('./routes/gateway.js').gatewayRouter;
   let expressModule: typeof express;
+  let testUserId: string;
 
   before(async () => {
     expressModule = (await import('express')).default;
     const db = await import('./db.js');
     initDb = db.initDb;
+    createUser = db.createUser;
     const gwDb = await import('./db/gateway.js');
     createRoute = gwDb.createRoute;
     listAuditLogs = (await import('./db/audit.js')).listAuditLogs;
     const gw = await import('./routes/gateway.js');
     gatewayRouter = gw.gatewayRouter;
     initDb(':memory:');
+    const user = createUser('test@test.com', 'hash');
+    testUserId = user.id;
   });
 
   it('route create emits audit event', async () => {
@@ -74,7 +79,7 @@ describe('gateway audit logging', () => {
     app.use(expressModule.json());
     // Mock authUser so requireRole('operator') in the gateway router passes.
     app.use((req: any, _res: any, next: any) => {
-      (req as any).authUser = { userId: 'test-user', email: 'test@test.com', role: 'admin' };
+      (req as any).authUser = { userId: testUserId, email: 'test@test.com', role: 'admin' };
       next();
     });
     app.use('/api/gateway', gatewayRouter);
@@ -112,7 +117,7 @@ describe('gateway audit logging', () => {
     app.use(expressModule.json());
     // Mock authUser so requireRole('operator') in the gateway router passes.
     app.use((req: any, _res: any, next: any) => {
-      (req as any).authUser = { userId: 'test-user', email: 'test@test.com', role: 'admin' };
+      (req as any).authUser = { userId: testUserId, email: 'test@test.com', role: 'admin' };
       next();
     });
     app.use('/api/gateway', gatewayRouter);
