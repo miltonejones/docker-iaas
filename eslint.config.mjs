@@ -36,6 +36,17 @@ export default tseslint.config(
       'scripts/issue-logs/**',
       'web/dist/**',
       'testing/**',
+      // Protected files — managed by the consumer and CI; never lint.
+      'scripts/issue-consumer.mjs',
+      'scripts/issue-consumer.test.mjs',
+      'scripts/notify-watcher.mjs',
+      'Dockerfile.consumer',
+      'docker-compose.yml',
+      'docker-compose.ci.yml',
+      'Caddyfile',
+      '.github/workflows/deploy.yml',
+      'scripts/protected-files.json',
+      'scripts/smoke-test-hardening.sh',
     ],
   },
   {

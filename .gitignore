@@ -9,6 +9,7 @@ data/
 .DS_Store
 scripts/issue-logs/*.md
 scripts/issue-logs/*.jsonl
+scripts/issue-logs/*.json
 !scripts/issue-logs/.gitkeep
 testing/
 sites.caddy

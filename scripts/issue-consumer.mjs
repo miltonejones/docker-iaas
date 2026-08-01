@@ -80,7 +80,6 @@ function teardownGitAuth(state) {
   if (state?.savedToken === undefined) delete process.env.GITHUB_TOKEN;
   else process.env.GITHUB_TOKEN = state.savedToken;
   if (state?.file) {
-// eslint-disable-next-line no-empty -- TODO(gap-00)
     try { fs.unlinkSync(state.file); } catch {}
   }
 }
@@ -296,7 +295,6 @@ function writeStatus(state, currentIssue = null, lastError = null) {
     claude: cachedClaude,
     git: cachedGit,
   };
-// eslint-disable-next-line no-empty -- TODO(gap-00)
   try { fs.writeFileSync(STATUS_FILE, JSON.stringify(status), "utf8"); } catch {}
 }
 
@@ -936,7 +934,6 @@ function formatPrompt(issue) {
  *  so it doesn't inherit the "implement a fix" framing.  The planner is
  *  read-only: analyse, output JSON.  The JSON contract is deliberately small
  *  (no implementerPrompt — the consumer builds that from the plan). */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- TODO(gap-00)
 function formatPlannerPrompt(issue) {
   const { id, summary, category, details, createdAt } = issue;
   const detailBlock =
@@ -1111,7 +1108,6 @@ async function pushToGitHub(issue, githubToken) {
       execSync("git pull --rebase origin main", { cwd: CODEBASE_PATH, timeout: 30_000 });
     } catch (err) {
       log(`Rebase failed (will push un-rebased): ${err.message}`);
-// eslint-disable-next-line no-empty -- TODO(gap-00)
       try { execSync("git rebase --abort", { cwd: CODEBASE_PATH, timeout: 5_000 }); } catch {}
     }
 
@@ -1123,7 +1119,6 @@ async function pushToGitHub(issue, githubToken) {
     try {
       const logFile = logFilename(issue.id);
       fs.appendFileSync(logFile, `\ncommit: ${sha}\n`, "utf8");
-// eslint-disable-next-line no-empty -- TODO(gap-00)
     } catch {}
 
     // Open a PR via the GitHub API so CI verification runs and auto-merge
@@ -1318,7 +1313,6 @@ async function consumeOne() {
   // fall back to \"default\" and record the substitution.
   let engineName = issue.engine || "default";
   if (!ENGINES[engineName]) {
-// eslint-disable-next-line no-useless-escape -- TODO(gap-00)
     log(`Unknown engine "${engineName}" — falling back to \"default\".`);
     engineName = "default";
   }
