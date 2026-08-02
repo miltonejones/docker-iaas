@@ -5,11 +5,11 @@ describe('custom assistant tests', () => {
   it('SYSTEM has correct blank-line separator between persona and core', async () => {
     const { SYSTEM } = await import('./routes/assistant.js');
     assert.ok(
-      SYSTEM.includes('resolve the name to an ID.\n\nA knowledge base bucket'),
+      SYSTEM.includes('rather than doing it unprompted.\n\nA knowledge base bucket'),
       'SYSTEM must have double-newline separating persona from core',
     );
     assert.ok(
-      !SYSTEM.includes('to an ID.A knowledge'),
+      !SYSTEM.includes('doing it unprompted.A knowledge'),
       'SYSTEM must NOT fuse persona into core without separator',
     );
   });
@@ -22,7 +22,7 @@ describe('custom assistant tests', () => {
       'Append mode starts with persona',
     );
     assert.ok(
-      composed.includes('resolve the name to an ID.\n\nA knowledge base bucket'),
+      composed.includes('rather than doing it unprompted.\n\nA knowledge base bucket'),
       'Append mode preserves blank-line between persona and core',
     );
   });

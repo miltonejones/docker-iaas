@@ -128,6 +128,12 @@ const ASSISTANT_DESCRIPTIONS: Record<string, string> = {
     "Update a project's name or description. Requires the project id. The user must confirm before updating.",
   delete_project:
     "Delete a project. Resources linked to the project are NOT deleted — they just have their project association cleared. The user must confirm before deletion.",
+  get_project_manifest:
+    "Get the captured manifest for a project — the JSON snapshot of resources (containers, routes, functions, buckets, databases) taken the last time capture_project_manifest ran. Resources listed in ANY project's manifest cannot be deleted, and routes in one cannot have their target port changed, by non-admin users — check this before deleting or reconfiguring a resource that might belong to a project, and mention the protection to the user if it applies. Read-only, runs automatically. Returns an error if the project has no captured manifest yet.",
+  get_manifest_drift:
+    "Compare a project's captured manifest against live resource state. Returns { synced, missing, changed, orphaned } — missing entries no longer exist, changed entries have diverged (e.g. env vars or target changed since capture), orphaned entries are linked to the project but weren't captured. Use this to tell the user when a project's manifest is stale and suggest re-running capture_project_manifest. Read-only, runs automatically. Returns an error if the project has no captured manifest yet.",
+  capture_project_manifest:
+    "Snapshot every resource currently linked to a project (containers, routes, functions, buckets, databases) into that project's manifest. Resources in the manifest become protected: non-admin users can no longer delete them or change a route's target port until the resource is unlinked from the project. Re-running this replaces the previous snapshot. The user confirms before capture runs.",
   system_ping: "Ping the Docker daemon to verify it's reachable.",
   list_volumes: "List Docker volumes with driver, mountpoint, size, and reference count.",
   list_database_connections: "List saved database connections (MySQL or MongoDB).",

@@ -123,7 +123,9 @@ function getAssistantClient(userId: string): AssistantClient | null {
 
 export const SYSTEM_PERSONA = `You are the Dockyard.ai assistant. You translate a user's natural-language request into tool calls that manage Lambda functions, Gateway routes, containers, Docker images, storage buckets, projects, and saved MySQL/MongoDB connections.
 
-Projects organize resources — containers, functions, gateway routes, and buckets can all be assigned to a project. Use list_projects to see existing projects and their resource counts. When creating a resource, pass projectId to assign it. When listing resources, pass projectId to filter by project. If the user mentions a project by name, call list_projects first to resolve the name to an ID.`;
+Projects organize resources — containers, functions, gateway routes, and buckets can all be assigned to a project. Use list_projects to see existing projects and their resource counts. When creating a resource, pass projectId to assign it. When listing resources, pass projectId to filter by project. If the user mentions a project by name, call list_projects first to resolve the name to an ID.
+
+Some projects have a captured manifest — a snapshot taken by capture_project_manifest of the resources linked to them at that moment. Resources in a manifest are hard-blocked from deletion (and, for routes, from a target-port change) for non-admin users; you bypass this as admin, so nothing will stop you technically, but you should still be careful. Before deleting or reconfiguring a resource that might belong to a project, call get_project_manifest for that project and check whether the resource is listed — if it is, tell the user it's project-managed before proceeding rather than silently acting. If a project's manifest looks stale (call get_manifest_drift to check), suggest re-running capture_project_manifest rather than doing it unprompted.`;
 
 export const SYSTEM_CORE = `A knowledge base bucket named \`dockyard-knowledge\` holds per-resource markdown notes keyed as \`{type}/{id}.md\` (e.g. \`container/ct-abc123.md\`, \`fn/fn-xyz789.md\`). Before operating on any resource, check whether a note exists at the expected key by calling read_bucket_object. If one exists, read it and factor its contents — especially deploy methodology, gotchas, dependencies, and future plans — into every decision you make about that resource. After making meaningful changes to a resource, offer to update its note. If the dockyard-knowledge bucket exists, protect it with update_bucket so it can't be accidentally deleted. When creating a bucket you expect will hold important data, set protected: true on create_bucket or call update_bucket afterwards.
 
@@ -214,6 +216,8 @@ export const READ_ONLY_TOOLS = new Set([
   "list_used_ports",
   "list_host_build_presets",
   "list_projects",
+  "get_project_manifest",
+  "get_manifest_drift",
   "system_ping",
   "list_volumes",
   "list_dns_zones",
@@ -317,6 +321,20 @@ async function executeReadOnlyTool(
       return await systemService.usedPorts();
     case "list_projects":
       return projectService.list(userId);
+    case "get_project_manifest": {
+      try {
+        return projectService.getManifest(String(input.id ?? ""), userId);
+      } catch (err) {
+        return { error: err instanceof HttpError ? err.message : "Failed to read manifest." };
+      }
+    }
+    case "get_manifest_drift": {
+      try {
+        return await projectService.getManifestDrift(String(input.id ?? ""), userId);
+      } catch (err) {
+        return { error: err instanceof HttpError ? err.message : "Failed to compute drift." };
+      }
+    }
     case "system_ping":
       return systemService.ping();
     case "list_volumes":

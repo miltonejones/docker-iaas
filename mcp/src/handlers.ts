@@ -344,6 +344,15 @@ export async function handleCallTool(request: CallToolRequest) {
         projectService.remove(args.id as string, userId);
         result = { ok: true };
         break;
+      case 'get_project_manifest':
+        result = projectService.getManifest(args.id as string, userId);
+        break;
+      case 'get_manifest_drift':
+        result = await projectService.getManifestDrift(args.id as string, userId);
+        break;
+      case 'capture_project_manifest':
+        result = await projectService.captureManifest(args.id as string, userId || '');
+        break;
 
       // ── Volumes ─────────────────────────────────────────────
       case 'list_volumes':

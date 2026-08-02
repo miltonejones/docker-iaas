@@ -781,6 +781,24 @@ const PROJECT_TOOLS: ToolSchema[] = [
     properties: { id: { type: 'string', description: 'Project ID' } },
     required: ['id'],
   },
+  {
+    name: 'get_project_manifest',
+    description: "Get a project's captured manifest.",
+    properties: { id: { type: 'string', description: 'Project ID' } },
+    required: ['id'],
+  },
+  {
+    name: 'get_manifest_drift',
+    description: "Compare a project's captured manifest against live resource state.",
+    properties: { id: { type: 'string', description: 'Project ID' } },
+    required: ['id'],
+  },
+  {
+    name: 'capture_project_manifest',
+    description: "Capture a snapshot of a project's currently linked resources.",
+    properties: { id: { type: 'string', description: 'Project ID' } },
+    required: ['id'],
+  },
 ];
 
 // ── Volumes (1) ─────────────────────────────────────────────────
