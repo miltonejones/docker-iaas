@@ -482,7 +482,7 @@ export function assertNotProtected(resourceType: ManifestSection, resourceId: st
 export function checkProtectedWarning(resourceType: ManifestSection, resourceId: string): string | null {
   const check = isResourceProtected(resourceType, resourceId);
   if (!check.protected) return null;
-  return `${RESOURCE_LABEL[resourceType]} was managed by project "${check.projectName}". It has been deleted but should be unlinked from the project or re-captured.`;
+  return `${RESOURCE_LABEL[resourceType]} is managed by project "${check.projectName}". Consider unlinking it from the project or re-capturing the manifest.`;
 }
 
 /** Remove a resource's entry from a project's manifest (called on unlink so

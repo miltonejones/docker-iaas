@@ -19,7 +19,7 @@ describe('projects service — manifest & protection (in-memory)', () => {
   let functionId: string;
   let routeId: string;
 
-  before(() => {
+  before(async () => {
     initDb(':memory:');
     const user = createUser('owner@dockyard.test', 'hash');
     userId = user.id;
@@ -29,6 +29,7 @@ describe('projects service — manifest & protection (in-memory)', () => {
     functionId = fn.id;
     const route = createRouteRow('rt-test-1', 'my-route', 'lambda', functionId, null, 'GET', '/hello', userId, null, projectId);
     routeId = route.id;
+    await projectService.captureManifest(projectId, userId);
   });
 
   it('captureManifest snapshots linked functions and routes', async () => {
