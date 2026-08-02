@@ -19,7 +19,7 @@ describe('projects service — manifest & protection (in-memory)', () => {
   let functionId: string;
   let routeId: string;
 
-  before(() => {
+  before(async () => {
     initDb(':memory:');
     const user = createUser('owner@dockyard.test', 'hash');
     userId = user.id;
@@ -29,6 +29,7 @@ describe('projects service — manifest & protection (in-memory)', () => {
     functionId = fn.id;
     const route = createRouteRow('rt-test-1', 'my-route', 'lambda', functionId, null, 'GET', '/hello', userId, null, projectId);
     routeId = route.id;
+    await projectService.captureManifest(projectId, userId);
   });
 
   it('captureManifest snapshots linked functions and routes', async () => {
@@ -85,6 +86,16 @@ describe('projects service — manifest & protection (in-memory)', () => {
       (err: unknown) => err instanceof HttpError && err.status === 409 && /Test Project/.test(err.message),
     );
     assert.doesNotThrow(() => projectService.assertNotProtected('functions', functionId, 'admin'));
+  });
+
+  it('checkProtectedWarning returns warning for a manifested resource', () => {
+    const warning = projectService.checkProtectedWarning('functions', functionId);
+    assert.ok(warning);
+    assert.ok(warning!.includes('Test Project'));
+  });
+
+  it('checkProtectedWarning returns null for an unprotected resource', () => {
+    assert.equal(projectService.checkProtectedWarning('functions', 'fn-does-not-exist'), null);
   });
 
   it('getManifestDrift reports synced when nothing has changed', async () => {

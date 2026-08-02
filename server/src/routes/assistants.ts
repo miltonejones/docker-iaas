@@ -20,7 +20,7 @@ export const TOOL_CATEGORIES: Record<string, string[]> = {
   'Buckets': ['list_buckets', 'create_bucket', 'delete_bucket', 'update_bucket', 'list_bucket_objects', 'read_bucket_object', 'write_bucket_object', 'write_bucket_objects', 'replace_in_bucket_object', 'delete_bucket_object', 'copy_host_file_to_bucket'],
   'Images': ['list_images', 'delete_image', 'prune_images', 'prune_build_cache'],
   'Database': ['list_database_connections', 'get_database_connection', 'get_database_operations_overview', 'inspect_database_schema', 'run_database_read_query', 'test_database_connection', 'create_database_connection', 'update_database_connection', 'delete_database_connection', 'execute_database_mutation', 'execute_database_migration', 'execute_database_access_grant', 'create_database_backup', 'restore_database_backup', 'list_database_jobs', 'get_database_job'],
-  'Projects': ['list_projects', 'create_project', 'update_project', 'delete_project'],
+  'Projects': ['list_projects', 'create_project', 'update_project', 'delete_project', 'get_project_manifest', 'get_manifest_drift', 'capture_project_manifest'],
   'GitHub': ['get_github_workflow_status', 'list_github_repo_files', 'read_github_file', 'pull_github_repo_to_bucket', 'pull_github_repo_to_container', 'commit_and_push_github_files'],
   'Host & System': ['list_presets', 'list_used_ports', 'list_images', 'system_ping', 'list_volumes', 'list_host_directory', 'read_host_file', 'list_host_build_presets', 'run_host_build_preset', 'copy_host_file_to_container'],
   'Issues': ['list_issues', 'get_issue', 'report_issue', 'update_issue', 'delete_issue', 'clear_issues'],

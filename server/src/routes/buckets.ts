@@ -3,7 +3,7 @@ import express from 'express';
 import { getAuthUser, requireRole } from '../auth.js';
 import { HttpError } from '../services/HttpError.js';
 import * as bucketService from '../services/buckets.js';
-import { assertNotProtected } from '../services/projects.js';
+import { assertNotProtected, checkProtectedWarning } from '../services/projects.js';
 
 export const bucketsRouter = Router();
 
@@ -49,9 +49,10 @@ bucketsRouter.post('/', requireRole('operator'), express.json(), async (req: Req
 bucketsRouter.delete('/:name', requireRole('operator'), async (req: Request, res: Response) => {
   try {
     assertNotProtected('buckets', req.params.name, req.authUser?.role);
+    const warning = checkProtectedWarning('buckets', req.params.name);
     const userId = getAuthUser(req)?.userId;
     await bucketService.remove(req.params.name, userId);
-    res.json({ ok: true });
+    res.json({ ok: true, ...(warning ? { warning } : {}) });
   } catch (err) {
     sendError(res, err);
   }

@@ -78,6 +78,7 @@ const ACTION_LABEL: Record<string, string> = {
   create_project: 'Create project',
   update_project: 'Update project',
   delete_project: 'Delete project',
+  capture_project_manifest: 'Capture project manifest',
 };
 
 const LOOKUP_LABEL: Record<string, string> = {
@@ -1366,10 +1367,15 @@ export function AssistantBar({
       case 'delete_project':
         return api.projectDelete(String(input.id ?? ''));
 
+      case 'capture_project_manifest':
+        return api.projectCaptureManifest(String(input.id ?? ''));
+
       // Read-only tools — auto-resolved server-side, never reach client.
       // Added as defense-in-depth in case the server sends them as pending.
       case 'get_issue':
       case 'list_issues':
+      case 'get_project_manifest':
+      case 'get_manifest_drift':
         return { ok: true, content: { info: `Auto-resolved server-side` } };
 
       default:
@@ -1734,6 +1740,9 @@ export function AssistantBar({
                         <span className="assistant-log__action-label"><AppIcon name="check" /> {entry.text.includes('\n') ? entry.text.split('\n')[0] : entry.text}</span>
                         {entry.text.includes('\n') && (
                           <pre className="assistant-log__action-output">{entry.text}</pre>
+                        )}
+                        {entry.result != null && typeof (entry.result as Record<string, unknown>).warning === 'string' && (
+                          <div className="assistant-log__action-warning"><AppIcon name="warning" /> {(entry.result as Record<string, unknown>).warning as string}</div>
                         )}
                         {expandedActions.has(i) && entry.result !== undefined && (
                           <pre className="assistant-log__action-result">

@@ -475,6 +475,16 @@ export function assertNotProtected(resourceType: ManifestSection, resourceId: st
   }
 }
 
+/** Returns a warning string if the resource is referenced by any project
+ *  manifest (regardless of caller role).  Call this *after* assertNotProtected
+ *  so non-admin callers are already blocked and only admins reach this path.
+ *  Returns null if the resource is not protected. */
+export function checkProtectedWarning(resourceType: ManifestSection, resourceId: string): string | null {
+  const check = isResourceProtected(resourceType, resourceId);
+  if (!check.protected) return null;
+  return `${RESOURCE_LABEL[resourceType]} is managed by project "${check.projectName}". Consider unlinking it from the project or re-capturing the manifest.`;
+}
+
 /** Remove a resource's entry from a project's manifest (called on unlink so
  *  the manifest doesn't keep referencing resources that left the project). */
 function stripFromManifest(projectId: string, resourceTable: string, resourceId: string): void {
