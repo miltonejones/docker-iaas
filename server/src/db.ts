@@ -97,6 +97,9 @@ export function initDb(dbPath?: string): void {
     )
   `);
 
+  // Migration: add manifest column for captured resource snapshots.
+  try { db.exec('ALTER TABLE projects ADD COLUMN manifest TEXT'); } catch { /* ok */ }
+
   // Migration: add user_id columns to existing resource tables.
   try { db.exec('ALTER TABLE functions ADD COLUMN user_id TEXT REFERENCES users(id)'); } catch { /* ok */ }
 
@@ -531,6 +534,7 @@ export interface ProjectRow {
   user_id: string;
   created_at: string;
   updated_at: string;
+  manifest: string | null;
 }
 
 export function listProjects(userId?: string): ProjectRow[] {
@@ -573,6 +577,17 @@ export function deleteProject(id: string): boolean {
   // FK constraints (ON DELETE SET NULL) handle unlinking — no manual UPDATEs needed.
   const result = db.prepare('DELETE FROM projects WHERE id = ?').run(id);
   return result.changes > 0;
+}
+
+export function updateProjectManifest(id: string, manifest: string | null): void {
+  db.prepare('UPDATE projects SET manifest = ?, updated_at = ? WHERE id = ?').run(
+    manifest, new Date().toISOString(), id,
+  );
+}
+
+export function listProjectsWithManifest(): Array<{ id: string; name: string; manifest: string }> {
+  return db.prepare('SELECT id, name, manifest FROM projects WHERE manifest IS NOT NULL').all() as
+    Array<{ id: string; name: string; manifest: string }>;
 }
 
 /** Set the project for a resource.  Verifies the resource belongs to the

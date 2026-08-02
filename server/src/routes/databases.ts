@@ -2,6 +2,7 @@ import { Router, type Request, type Response, type NextFunction } from 'express'
 import { getAuthUser, requireRole } from '../auth.js';
 import { HttpError } from '../services/HttpError.js';
 import * as databaseService from '../services/databases.js';
+import { assertNotProtected } from '../services/projects.js';
 
 export const databasesRouter = Router();
 
@@ -81,6 +82,9 @@ databasesRouter.put('/connections/:id', requireRole('admin'), (req: Request, res
 
 databasesRouter.delete('/connections/:id', requireRole('admin'), (req: Request, res: Response) => {
   try {
+    // requireRole('admin') already lets admins through, so this is a no-op today —
+    // kept for consistency in case this endpoint's role requirement ever loosens.
+    assertNotProtected('databases', req.params.id, req.authUser?.role);
     databaseService.deleteConnection(req.params.id);
     res.json({ ok: true });
   } catch (err) {

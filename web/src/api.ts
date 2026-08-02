@@ -24,8 +24,10 @@ import type {
   LambdaFunction,
   LambdaResult,
   LambdaRuntime,
+  ManifestDrift,
   Preset,
   ProjectDetail,
+  ProjectManifest,
   UsageSnapshot,
   UserAssistant,
 } from './types';
@@ -864,6 +866,15 @@ export const api = {
       `/api/projects/${encodeURIComponent(projectId)}/resources?resourceTable=${encodeURIComponent(resourceTable)}&resourceId=${encodeURIComponent(resourceId)}`,
       { method: 'DELETE' },
     ).then((r) => json<{ ok: true }>(r)),
+
+  projectGetManifest: (id: string) =>
+    fetch(`/api/projects/${encodeURIComponent(id)}/manifest`).then((r) => json<ProjectManifest>(r)),
+
+  projectCaptureManifest: (id: string) =>
+    fetch(`/api/projects/${encodeURIComponent(id)}/manifest`, { method: 'PUT' }).then((r) => json<ProjectManifest>(r)),
+
+  projectGetManifestDrift: (id: string) =>
+    fetch(`/api/projects/${encodeURIComponent(id)}/manifest/drift`).then((r) => json<ManifestDrift>(r)),
 
   // User-defined assistants
   assistantMeta: () =>

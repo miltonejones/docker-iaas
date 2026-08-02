@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { getAuthUser, requireRole } from '../auth.js';
 import { HttpError } from '../services/HttpError.js';
 import * as gatewayService from '../services/gateway.js';
+import { assertNotProtected } from '../services/projects.js';
 
 // Re-export constants for backward compat.
 export { NAME_RE, TARGET_TYPES, VALID_METHODS } from '../services/gateway.js';
@@ -38,6 +39,9 @@ gatewayRouter.post('/', requireRole('operator'), (req: Request, res: Response) =
 
 gatewayRouter.put('/:id', requireRole('operator'), (req: Request, res: Response) => {
   try {
+    if (req.body?.targetPort != null) {
+      assertNotProtected('routes', req.params.id, req.authUser?.role);
+    }
     const userId = getAuthUser(req)?.userId;
     res.json(gatewayService.updateRoute(req.params.id, userId, req.body));
   } catch (err) {
@@ -47,6 +51,7 @@ gatewayRouter.put('/:id', requireRole('operator'), (req: Request, res: Response)
 
 gatewayRouter.delete('/:id', requireRole('operator'), (req: Request, res: Response) => {
   try {
+    assertNotProtected('routes', req.params.id, req.authUser?.role);
     const userId = getAuthUser(req)?.userId;
     gatewayService.deleteGatewayRoute(req.params.id, userId);
     res.json({ ok: true });
