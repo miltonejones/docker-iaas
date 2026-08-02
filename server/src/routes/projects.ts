@@ -89,3 +89,30 @@ projectsRouter.delete('/:id/resources', requireRole('operator'), async (req: Req
     sendError(res, err);
   }
 });
+
+projectsRouter.put('/:id/manifest', requireRole('operator'), async (req: Request, res: Response) => {
+  try {
+    const userId = getAuthUser(req)?.userId;
+    res.json(await projectService.captureManifest(req.params.id, userId));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+projectsRouter.get('/:id/manifest', (req: Request, res: Response) => {
+  try {
+    const userId = getAuthUser(req)?.userId;
+    res.json(projectService.getManifest(req.params.id, userId));
+  } catch (err) {
+    sendError(res, err);
+  }
+});
+
+projectsRouter.get('/:id/manifest/drift', async (req: Request, res: Response) => {
+  try {
+    const userId = getAuthUser(req)?.userId;
+    res.json(await projectService.getManifestDrift(req.params.id, userId));
+  } catch (err) {
+    sendError(res, err);
+  }
+});

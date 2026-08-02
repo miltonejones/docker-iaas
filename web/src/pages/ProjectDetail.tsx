@@ -1,11 +1,16 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import type { ProjectDetail, Container, LambdaFunction, GatewayRoute, Bucket, DatabaseConnectionDetail } from '../types';
+import type {
+  ProjectDetail, Container, LambdaFunction, GatewayRoute, Bucket, DatabaseConnectionDetail,
+  ProjectManifest, ManifestDrift, ManifestSection,
+} from '../types';
 import { api } from '../api';
 import { AppIcon } from '../icons';
 import { timeAgo } from '../format';
 import { onRefresh } from '../refresh';
 import { emitOpenAssistant } from '../assistant';
+import { useAuth } from '../AuthContext';
+import { useToast } from '../ToastContext';
 
 type Resource =
   | { kind: 'container'; data: Container }
@@ -37,6 +42,42 @@ const KIND_ICON: Record<Resource['kind'], string> = {
   database: 'database',
 };
 
+const KIND_TO_SECTION: Record<Resource['kind'], ManifestSection> = {
+  container: 'containers',
+  function: 'functions',
+  route: 'routes',
+  bucket: 'buckets',
+  database: 'databases',
+};
+
+function driftStatus(
+  manifest: ProjectManifest | null,
+  drift: ManifestDrift | null,
+  kind: Resource['kind'],
+  id: string,
+): 'synced' | 'changed' | 'orphaned' | null {
+  if (!manifest || !drift) return null;
+  const section = KIND_TO_SECTION[kind];
+  if (drift.orphaned.some((o) => o.kind === section && o.id === id)) return 'orphaned';
+  const ref = Object.entries(manifest[section] || {}).find(([, v]) => v.id === id)?.[0];
+  if (!ref) return null;
+  if (drift.changed.some((c) => c.kind === section && c.ref === ref)) return 'changed';
+  if (drift.synced.includes(ref)) return 'synced';
+  return null;
+}
+
+function isProtectedResource(manifest: ProjectManifest | null, kind: Resource['kind'], id: string): boolean {
+  if (!manifest) return false;
+  const section = KIND_TO_SECTION[kind];
+  return Object.values(manifest[section] || {}).some((v) => v.id === id);
+}
+
+const DRIFT_BADGE: Record<'synced' | 'changed' | 'orphaned', { icon: string; title: string }> = {
+  synced: { icon: '🟢', title: 'Matches captured manifest' },
+  changed: { icon: '🟡', title: 'Configuration differs from captured manifest' },
+  orphaned: { icon: '⚪', title: 'Linked to project but not in captured manifest' },
+};
+
 export function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -52,6 +93,12 @@ export function ProjectDetailPage() {
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState('');
   const [editDesc, setEditDesc] = useState('');
+  const [manifest, setManifest] = useState<ProjectManifest | null>(null);
+  const [drift, setDrift] = useState<ManifestDrift | null>(null);
+  const [capturing, setCapturing] = useState(false);
+  const [showManifest, setShowManifest] = useState(false);
+  const { role } = useAuth();
+  const toast = useToast();
 
   // Track which resource groups are collapsed in the left pane.
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -79,10 +126,29 @@ export function ProjectDetailPage() {
       api.bucketList().then(setBuckets),
       api.databaseConnections().then(setDbs),
     ]).catch(console.error);
+
+    api.projectGetManifest(id).then(setManifest).catch(() => setManifest(null));
+    api.projectGetManifestDrift(id).then(setDrift).catch(() => setDrift(null));
   }
 
   useEffect(() => { load(); }, [id]);
   useEffect(() => onRefresh(load), []);
+
+  async function captureManifest() {
+    if (!id) return;
+    setCapturing(true);
+    try {
+      const captured = await api.projectCaptureManifest(id);
+      setManifest(captured);
+      const nextDrift = await api.projectGetManifestDrift(id);
+      setDrift(nextDrift);
+      toast.success('Manifest captured.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to capture manifest.');
+    } finally {
+      setCapturing(false);
+    }
+  }
 
   // All hooks must run unconditionally (React hook rules).
   const pid = (project && id) ? id : null;
@@ -221,14 +287,27 @@ export function ProjectDetailPage() {
           <h3>
             <AppIcon name="project" /> {project.name}
           </h3>
-          <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
-            <button className="btn btn--primary btn--sm" onClick={() => { setAddMode(true); setSelected(null); }}>
+          <div style={{ display: 'flex', gap: 4, marginTop: 4, flexWrap: 'wrap' }}>
+            <button className="btn btn--primary btn--sm" onClick={() => { setAddMode(true); setSelected(null); setShowManifest(false); }}>
               + Add
             </button>
             <button className="btn btn--ghost btn--sm" onClick={() => setEditing(!editing)}>
               <AppIcon name="edit" />
             </button>
+            <button className="btn btn--ghost btn--sm" onClick={captureManifest} disabled={capturing} title="Snapshot the resources currently linked to this project.">
+              {capturing ? 'Capturing…' : 'Capture'}
+            </button>
+            {manifest && (
+              <button className="btn btn--ghost btn--sm" onClick={() => { setShowManifest(true); setAddMode(false); setSelected(null); }}>
+                Manifest
+              </button>
+            )}
           </div>
+          {manifest && (
+            <p className="muted" style={{ padding: '0 8px', fontSize: 11, marginTop: 4 }}>
+              Captured {timeAgo(new Date(manifest.capturedAt).getTime() / 1000)}
+            </p>
+          )}
           {editing && (
             <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
               <input className="input" value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Name" style={{ flex: 1, fontSize: 12, padding: '4px 6px' }} />
@@ -266,6 +345,8 @@ export function ProjectDetailPage() {
                 {!isCollapsed && items.map((r) => {
                   const rid = getResourceId(r);
                   const isActive = selected && getResourceId(selected) === rid;
+                  const status = driftStatus(manifest, drift, kind, rid);
+                  const protectedResource = isProtectedResource(manifest, kind, rid);
                   return (
                     <div key={`${kind}-${rid}`} className={`project-detail__resource-row${isActive ? ' project-detail__resource-row--active' : ''}`}>
                       <button className="project-detail__resource-btn" onClick={() => selectResource(r)}>
@@ -273,6 +354,10 @@ export function ProjectDetailPage() {
                         <span className="project-detail__resource-name">{getResourceName(r)}</span>
                         {kind === 'container' && (
                           <span className={`badge badge--${(r as any).data.state === 'running' ? 'ok' : 'warn'} badge--xs`}>{(r as any).data.state}</span>
+                        )}
+                        {status && <span title={DRIFT_BADGE[status].title}>{DRIFT_BADGE[status].icon}</span>}
+                        {protectedResource && role !== 'admin' && (
+                          <span title={`Managed by project "${project.name}" — delete is blocked until unlinked`}>🔒</span>
                         )}
                       </button>
                       <button
@@ -332,6 +417,8 @@ export function ProjectDetailPage() {
               )}
             </div>
           </div>
+        ) : showManifest && manifest ? (
+          <ManifestPanel project={project} manifest={manifest} drift={drift} onClose={() => setShowManifest(false)} />
         ) : selected ? (
           <ResourceDetailPane resource={selected} onClose={() => setSelected(null)} />
         ) : (
@@ -343,6 +430,50 @@ export function ProjectDetailPage() {
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+// ── Manifest panel ─────────────────────────────────────────────────────────
+
+function ManifestPanel({
+  project, manifest, drift, onClose,
+}: { project: ProjectDetail; manifest: ProjectManifest; drift: ManifestDrift | null; onClose: () => void }) {
+  const json = useMemo(() => JSON.stringify(manifest, null, 2), [manifest]);
+
+  function download() {
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${project.name}-manifest.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div className="panel">
+      <div className="panel__head">
+        <h3>Manifest — {project.name}</h3>
+        <div style={{ display: 'flex', gap: 4 }}>
+          <button className="btn btn--ghost btn--sm" onClick={download}>Download</button>
+          <button className="btn btn--ghost btn--sm" onClick={onClose}>×</button>
+        </div>
+      </div>
+      <p className="muted" style={{ padding: '0 12px', fontSize: 12 }}>
+        Captured {new Date(manifest.capturedAt).toLocaleString()}. Resources listed here cannot be deleted
+        (or have their route target changed) by non-admin users until unlinked from this project.
+      </p>
+      {drift && (drift.missing.length > 0 || drift.changed.length > 0 || drift.orphaned.length > 0) && (
+        <div style={{ padding: '0 12px 8px', fontSize: 12 }}>
+          {drift.missing.length > 0 && <p>🔴 {drift.missing.length} resource(s) captured but no longer exist.</p>}
+          {drift.changed.length > 0 && <p>🟡 {drift.changed.length} resource(s) have changed since capture.</p>}
+          {drift.orphaned.length > 0 && <p>⚪ {drift.orphaned.length} resource(s) linked to the project but not captured.</p>}
+        </div>
+      )}
+      <pre style={{ margin: '0 12px 12px', padding: 12, background: 'var(--surface-2, #111)', borderRadius: 6, overflow: 'auto', fontSize: 12, maxHeight: '60vh' }}>
+        {json}
+      </pre>
     </div>
   );
 }

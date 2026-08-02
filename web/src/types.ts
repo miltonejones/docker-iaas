@@ -463,6 +463,42 @@ export interface ProjectDetail extends Project {
   };
 }
 
+export interface ProjectManifestResource {
+  id: string;
+  image?: string;
+  ports?: { container: string; host: number | null }[];
+  env?: Record<string, string>;
+  volumes?: string[];
+  description?: string;
+  targetType?: 'container' | 'bucket' | 'lambda';
+  targetRef?: string;
+  targetPort?: number | null;
+  method?: string | null;
+  pathPattern?: string | null;
+  domain?: string | null;
+  runtime?: string;
+  engine?: string;
+}
+
+export type ManifestSection = 'containers' | 'routes' | 'functions' | 'buckets' | 'databases';
+
+export interface ProjectManifest {
+  version: number;
+  capturedAt: string;
+  containers: Record<string, ProjectManifestResource>;
+  routes: Record<string, ProjectManifestResource>;
+  functions: Record<string, ProjectManifestResource>;
+  buckets: Record<string, ProjectManifestResource>;
+  databases: Record<string, ProjectManifestResource>;
+}
+
+export interface ManifestDrift {
+  synced: string[];
+  missing: Array<{ ref: string; kind: ManifestSection }>;
+  changed: Array<{ ref: string; kind: ManifestSection; diff: Record<string, unknown> }>;
+  orphaned: Array<{ ref: string; kind: ManifestSection; id: string }>;
+}
+
 export interface UserAssistant {
   id: string;
   name: string;

@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { getAuthUser, requireRole } from '../auth.js';
 import { HttpError } from '../services/HttpError.js';
 import * as lambdaService from '../services/lambda.js';
+import { assertNotProtected } from '../services/projects.js';
 
 export const lambdaRouter = Router();
 
@@ -79,6 +80,7 @@ lambdaRouter.put('/functions/:id', requireRole('operator'), (req: Request, res: 
 // Delete a function.
 lambdaRouter.delete('/functions/:id', requireRole('operator'), (req: Request, res: Response) => {
   try {
+    assertNotProtected('functions', req.params.id, req.authUser?.role);
     lambdaService.removeFunc(req.params.id);
     res.json({ ok: true });
   } catch (err) {
