@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { getAuthUser, requireRole } from '../auth.js';
 import { HttpError } from '../services/HttpError.js';
 import * as containerService from '../services/containers.js';
-import { assertNotProtected } from '../services/projects.js';
+import { assertNotProtected, checkProtectedWarning } from '../services/projects.js';
 
 export const containersRouter = Router();
 
@@ -240,9 +240,10 @@ containersRouter.delete('/:id', requireRole('operator'), async (req: Request, re
   const force = req.query.force === 'true';
   try {
     assertNotProtected('containers', req.params.id, req.authUser?.role);
+    const warning = checkProtectedWarning('containers', req.params.id);
     const userId = getAuthUser(req)?.userId;
     await containerService.remove(req.params.id, userId, force);
-    res.json({ ok: true });
+    res.json({ ok: true, ...(warning ? { warning } : {}) });
   } catch (err) {
     sendError(res, err);
   }

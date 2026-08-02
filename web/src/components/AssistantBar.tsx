@@ -1741,6 +1741,9 @@ export function AssistantBar({
                         {entry.text.includes('\n') && (
                           <pre className="assistant-log__action-output">{entry.text}</pre>
                         )}
+                        {entry.result != null && typeof (entry.result as Record<string, unknown>).warning === 'string' && (
+                          <div className="assistant-log__action-warning"><AppIcon name="warning" /> {(entry.result as Record<string, unknown>).warning as string}</div>
+                        )}
                         {expandedActions.has(i) && entry.result !== undefined && (
                           <pre className="assistant-log__action-result">
                             {typeof entry.result === 'string'

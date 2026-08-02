@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { getAuthUser, requireRole } from '../auth.js';
 import { HttpError } from '../services/HttpError.js';
 import * as lambdaService from '../services/lambda.js';
-import { assertNotProtected } from '../services/projects.js';
+import { assertNotProtected, checkProtectedWarning } from '../services/projects.js';
 
 export const lambdaRouter = Router();
 
@@ -81,8 +81,9 @@ lambdaRouter.put('/functions/:id', requireRole('operator'), (req: Request, res: 
 lambdaRouter.delete('/functions/:id', requireRole('operator'), (req: Request, res: Response) => {
   try {
     assertNotProtected('functions', req.params.id, req.authUser?.role);
+    const warning = checkProtectedWarning('functions', req.params.id);
     lambdaService.removeFunc(req.params.id);
-    res.json({ ok: true });
+    res.json({ ok: true, ...(warning ? { warning } : {}) });
   } catch (err) {
     sendError(res, err);
   }

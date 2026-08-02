@@ -87,6 +87,16 @@ describe('projects service — manifest & protection (in-memory)', () => {
     assert.doesNotThrow(() => projectService.assertNotProtected('functions', functionId, 'admin'));
   });
 
+  it('checkProtectedWarning returns warning for a manifested resource', () => {
+    const warning = projectService.checkProtectedWarning('functions', functionId);
+    assert.ok(warning);
+    assert.ok(warning!.includes('Test Project'));
+  });
+
+  it('checkProtectedWarning returns null for an unprotected resource', () => {
+    assert.equal(projectService.checkProtectedWarning('functions', 'fn-does-not-exist'), null);
+  });
+
   it('getManifestDrift reports synced when nothing has changed', async () => {
     const drift = await projectService.getManifestDrift(projectId, userId);
     assert.ok(drift.synced.includes('my-function'));
