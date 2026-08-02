@@ -90,9 +90,6 @@ export function ProjectDetailPage() {
   const [selected, setSelected] = useState<Resource | null>(null);
   const [addMode, setAddMode] = useState(false);
   const [search, setSearch] = useState('');
-  const [editing, setEditing] = useState(false);
-  const [editName, setEditName] = useState('');
-  const [editDesc, setEditDesc] = useState('');
   const [manifest, setManifest] = useState<ProjectManifest | null>(null);
   const [drift, setDrift] = useState<ManifestDrift | null>(null);
   const [capturing, setCapturing] = useState(false);
@@ -115,8 +112,6 @@ export function ProjectDetailPage() {
     if (!id) return;
     api.projectGet(id).then((p) => {
       setProject(p);
-      setEditName(p.name);
-      setEditDesc(p.description || '');
     }).catch(() => navigate('/projects'));
 
     Promise.allSettled([
@@ -291,9 +286,6 @@ export function ProjectDetailPage() {
             <button className="btn btn--primary btn--sm" onClick={() => { setAddMode(true); setSelected(null); setShowManifest(false); }}>
               + Add
             </button>
-            <button className="btn btn--ghost btn--sm" onClick={() => setEditing(!editing)}>
-              <AppIcon name="edit" />
-            </button>
             <button className="btn btn--ghost btn--sm" onClick={captureManifest} disabled={capturing} title="Snapshot the resources currently linked to this project.">
               {capturing ? 'Capturing…' : 'Capture'}
             </button>
@@ -307,22 +299,6 @@ export function ProjectDetailPage() {
             <p className="muted" style={{ padding: '0 8px', fontSize: 11, marginTop: 4 }}>
               Captured {timeAgo(new Date(manifest.capturedAt).getTime() / 1000)}
             </p>
-          )}
-          {editing && (
-            <div style={{ display: 'flex', gap: 4, marginTop: 6 }}>
-              <input className="input" value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Name" style={{ flex: 1, fontSize: 12, padding: '4px 6px' }} />
-              <input className="input" value={editDesc} onChange={(e) => setEditDesc(e.target.value)} placeholder="Description" style={{ flex: 2, fontSize: 12, padding: '4px 6px' }} />
-              <button
-                className="btn btn--primary btn--sm"
-                onClick={async () => {
-                  try {
-                    const updated = await api.projectUpdate(pid!, { name: editName, description: editDesc });
-                    setProject(updated);
-                    setEditing(false);
-                  } catch (err) { console.error(err); }
-                }}
-              >Save</button>
-            </div>
           )}
         </div>
         {project.description && <p className="muted" style={{ padding: '0 8px', fontSize: 12 }}>{project.description}</p>}
