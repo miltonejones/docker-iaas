@@ -512,6 +512,22 @@ function extractText(content: Anthropic.ContentBlock[]): string {
 
 const MAX_AUTO_ROUNDS = 8;
 
+/** setTimeout that resolves early — instead of leaving the caller hanging for
+ *  the full duration — when the given signal aborts mid-sleep. Used by the
+ *  `wait` tool so cancelling a session doesn't wait out its remaining sleep. */
+function sleepAbortable(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) { resolve(); return; }
+    const timer = setTimeout(() => { cleanup(); resolve(); }, ms);
+    const onAbort = () => { cleanup(); resolve(); };
+    function cleanup() {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    }
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 /** Thin SSE wrapper around streamTurn for the old /plan and /confirm endpoints. */
 async function respondStream(
   messages: Anthropic.MessageParam[],
@@ -548,6 +564,15 @@ async function respondStream(
     else if (e.type === "turn") send(e as unknown as Record<string, unknown>);
     else if (e.type === "error") send({ type: "error", error: e.error });
     else if (e.type === "wait") send({ type: "wait", seconds: e.seconds, reason: e.reason, toolUseId: e.toolUseId });
+    else if (e.type === "usage") {
+      send({
+        type: "usage",
+        inputTokens: e.inputTokens,
+        outputTokens: e.outputTokens,
+        cacheCreationInputTokens: e.cacheCreationInputTokens,
+        cacheReadInputTokens: e.cacheReadInputTokens,
+      });
+    }
   }, ac.signal, opts);
   res.end();
 }
@@ -991,7 +1016,7 @@ async function streamTurn(
         system: opts?.system ?? SYSTEM,
         tools: opts?.tools ?? tools,
         messages,
-      });
+      }, { signal });
 
       stream.on("text", (delta) => {
         if (!aborted) onEvent({ type: "text", delta });
@@ -1008,6 +1033,15 @@ async function streamTurn(
 
       messages.push({ role: "assistant", content: finalMessage.content });
 
+      const usage = finalMessage.usage;
+      onEvent({
+        type: "usage",
+        inputTokens: usage.input_tokens,
+        outputTokens: usage.output_tokens,
+        cacheCreationInputTokens: usage.cache_creation_input_tokens ?? 0,
+        cacheReadInputTokens: usage.cache_read_input_tokens ?? 0,
+      });
+
       const toolUses = finalMessage.content.filter(
         (b): b is Anthropic.ToolUseBlock => b.type === "tool_use",
       );
@@ -1020,11 +1054,13 @@ async function streamTurn(
       const waitCalls = toolUses.filter((b) => b.name === "wait");
       if (waitCalls.length > 0) {
         for (const w of waitCalls) {
+          if (aborted) return;
           const input = w.input as Record<string, unknown>;
           const seconds = Math.max(1, Math.min(60, Number(input.seconds) || 10));
           const reason = typeof input.reason === "string" ? input.reason : undefined;
           onEvent({ type: "wait", seconds, reason, toolUseId: w.id });
-          await new Promise((r) => setTimeout(r, seconds * 1000));
+          await sleepAbortable(seconds * 1000, signal);
+          if (aborted) return;
           messages.push({
             role: "user",
             content: [

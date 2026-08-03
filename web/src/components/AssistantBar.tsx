@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { AppIcon } from '../icons';
 import { api } from '../api';
-import { timeAgo } from '../format';
+import { timeAgo, tokenCount } from '../format';
 import { useConfirm } from "./ConfirmContext";
 import type {
   AssistantLogEntry,
@@ -12,9 +12,17 @@ import type {
   AssistantSessionState,
   AssistantSessionSummary,
   AssistantTurn,
+  AssistantUsage,
   LambdaFile,
   UserAssistant,
 } from '../types';
+
+const EMPTY_USAGE: AssistantUsage = {
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheCreationInputTokens: 0,
+  cacheReadInputTokens: 0,
+};
 
 type LogEntry = AssistantLogEntry;
 type ResolvedResult = AssistantResolvedResult;
@@ -252,6 +260,9 @@ export function AssistantBar({
   const [pending, setPending] = useState<AssistantPendingAction[]>([]);
   const [edits, setEdits] = useState<Record<string, Record<string, unknown>>>({});
   const [resolved, setResolved] = useState<ResolvedResult[]>([]);
+  /** Cumulative Anthropic token usage for this session, accumulated from
+   *  `usage` SSE events as the conversation progresses. */
+  const [usage, setUsage] = useState<AssistantUsage>(EMPTY_USAGE);
   const [autoApprove, setAutoApprove] = useState(false);
   const [activeActionName, setActiveActionName] = useState<string | null>(null);
   const [thinkingWord, setThinkingWord] = useState(() => THINKING_WORDS[Math.floor(Math.random() * THINKING_WORDS.length)]);
@@ -302,6 +313,10 @@ export function AssistantBar({
   const firedInitialPrompt = useRef(false);
   const titleGeneratedRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
+  // Mirrors `usage` synchronously for use inside consumeTurnStream's async
+  // event loop, where reading React state directly can lag a render behind —
+  // same reasoning as globalSpeakRef below.
+  const usageRef = useRef<AssistantUsage>(EMPTY_USAGE);
   const sessionIdRef = useRef<string | null>(null);
   const saveInFlightRef = useRef(false);
 
@@ -357,7 +372,7 @@ export function AssistantBar({
    *  via the effect below whenever state settles after busy→false.  Falls back
    *  to localStorage so a transient save failure doesn't lose the session. */
   function saveSession(snapshot?: AssistantSessionState) {
-    const state = snapshot ?? { messages: rawMessages, log, pending, resolved, assistantId: activeAssistantId ?? null };
+    const state = snapshot ?? { messages: rawMessages, log, pending, resolved, assistantId: activeAssistantId ?? null, usage: usageRef.current };
     if (state.log.length === 0 && state.messages.length === 0) return;
     if (saveInFlightRef.current) return; // serialise saves
 
@@ -454,7 +469,7 @@ export function AssistantBar({
       const payload = {
         id: sessionIdRef.current,
         name: sessionName || deriveSessionName(log),
-        state: { messages: rawMessages, log, pending, resolved } as AssistantSessionState,
+        state: { messages: rawMessages, log, pending, resolved, usage: usageRef.current } as AssistantSessionState,
         at: Date.now(),
       };
 // eslint-disable-next-line no-empty -- TODO(gap-00)
@@ -484,6 +499,8 @@ export function AssistantBar({
     setPending([]);
     setEdits({});
     setResolved([]);
+    usageRef.current = EMPTY_USAGE;
+    setUsage(EMPTY_USAGE);
     setAutoApprove(false);
     setError(null);
     setSessionsOpen(false);
@@ -504,6 +521,8 @@ export function AssistantBar({
       setPending(session.state.pending ?? []);
       setEdits(Object.fromEntries((session.state.pending ?? []).map((p) => [p.id, { ...p.input }])));
       setResolved(session.state.resolved ?? []);
+      usageRef.current = session.state.usage ?? EMPTY_USAGE;
+      setUsage(usageRef.current);
       // Restore the assistant that was active when this session was last saved.
       if (session.assistantId) setActiveAssistantId(session.assistantId);
       else if (session.state.assistantId) setActiveAssistantId(session.state.assistantId);
@@ -544,6 +563,8 @@ export function AssistantBar({
         setPending(fb.state.pending ?? []);
         setEdits(Object.fromEntries((fb.state.pending ?? []).map((p) => [p.id, { ...p.input }])));
         setResolved(fb.state.resolved ?? []);
+        usageRef.current = fb.state.usage ?? EMPTY_USAGE;
+        setUsage(usageRef.current);
         // Restore the assistant from the fallback state.
         if (fb.state.assistantId) setActiveAssistantId(fb.state.assistantId);
         if (fb.id && sessionStorageKey) localStorage.setItem(sessionStorageKey, fb.id);
@@ -770,6 +791,7 @@ export function AssistantBar({
           pending: turn.pending,
           resolved: turn.autoResolved ?? [],
           assistantId: turnAssistantId ?? activeAssistantId ?? null,
+          usage: usageRef.current,
         });
         if (turn.autoResolved?.length) {
           const labels = Array.from(
@@ -791,6 +813,14 @@ export function AssistantBar({
         const seconds = Number(event.seconds) || 10;
         const reason = typeof event.reason === 'string' ? event.reason : undefined;
         setWaitState({ total: seconds, remaining: seconds, reason });
+      } else if (event.type === 'usage') {
+        usageRef.current = {
+          inputTokens: usageRef.current.inputTokens + (Number(event.inputTokens) || 0),
+          outputTokens: usageRef.current.outputTokens + (Number(event.outputTokens) || 0),
+          cacheCreationInputTokens: usageRef.current.cacheCreationInputTokens + (Number(event.cacheCreationInputTokens) || 0),
+          cacheReadInputTokens: usageRef.current.cacheReadInputTokens + (Number(event.cacheReadInputTokens) || 0),
+        };
+        setUsage(usageRef.current);
       }
     }
   }
@@ -854,6 +884,7 @@ export function AssistantBar({
       pending,
       resolved,
       assistantId: activeAssistantId ?? null,
+      usage: usageRef.current,
     });
     try {
       const aborter = new AbortController();
@@ -928,6 +959,8 @@ export function AssistantBar({
           ),
         );
         setResolved(session.state.resolved ?? []);
+        usageRef.current = session.state.usage ?? EMPTY_USAGE;
+        setUsage(usageRef.current);
       } catch (err) {
         if (sessionStorageKey && localStorage.getItem(sessionStorageKey) === savedSessionId) {
           localStorage.removeItem(sessionStorageKey);
@@ -1465,7 +1498,7 @@ export function AssistantBar({
       setPending(remaining);
       setActiveActionName(null);
       // Persist partial progress so a reload doesn't lose confirmed actions.
-      saveSession({ messages: rawMessages, log, pending: remaining, resolved: nextResolved, assistantId: activeAssistantId ?? null });
+      saveSession({ messages: rawMessages, log, pending: remaining, resolved: nextResolved, assistantId: activeAssistantId ?? null, usage: usageRef.current });
       setBusy(false);
       return;
     }
@@ -1591,6 +1624,14 @@ export function AssistantBar({
               placeholder="Untitled session"
             />
             {sessionSaving && <span className="assistant-session-bar__status muted">Saving…</span>}
+            {(usage.inputTokens > 0 || usage.outputTokens > 0) && (
+              <span
+                className="assistant-session-bar__status muted"
+                title={`Input: ${usage.inputTokens.toLocaleString()} tokens\nOutput: ${usage.outputTokens.toLocaleString()} tokens${usage.cacheReadInputTokens ? `\nCache read: ${usage.cacheReadInputTokens.toLocaleString()} tokens` : ''}${usage.cacheCreationInputTokens ? `\nCache write: ${usage.cacheCreationInputTokens.toLocaleString()} tokens` : ''}`}
+              >
+                {tokenCount(usage.inputTokens)} in / {tokenCount(usage.outputTokens)} out
+              </span>
+            )}
             <div className="assistant-voice-select">
               <button
                 className={`btn btn--ghost btn--sm assistant-tts-toggle${globalSpeakEnabled ? ' assistant-tts-toggle--on' : ''}`}

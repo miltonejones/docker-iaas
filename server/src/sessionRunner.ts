@@ -19,7 +19,7 @@ type RespondStreamFn = (
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export interface SessionEvent {
-  type: "text" | "turn" | "error" | "done" | "wait";
+  type: "text" | "turn" | "error" | "done" | "wait" | "usage";
   delta?: string;
   messages?: unknown[];
   pending?: unknown[];
@@ -32,6 +32,14 @@ export interface SessionEvent {
   seconds?: number;
   reason?: string;
   toolUseId?: string;
+  /** Usage fields: emitted once per Anthropic API round (a single logical
+   *  turn may span several rounds when read-only tool loops or `wait` calls
+   *  trigger additional model calls). The client accumulates these into a
+   *  running per-session total. */
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheCreationInputTokens?: number;
+  cacheReadInputTokens?: number;
 }
 
 export interface SessionState {

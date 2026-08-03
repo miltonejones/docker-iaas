@@ -392,6 +392,15 @@ export interface AssistantLogEntry {
   assistantId?: string | null;
 }
 
+/** Cumulative Anthropic token usage for a session, accumulated client-side
+ *  from `usage` SSE events (one per Anthropic API round). */
+export interface AssistantUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
+}
+
 /** Everything needed to resume an Ask Dockyard conversation exactly where it
  *  left off. Opaque to the server — it just stores/returns this verbatim. */
 export interface AssistantSessionState {
@@ -400,6 +409,7 @@ export interface AssistantSessionState {
   pending: AssistantPendingAction[];
   resolved: AssistantResolvedResult[];
   assistantId?: string | null;
+  usage?: AssistantUsage;
 }
 
 export interface AssistantSessionSummary {
