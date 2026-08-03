@@ -10,6 +10,19 @@ export function bytes(n: number | undefined | null): string {
   return `${value.toFixed(value < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
 }
 
+export function tokenCount(n: number | undefined | null): string {
+  if (!n) return '0';
+  if (n < 1000) return String(n);
+  const units = ['K', 'M', 'B'];
+  let value = n / 1000;
+  let i = 0;
+  while (value >= 1000 && i < units.length - 1) {
+    value /= 1000;
+    i++;
+  }
+  return `${value.toFixed(value < 10 ? 1 : 0)}${units[i]}`;
+}
+
 export interface ImpactInfo {
   onDiskLabel: string;
   downloadLabel: string;
