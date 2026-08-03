@@ -1,6 +1,0 @@
-**/dist/**
-**/node_modules/**
-data/**
-scripts/issue-logs/**
-web/dist/**
-testing/**

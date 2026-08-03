@@ -1586,9 +1586,22 @@ export function AssistantBar({
             {activeAssistantId ? (assistants.find(a => a.id === activeAssistantId)?.name ?? 'Ask Dockyard.ai') : 'Ask Dockyard.ai'}
           </h3>
           {embedded && (
-            <button className="btn btn--ghost btn--sm" onClick={resetToNewSession}>
-              <AppIcon name="plus" /> <span className="btn-label">New</span>
-            </button>
+            <>
+              {log.length > 0 && (
+                <button
+                  className="btn btn--ghost btn--sm"
+                  onClick={syncToKnowledgeBase}
+                  title="Save session knowledge to dockyard-knowledge bucket"
+                  disabled={busy || syncingKB}
+                >
+                  <AppIcon name="database" />{' '}
+                  <span className="btn-label">{syncingKB ? 'Saving…' : 'Sync KB'}</span>
+                </button>
+              )}
+              <button className="btn btn--ghost btn--sm" onClick={resetToNewSession}>
+                <AppIcon name="plus" /> <span className="btn-label">New</span>
+              </button>
+            </>
           )}
           {!embedded && (
             <span style={{ display: 'flex', gap: 4 }}>
