@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 // before auth.ts loads.
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'dockyard-test-secret-dky';
 
-import { initDb, createUser, getUserById, getUserByEmail } from '../db.js';
+import { initDb, createUser, getUserByEmail } from '../db.js';
 import * as apiKeys from './apiKeys.js';
 
 before(() => {

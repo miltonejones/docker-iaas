@@ -13,7 +13,7 @@ export function printTable(rows: Record<string, unknown>[]): void {
   const keys = Object.keys(rows[0]);
   const widths = keys.map((k) => {
     const max = rows.reduce((m, r) => {
-      const val = String(r[k] ?? '');
+      const val = formatCell(r[k]);
       return Math.max(m, val.length);
     }, k.length);
     return Math.min(max, COL_MAX_WIDTH);
@@ -28,13 +28,22 @@ export function printTable(rows: Record<string, unknown>[]): void {
 
   // Rows
   for (const row of rows) {
-    const line = keys.map((k, i) => pad(trunc(String(row[k] ?? ''), widths[i]), widths[i])).join('  ');
+    const line = keys.map((k, i) => pad(trunc(formatCell(row[k]), widths[i]), widths[i])).join('  ');
     console.log(line);
   }
 }
 
 export function printJson(data: unknown): void {
   console.log(JSON.stringify(data, null, 2));
+}
+
+/** Render a cell value for table display. Objects/arrays (e.g. a
+ *  container's `ports` list) get compact JSON instead of the useless
+ *  "[object Object]" that String() produces for them. */
+function formatCell(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
 }
 
 function trunc(s: string, max: number): string {
