@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { timingSafeEqual, randomBytes } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { getUserById, getSetting, setSetting } from './db.js';
+import * as apiKeyService from './services/apiKeys.js';
 
 // Extend Express Request with auth properties so middleware and handlers can
 // access req.authUser / req.webhookAuthenticated without unsafe casts.
@@ -112,6 +113,17 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     return;
   }
 
+  if (token.startsWith('dky_')) {
+    const user = apiKeyService.authenticate(token);
+    if (!user) {
+      res.status(401).json({ error: 'Invalid or revoked API key.' });
+      return;
+    }
+    req.authUser = { userId: user.userId, email: user.email, role: user.role as AuthUser['role'] };
+    next();
+    return;
+  }
+
   try {
     const payload = jwt.verify(token, JWT_SECRET!) as unknown as AuthUser;
     const user = getUserById(payload.userId);
@@ -132,14 +144,22 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 export function optionalAuth(req: Request, _res: Response, next: NextFunction): void {
   const header = req.headers.authorization;
   if (header && header.startsWith('Bearer ')) {
-    try {
-      const payload = jwt.verify(header.slice(7), JWT_SECRET!) as unknown as AuthUser;
-      const user = getUserById(payload.userId);
+    const token = header.slice(7);
+    if (token.startsWith('dky_')) {
+      const user = apiKeyService.authenticate(token);
       if (user) {
-        req.authUser = { userId: user.id, email: user.email, role: user.role as AuthUser['role'] };
+        req.authUser = { userId: user.userId, email: user.email, role: user.role as AuthUser['role'] };
       }
-    } catch {
-      /* token invalid — fall through as anonymous */
+    } else {
+      try {
+        const payload = jwt.verify(token, JWT_SECRET!) as unknown as AuthUser;
+        const user = getUserById(payload.userId);
+        if (user) {
+          req.authUser = { userId: user.id, email: user.email, role: user.role as AuthUser['role'] };
+        }
+      } catch {
+        /* token invalid — fall through as anonymous */
+      }
     }
   }
   next();

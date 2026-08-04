@@ -8,6 +8,7 @@ import { initGatewayTables } from './db/gateway.js';
 import { initAssistantSessionTables } from './db/assistantSessions.js';
 import { initAssistantIssueTables } from './db/assistantIssues.js';
 import { initDatabaseOpsTables } from './db/databaseOps.js';
+import { initApiKeyTables } from './db/apiKeys.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DB_PATH = path.resolve(__dirname, '../../data/iaas.db');
@@ -110,6 +111,7 @@ export function initDb(dbPath?: string): void {
   try { db.exec('ALTER TABLE routes ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL'); } catch { /* ok */ }
 
   initAuditTables(db);
+  initApiKeyTables(db);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS bucket_owners (

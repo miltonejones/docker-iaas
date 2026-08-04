@@ -7,7 +7,8 @@
     "server",
     "web",
     "relay",
-    "mcp"
+    "mcp",
+    "cli"
   ],
   "scripts": {
     "dev": "node scripts/dev.mjs",
@@ -15,10 +16,11 @@
     "dev:web": "npm --workspace web run dev",
     "dev:relay": "npm --workspace relay run dev",
     "dev:mcp": "npm --workspace mcp run dev",
+    "dev:cli": "npm --workspace cli run dev",
     "build": "npm --workspace web run build && npm --workspace server run build && npm --workspace relay run build",
     "start": "npm --workspace server run start",
     "start:relay": "npm --workspace relay run start",
-    "typecheck": "npm --workspace server run typecheck && npm --workspace web run typecheck && npm --workspace relay run typecheck && npm --workspace mcp run typecheck",
+    "typecheck": "npm --workspace server run typecheck && npm --workspace web run typecheck && npm --workspace relay run typecheck && npm --workspace mcp run typecheck && npm --workspace cli run typecheck",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
