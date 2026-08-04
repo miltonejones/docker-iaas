@@ -67,9 +67,14 @@ export function loadWebhookSecret(secretPath?: string, envValue?: string): strin
   return generated;
 }
 
-/** Return the current webhook secret (or empty string if not configured). */
+/** Return the current webhook secret.  If none has been persisted yet (DB, file,
+ *  or env), auto-generates and persists one on first call.  This covers the
+ *  startup case where the module-level init fires before the DB is ready. */
 export function getWebhookSecret(): string {
-  return getSetting('webhook_secret') || '';
+  const existing = getSetting('webhook_secret');
+  if (existing) return existing;
+  // Nothing persisted — run the full bootstrap path now (DB → file → env → generate).
+  return loadWebhookSecret();
 }
 
 /** Generate a new webhook secret, replacing the old one. */
@@ -78,11 +83,6 @@ export function rotateWebhookSecret(): string {
   setSetting('webhook_secret', generated);
   return generated;
 }
-
-// Ensure webhook secret is loaded into DB on startup (side-effect only —
-// webhookAuth middleware reads the live DB value via getWebhookSecret()).
-// Safe to skip if DB isn't initialized yet (e.g. during tests that init later).
-try { loadWebhookSecret(); } catch { /* DB not ready yet — will run on first request */ }
 
 export interface AuthUser {
   userId: string;
