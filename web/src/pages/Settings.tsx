@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { AssistantsSettings } from '../components/AssistantsSettings';
 import { useAuth } from '../AuthContext';
+import { api } from '../api';
 
 interface SettingStatus {
   configured: boolean;
@@ -36,6 +37,11 @@ export function SettingsPage() {
   const [webhookCopied, setWebhookCopied] = useState(false);
   const [users, setUsers] = useState<Array<{ id: string; email: string; role: string; created_at: string }>>([]);
   const [usersLoading, setUsersLoading] = useState(false);
+  const [apiKeys, setApiKeys] = useState<Array<{ id: string; name: string; key_prefix: string; created_at: string; last_used_at: string | null }>>([]);
+  const [apiKeysLoading, setApiKeysLoading] = useState(false);
+  const [newKeyName, setNewKeyName] = useState('');
+  const [newKeyValue, setNewKeyValue] = useState<string | null>(null);
+  const [apiKeyError, setApiKeyError] = useState('');
 
   useEffect(() => {
     fetch('/api/auth/settings')
@@ -148,6 +154,46 @@ export function SettingsPage() {
     }
   }
 
+  const loadApiKeys = useCallback(async () => {
+    setApiKeysLoading(true);
+    setApiKeyError('');
+    try {
+      const keys = await api.apiKeyList();
+      setApiKeys(keys);
+    } catch (err) {
+      setApiKeyError((err as Error).message);
+    }
+    setApiKeysLoading(false);
+  }, []);
+
+  async function createApiKey() {
+    if (!newKeyName.trim()) return;
+    setApiKeyError('');
+    try {
+      const created = await api.apiKeyCreate(newKeyName.trim());
+      setNewKeyValue(created.key);
+      setNewKeyName('');
+      await loadApiKeys();
+    } catch (err) {
+      setApiKeyError((err as Error).message);
+    }
+  }
+
+  async function revokeApiKey(id: string) {
+    if (!confirm('Revoke this API key? Any client using it will stop working immediately.')) return;
+    setApiKeyError('');
+    try {
+      await api.apiKeyRevoke(id);
+      await loadApiKeys();
+    } catch (err) {
+      setApiKeyError((err as Error).message);
+    }
+  }
+
+  function copyApiKey(text: string) {
+    navigator.clipboard.writeText(text);
+  }
+
   return (
     <SettingsTabbedView
       error={error}
@@ -160,11 +206,22 @@ export function SettingsPage() {
       role={role}
       users={users}
       usersLoading={usersLoading}
+      apiKeys={apiKeys}
+      apiKeysLoading={apiKeysLoading}
+      newKeyName={newKeyName}
+      newKeyValue={newKeyValue}
+      apiKeyError={apiKeyError}
       onSave={handleSave}
       onCopyWebhook={copyWebhook}
       onRotateWebhook={rotateWebhook}
       onUpdateUserRole={updateUserRole}
       onDeleteUser={deleteUserAccount}
+      onLoadApiKeys={loadApiKeys}
+      onSetNewKeyName={setNewKeyName}
+      onCreateApiKey={createApiKey}
+      onRevokeApiKey={revokeApiKey}
+      onCopyApiKey={copyApiKey}
+      onDismissNewKey={() => setNewKeyValue(null)}
     />
   );
 }
@@ -180,22 +237,36 @@ function SettingsTabbedView(props: {
   role: string | null;
   users: Array<{ id: string; email: string; role: string; created_at: string }>;
   usersLoading: boolean;
+  apiKeys: Array<{ id: string; name: string; key_prefix: string; created_at: string; last_used_at: string | null }>;
+  apiKeysLoading: boolean;
+  newKeyName: string;
+  newKeyValue: string | null;
+  apiKeyError: string;
   onSave: (e: React.FormEvent<HTMLFormElement>) => void;
   onCopyWebhook: () => void;
   onRotateWebhook: () => void;
   onUpdateUserRole: (userId: string, newRole: string) => void;
   onDeleteUser: (userId: string, email: string) => void;
+  onLoadApiKeys: () => void;
+  onSetNewKeyName: (v: string) => void;
+  onCreateApiKey: () => void;
+  onRevokeApiKey: (id: string) => void;
+  onCopyApiKey: (text: string) => void;
+  onDismissNewKey: () => void;
 }) {
   const {
     error, saved, status, fields, saving,
     webhookSecret, webhookCopied,
     role, users, usersLoading,
+    apiKeys, apiKeysLoading, newKeyName, newKeyValue, apiKeyError,
     onSave, onCopyWebhook, onRotateWebhook,
     onUpdateUserRole, onDeleteUser,
+    onLoadApiKeys, onSetNewKeyName, onCreateApiKey, onRevokeApiKey, onCopyApiKey, onDismissNewKey,
   } = props;
 
   const SETTINGS_TABS = [
     { key: 'credentials' as const, label: 'Credentials' },
+    { key: 'api-keys' as const, label: 'API Keys' },
     { key: 'webhook' as const, label: 'Webhook' },
     { key: 'assistants' as const, label: 'Assistants' },
     ...(role === 'admin' ? [{ key: 'users' as const, label: 'Users' }] : []),
@@ -203,6 +274,11 @@ function SettingsTabbedView(props: {
   type SettingsTab = (typeof SETTINGS_TABS)[number]['key'];
 
   const [activeTab, setActiveTab] = useState<SettingsTab>('credentials');
+
+  // Load API keys when the tab becomes active.
+  useEffect(() => {
+    if (activeTab === 'api-keys') onLoadApiKeys();
+  }, [activeTab, onLoadApiKeys]);
 
   return (
     <div className="page">
@@ -259,6 +335,101 @@ function SettingsTabbedView(props: {
             {saving ? 'Saving…' : 'Save settings'}
           </button>
         </form>
+      )}
+
+      {activeTab === 'api-keys' && (
+        <section className="settings-section" style={{ marginTop: 16 }}>
+          <h2>API Keys</h2>
+          <p className="muted">
+            Create API keys for CLI tools, scripts, and CI/CD pipelines.
+            Keys are hashed at rest — you will only see the full key once when you create it.
+          </p>
+
+          {apiKeyError && <div className="toast toast--error" style={{ marginTop: 8 }}>{apiKeyError}</div>}
+
+          {newKeyValue && (
+            <div className="toast toast--success" style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <strong>Key created — copy it now, it won't be shown again.</strong>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="text"
+                  readOnly
+                  value={newKeyValue}
+                  className="input mono"
+                  style={{ flex: 1, fontFamily: 'monospace', fontSize: '13px' }}
+                />
+                <button type="button" className="btn btn--sm" onClick={() => onCopyApiKey(newKeyValue)}>
+                  Copy
+                </button>
+                <button type="button" className="btn btn--sm" onClick={onDismissNewKey}>
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'flex-end' }}>
+            <label className="settings-field" style={{ flex: 1, margin: 0 }}>
+              <span className="settings-field__label">Key name</span>
+              <input
+                type="text"
+                value={newKeyName}
+                onChange={(e) => onSetNewKeyName(e.target.value)}
+                placeholder="e.g. laptop CLI"
+                className="input"
+                onKeyDown={(e) => { if (e.key === 'Enter') onCreateApiKey(); }}
+              />
+            </label>
+            <button
+              type="button"
+              className="btn btn--primary"
+              disabled={!newKeyName.trim()}
+              onClick={onCreateApiKey}
+              style={{ marginBottom: 0 }}
+            >
+              Create key
+            </button>
+          </div>
+
+          {apiKeysLoading ? (
+            <p className="empty-sm" style={{ marginTop: 16 }}>Loading…</p>
+          ) : apiKeys.length === 0 ? (
+            <p className="empty-sm" style={{ marginTop: 16 }}>No API keys yet.</p>
+          ) : (
+            <table className="data-table" style={{ width: '100%', marginTop: 16 }}>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Prefix</th>
+                  <th>Created</th>
+                  <th>Last used</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {apiKeys.map((k) => (
+                  <tr key={k.id}>
+                    <td>{k.name}</td>
+                    <td className="mono" style={{ fontFamily: 'monospace', fontSize: '13px' }}>{k.key_prefix}</td>
+                    <td className="muted" style={{ fontSize: '13px' }}>{new Date(k.created_at).toLocaleDateString()}</td>
+                    <td className="muted" style={{ fontSize: '13px' }}>
+                      {k.last_used_at ? new Date(k.last_used_at).toLocaleDateString() : 'never'}
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn btn--sm btn--danger"
+                        onClick={() => onRevokeApiKey(k.id)}
+                      >
+                        Revoke
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
       )}
 
       {activeTab === 'webhook' && (

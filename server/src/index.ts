@@ -20,6 +20,7 @@ import { githubRouter } from './routes/github.js';
 import { assistantsRouter } from './routes/assistants.js';
 import { notificationsRouter } from './routes/notifications.js';
 import { authRouter } from './routes/auth.js';
+import { apiKeysRouter } from './routes/apiKeys.js';
 import { requireAuth, optionalAuth, webhookAuth, requireRole, requireWrite } from './auth.js';
 import { gatewayProxyRouter } from './gatewayProxy.js';
 import { getAllUserSettings } from './db.js';
@@ -170,6 +171,7 @@ export function createApp(): express.Express {
   app.use('/api/github', webhookAuth, githubRouter);
   app.use('/api/notifications', optionalAuth, notificationsRouter);
   app.use('/api/auth', authRouter);
+  app.use('/api/api-keys', requireAuth, apiKeysRouter);
 
   // Internal endpoints — only reachable from the Docker network (not proxied
   // by Caddy).  Used by the autonomous consumer for credential resolution.

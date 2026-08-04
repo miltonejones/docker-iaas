@@ -898,6 +898,10 @@ export const api = {
 
   assistantDelete: (id: string) =>
     fetch(`/api/assistants/${encodeURIComponent(id)}`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r)),
+
+  apiKeyList: () => fetch('/api/api-keys').then((r) => json<Array<{ id: string; name: string; key_prefix: string; created_at: string; last_used_at: string | null; revoked_at: string | null }>>(r)),
+  apiKeyCreate: (name: string) => fetch('/api/api-keys', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) }).then((r) => json<{ id: string; name: string; key: string; keyPrefix: string; createdAt: string }>(r)),
+  apiKeyRevoke: (id: string) => fetch(`/api/api-keys/${encodeURIComponent(id)}`, { method: 'DELETE' }).then((r) => json<{ ok: true }>(r)),
 };
 
 /** A single consumer/issue event surfaced by the notification log. */

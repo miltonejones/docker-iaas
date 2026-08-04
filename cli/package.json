@@ -1,0 +1,19 @@
+{
+  "name": "dockyard-cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": { "dockyard": "./dist/index.js" },
+  "engines": { "node": ">=18.3.0" },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.3",
+    "@types/node": "^20.14.9"
+  }
+}
