@@ -117,6 +117,18 @@ export function SettingsPage() {
     }
   }
 
+  const loadApiKeys = useCallback(async () => {
+    setApiKeysLoading(true);
+    setApiKeyError('');
+    try {
+      const keys = await api.apiKeyList();
+      setApiKeys(keys);
+    } catch (err) {
+      setApiKeyError((err as Error).message);
+    }
+    setApiKeysLoading(false);
+  }, []);
+
   if (!status) return <div className="page"><p>Loading…</p></div>;
 
   const fields = Object.keys(FIELD_LABELS);
@@ -153,18 +165,6 @@ export function SettingsPage() {
       setError((err as Error).message);
     }
   }
-
-  const loadApiKeys = useCallback(async () => {
-    setApiKeysLoading(true);
-    setApiKeyError('');
-    try {
-      const keys = await api.apiKeyList();
-      setApiKeys(keys);
-    } catch (err) {
-      setApiKeyError((err as Error).message);
-    }
-    setApiKeysLoading(false);
-  }, []);
 
   async function createApiKey() {
     if (!newKeyName.trim()) return;
