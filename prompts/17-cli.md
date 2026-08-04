@@ -36,14 +36,25 @@ every command is exactly one HTTP call to a route that already exists.
   vocabulary alongside the one every other surface already uses would be
   the "translation layer" this codebase has explicitly chosen to avoid
   elsewhere.
-- **Hand-rolled argument parsing, not a dependency.** Every existing
-  workspace here (`server`, `mcp`, `relay`) is deliberately dependency-light
-  — `mcp/package.json` has exactly one runtime dependency, the SDK it can't
-  avoid. The CLI's surface (`resource verb --flag value`) is regular enough
-  that ~50-100 lines of hand-rolled parsing covers it; adding `commander` or
-  similar would be the first CLI-framework dependency in a codebase that has
-  consistently avoided that class of dependency elsewhere, for a v1 surface
-  that doesn't need subcommand help generation or shell completions yet.
+- **`node:util`'s built-in `parseArgs`, not a dependency, and not fully
+  hand-rolled either.** Every existing workspace here (`server`, `mcp`,
+  `relay`) is deliberately dependency-light — `mcp/package.json` has exactly
+  one runtime dependency, the SDK it can't avoid. Truly hand-rolling flag
+  parsing (splitting on `--`/`=`, tracking which flags repeat, negating
+  booleans) is a worse trade than it first looks: `--flag=value` vs
+  `--flag value`, and `--no-foo`-style boolean negation, are real parsing
+  rules a naive `argv.forEach` gets wrong at the edges, and are exactly what
+  `util.parseArgs` (stable since Node 18.3, zero install cost — it's part of
+  the runtime) already implements correctly. (Quoted values with spaces,
+  e.g. `dockyard bucket create "my bucket"`, are NOT something the parser
+  needs to handle — the shell has already tokenized `argv` into one element
+  by the time Node sees it.) Each command file declares its own
+  `parseArgs` `options` schema (`{ image: { type: 'string' }, port: { type:
+  'string', multiple: true }, force: { type: 'boolean' } }`), so per-command
+  flags stay self-documenting without adding a framework dependency.
+  `commander`/`yargs` remain out of scope — the win they'd add on top of
+  `parseArgs` is subcommand help text/shell completions, not correctness,
+  and v1 doesn't need those yet.
 - **A dedicated `request()` helper, not a reuse of `web/src/api.ts`.**
   `web/src/api.ts` injects auth by monkey-patching the *global* `fetch` —
   correct for a browser SPA with one implicit session, wrong for a CLI/
@@ -53,6 +64,15 @@ every command is exactly one HTTP call to a route that already exists.
   parameter — same conventions (bearer header, `{error}` body → thrown
   `Error`) so error messages match what the web console shows for the same
   failure, but no global patching.
+- **Zero runtime dependencies — global `fetch`, intentionally.** `cli/`
+  ships with no `dependencies`, only `devDependencies` (tsx/typescript/
+  @types/node). This relies on Node's built-in global `fetch` (stable since
+  Node 18) and `util.parseArgs` (stable since Node 18.3). This repo's dev
+  environment runs Node 20.19.4, comfortably past both thresholds, so this
+  is a deliberate choice, not an oversight — add `"engines": { "node":
+  ">=18.3.0" }` to `cli/package.json` so an install on an older Node fails
+  fast with a clear message instead of a confusing runtime error the first
+  time `fetch`/`parseArgs` is called.
 - **XDG config path (`~/.config/dockyard/config.json`), not a bespoke
   dotfolder.** No existing precedent in this repo pulls either way (no prior
   CLI); XDG is the more standard modern convention (`gh`, and most
@@ -175,20 +195,47 @@ export async function request<T>(
 
 ### 4. Argument parsing + dispatch — `cli/src/index.ts`, `cli/src/parse.ts`
 
-- `argv[0]` = resource, `argv[1]` = verb, remainder parsed into
-  `{ positional: string[], flags: Record<string, string | boolean> }`
-  (repeatable flags like `--env`/`--port` collect into arrays).
-- Global `--json` flag recognized everywhere; controls output formatting
-  only, not the request itself.
-- Each resource gets its own command file under `cli/src/commands/`
-  (`container.ts`, `bucket.ts`, `function.ts`, `route.ts`, `project.ts`),
-  each exporting a `{ [verb]: (client, flags, positional) => Promise<unknown> }`
-  map — `index.ts` just looks up `commands[resource][verb]` and calls it.
+**Dispatch is two-tier, not a flat `resource/verb` map** — `login`,
+`logout`, and `configure` are top-level verbs, not a resource, and need to
+be checked *before* falling into resource/verb dispatch:
+
+```ts
+const SPECIAL_COMMANDS = new Set(['login', 'logout', 'configure', 'help', '--help', '-h']);
+
+const [first, second, ...rest] = process.argv.slice(2);
+
+if (!first || SPECIAL_COMMANDS.has(first)) {
+  await runSpecialCommand(first, rest); // login/logout/configure/help — no resource/verb shape
+} else {
+  const resource = first;
+  const verb = second;
+  await runResourceCommand(resource, verb, rest); // container/bucket/function/route/project
+}
+```
+
+- `runResourceCommand` looks up `commands[resource][verb]` (404s with a
+  clear "unknown resource/verb" message if either lookup misses) and hands
+  it the remaining `rest` args to parse with `node:util`'s `parseArgs`.
+- Each command file under `cli/src/commands/` (`container.ts`, `bucket.ts`,
+  `function.ts`, `route.ts`, `project.ts`) exports a
+  `{ [verb]: { options: ParseArgsOptionsConfig, run(client, parsed) => Promise<unknown> } }`
+  map — `options` is passed straight to `parseArgs({ args: rest, options,
+  allowPositionals: true })`, so each verb declares its own flags/positionals
+  schema instead of hand-parsing them.
+- The global `--json` flag is handled once, centrally, in `index.ts` (stripped
+  from `rest` before it reaches a command's own `parseArgs` call) — it
+  controls output formatting only, never reaches a command's `run()`.
 
 ### 5. Output formatting — `cli/src/output.ts`
 
-- Default: simple column-aligned table (manual `padEnd`, no table-rendering
-  dependency needed for v1's flat row shapes).
+- Default: column-aligned table (manual `padEnd`, no table-rendering
+  dependency). **Explicit truncation convention, so it doesn't break on long
+  values**: each column has a max width of 40 characters; any cell longer
+  than that is truncated to 37 chars + `…`. Column width is otherwise
+  `min(40, longest value in that column)`, so short columns (e.g. `STATE`)
+  don't get padded out to 40 chars for no reason. `--json` bypasses this
+  entirely — full untruncated data, since that's the scripting path where
+  truncation would silently corrupt output.
 - `--json`: `console.log(JSON.stringify(data, null, 2))`.
 - Errors go to `stderr`, process exits non-zero — required for CI script
   chains (`&&`, `set -e`) to behave correctly.
@@ -214,8 +261,11 @@ export async function request<T>(
 ## Constraints
 
 - Do NOT add a CLI-framework dependency (`commander`, `yargs`, etc.) for v1
-  — hand-rolled parsing per the reasoning above. Revisit only if the surface
-  grows enough to need real subcommand help/completions.
+  — `node:util`'s built-in `parseArgs` per the reasoning above. Revisit only
+  if the surface grows enough to need real subcommand help/completions.
+- Do NOT let `cli/src/index.ts`'s dispatch treat `login`/`logout`/
+  `configure` as a `resource`/`verb` pair — they're special top-level
+  commands, handled before resource/verb lookup (see step 4).
 - Do NOT reuse `web/src/api.ts`'s global-fetch-patching approach.
 - Do NOT try to cover all ~12 `tool-schemas.ts` resource groups in v1 —
   ship the five listed above; add more later via the same pattern.
