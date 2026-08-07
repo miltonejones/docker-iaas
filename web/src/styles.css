@@ -945,6 +945,14 @@ code,
   font-size: inherit;
   font-family: inherit;
 }
+.gateway-domain-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.gateway-domain-cell .btn--sm {
+  margin-left: 0;
+}
 .table {
   width: 100%;
   border-collapse: collapse;
