@@ -1232,6 +1232,13 @@ async function consumeOne() {
 
   if (!res.ok) {
     log(`API returned HTTP ${res.status}`);
+    // Token may be expired (consumer crafts its own JWT with a 24h lifetime,
+    // and initAuthHeader only runs once at startup).  Clear the stale token
+    // and re-authenticate so the next poll picks up a fresh JWT.
+    if (res.status === 401) {
+      authHeader = "";
+      await initAuthHeader();
+    }
     return false;
   }
 
