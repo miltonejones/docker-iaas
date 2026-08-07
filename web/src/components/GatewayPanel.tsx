@@ -237,8 +237,30 @@ export function GatewayList() {
                   <td className="muted">{group.length}</td>
                   <td className="muted mono">
                     {group[0].domain ? (
-                      <span title={group[0].domainVerified ? 'Verified' : 'Pending verification'}>
-                        {group[0].domain} {group[0].domainVerified ? '✅' : '⏳'}
+                      <span className="gateway-domain-cell" onClick={(e) => e.stopPropagation()}>
+                        <a
+                          href={`https://${group[0].domain}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="instance-link"
+                          title={group[0].domainVerified ? 'Verified' : 'Pending verification'}
+                        >
+                          {group[0].domain} {group[0].domainVerified ? '✅' : '⏳'}
+                        </a>
+                        <button
+                          className="btn btn--sm"
+                          title="Open in popup window"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.open(
+                              `https://${group[0].domain}`,
+                              '_blank',
+                              'noopener,noreferrer,toolbar=no,location=no,menubar=no,width=1024,height=768',
+                            );
+                          }}
+                        >
+                          <AppIcon name="external" />
+                        </button>
                       </span>
                     ) : '—'}
                   </td>
@@ -308,6 +330,20 @@ export function GatewayList() {
                     🌐 {group[0].domain}
                     {!group[0].domainVerified && ' (pending)'}
                   </a>
+                  <button
+                    className="btn btn--sm"
+                    title="Open in popup window"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.open(
+                        `https://${group[0].domain}`,
+                        '_blank',
+                        'noopener,noreferrer,toolbar=no,location=no,menubar=no,width=1024,height=768',
+                      );
+                    }}
+                  >
+                    <AppIcon name="external" />
+                  </button>
                 </div>
               )}
               <GatewayCardPreview name={group[0].name} />
