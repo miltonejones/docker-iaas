@@ -1579,16 +1579,38 @@ export function AssistantBar({
         onClick={embedded ? undefined : (e) => e.stopPropagation()}
       >
         <div className={embedded ? 'assistant-panel__head' : 'modal__head'}>
-          <h3>
-            <span className="assistant-panel__badge">{activeAssistantId && assistants.find(a => a.id === activeAssistantId)?.icon
-              ? <span>{assistants.find(a => a.id === activeAssistantId)!.icon}</span>
-              : <AppIcon name="assistant" />}</span>
-            {activeAssistantId ? (assistants.find(a => a.id === activeAssistantId)?.name ?? 'Ask Dockyard.ai') : 'Ask Dockyard.ai'}
-          </h3>
+          <div className="assistant-panel__head-left">
+            <h3>
+              <span className="assistant-panel__badge">{activeAssistantId && assistants.find(a => a.id === activeAssistantId)?.icon
+                ? <span>{assistants.find(a => a.id === activeAssistantId)!.icon}</span>
+                : <AppIcon name="assistant" />}</span>
+              {activeAssistantId ? (assistants.find(a => a.id === activeAssistantId)?.name ?? 'Ask Dockyard.ai') : 'Ask Dockyard.ai'}
+            </h3>
+            <input
+              className="assistant-session-bar__name assistant-session-bar__name--head"
+              value={sessionName}
+              onChange={(e) => setSessionName(e.target.value)}
+              onBlur={commitSessionName}
+              onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+              placeholder="Untitled session"
+            />
+          </div>
           {embedded && (
-            <button className="btn btn--ghost btn--sm" onClick={resetToNewSession}>
-              <AppIcon name="plus" /> <span className="btn-label">New</span>
-            </button>
+            <span style={{ display: 'flex', gap: 4 }}>
+              {log.length > 0 && (
+                <button
+                  className="btn btn--ghost btn--sm"
+                  onClick={syncToKnowledgeBase}
+                  title="Save session knowledge to dockyard-knowledge bucket"
+                  disabled={busy || syncingKB}
+                >
+                  <AppIcon name="database" /> <span className="btn-label">{syncingKB ? 'Saving…' : 'Sync KB'}</span>
+                </button>
+              )}
+              <button className="btn btn--ghost btn--sm" onClick={resetToNewSession}>
+                <AppIcon name="plus" /> <span className="btn-label">New</span>
+              </button>
+            </span>
           )}
           {!embedded && (
             <span style={{ display: 'flex', gap: 4 }}>
@@ -1615,14 +1637,6 @@ export function AssistantBar({
           )}
         </div>
         <div className="assistant-session-bar">
-            <input
-              className="assistant-session-bar__name"
-              value={sessionName}
-              onChange={(e) => setSessionName(e.target.value)}
-              onBlur={commitSessionName}
-              onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-              placeholder="Untitled session"
-            />
             {sessionSaving && <span className="assistant-session-bar__status muted">Saving…</span>}
             {(usage.inputTokens > 0 || usage.outputTokens > 0) && (
               <span

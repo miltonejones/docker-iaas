@@ -1329,6 +1329,9 @@ textarea:focus {
 }
 .modal--assistant .modal__head,
 .assistant-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   padding-bottom: 14px;
   margin-bottom: 14px;
   border-bottom: 1px solid var(--border);
@@ -1351,6 +1354,32 @@ textarea:focus {
   border: 1px solid var(--accent-glow);
   border-radius: var(--r-sm);
   font-size: 12.5px;
+}
+.assistant-panel__head-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+.assistant-session-bar__name--head {
+  flex: 1;
+  min-width: 0;
+  max-width: 240px;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 4px 6px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: var(--r-sm);
+}
+.assistant-session-bar__name--head:hover,
+.assistant-session-bar__name--head:focus {
+  border-color: var(--border);
+  background: var(--bg-elev);
+}
+.assistant-session-bar__name--head:focus {
+  box-shadow: none;
 }
 .assistant-session-bar {
   display: flex;
