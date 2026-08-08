@@ -295,11 +295,11 @@ export function ProjectDetailPage() {
               <AppIcon name="edit" />
             </button>
             <button className="btn btn--ghost btn--sm" onClick={captureManifest} disabled={capturing} title="Snapshot the resources currently linked to this project.">
-              {capturing ? 'Capturing…' : 'Capture'}
+              <AppIcon name="camera" />
             </button>
             {manifest && (
-              <button className="btn btn--ghost btn--sm" onClick={() => { setShowManifest(true); setAddMode(false); setSelected(null); }}>
-                Manifest
+              <button className="btn btn--ghost btn--sm" onClick={() => { setShowManifest(true); setAddMode(false); setSelected(null); }} title="View captured manifest">
+                <AppIcon name="manifest" />
               </button>
             )}
           </div>
