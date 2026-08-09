@@ -1420,6 +1420,10 @@ export function AssistantBar({
     setBusy(true);
     setError(null);
 
+    // Dismiss the card immediately — don't wait for the async work below.
+    const remaining = pending.filter((p) => p.id !== action.id);
+    setPending(remaining);
+
     let entry: ResolvedResult;
     if (!approved) {
       setLog((l) => [...l, { kind: 'action', text: `Skipped: ${ACTION_LABEL[action.name] ?? action.name}` }]);
@@ -1489,13 +1493,11 @@ export function AssistantBar({
     }
 
     const nextResolved = [...resolved, entry];
-    const remaining = pending.filter((p) => !nextResolved.some((r) => r.toolUseId === p.id));
     if (remaining.length > 0) {
       // More tool calls in this turn are still awaiting a decision — hold
       // off calling the model again until every one of them has an answer,
       // since Claude expects all tool_result blocks for a turn at once.
       setResolved(nextResolved);
-      setPending(remaining);
       setActiveActionName(null);
       // Persist partial progress so a reload doesn't lose confirmed actions.
       saveSession({ messages: rawMessages, log, pending: remaining, resolved: nextResolved, assistantId: activeAssistantId ?? null, usage: usageRef.current });

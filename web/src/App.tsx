@@ -332,6 +332,12 @@ export function App() {
   const [assistantSessionId, setAssistantSessionId] = useState<string | undefined>(undefined);
   const [modalKey, setModalKey] = useState(0);
   const [createIssueOpen, setCreateIssueOpen] = useState(false);
+  const PINNED_WIDTH_KEY = 'dockyard:assistant-pinned-width';
+  const [pinnedWidth, setPinnedWidth] = useState(() => {
+    const saved = localStorage.getItem(PINNED_WIDTH_KEY);
+    return saved ? Math.max(280, Math.min(800, Number(saved))) : 420;
+  });
+  const resizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const [projectId, setProjectId] = useState<string | null>(() => getStoredProjectId());
 
   // When navigating to a project detail page, keep the project selector in sync.
@@ -374,6 +380,27 @@ export function App() {
   useEffect(() => {
     localStorage.setItem(PINNED_KEY, assistantPinned ? '1' : '0');
   }, [assistantPinned]);
+
+  // Persist pinned panel width.
+  useEffect(() => {
+    localStorage.setItem(PINNED_WIDTH_KEY, String(pinnedWidth));
+  }, [pinnedWidth]);
+
+  // Resize handle for the pinned assistant panel.
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!resizeRef.current) return;
+      const delta = resizeRef.current.startX - e.clientX;
+      setPinnedWidth(Math.max(280, Math.min(800, resizeRef.current.startWidth + delta)));
+    };
+    const onUp = () => { resizeRef.current = null; };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, []);
   const [sessionsOpen, setSessionsOpen] = useState(false);
   const [sessionsList, setSessionsList] = useState<AssistantSessionSummary[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
@@ -732,7 +759,14 @@ export function App() {
             </Routes>
           </main>
           {assistantModal && assistantPinned && (
-            <aside className="assistant-pinned-panel">
+            <>
+              <div
+                className="pinned-resize-handle"
+                onMouseDown={(e) => {
+                  resizeRef.current = { startX: e.clientX, startWidth: pinnedWidth };
+                }}
+              />
+              <aside className="assistant-pinned-panel" style={{ width: pinnedWidth }}>
               <div className="assistant-pinned-panel__head">
                 <span>Ask Dockyard</span>
                 <span>
@@ -754,6 +788,7 @@ export function App() {
                 onChanged={() => { refreshContainers(); emitRefresh(); }}
               />
             </aside>
+            </>
           )}
         </div>
 
