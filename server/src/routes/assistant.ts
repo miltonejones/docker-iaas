@@ -602,7 +602,8 @@ assistantRouter.post("/plan", async (req: Request, res: Response) => {
     await respondStream(messages, req, res, customOpts);
   } catch (err) {
     if (!res.headersSent) {
-      res.status(500).json({ error: (err as Error).message });
+      const status = (err as HttpError).status || 500;
+      res.status(status).json({ error: (err as Error).message });
     }
   }
 });
@@ -639,7 +640,8 @@ assistantRouter.post("/confirm", async (req: Request, res: Response) => {
     await respondStream(messages, req, res, customOpts);
   } catch (err) {
     if (!res.headersSent) {
-      res.status(500).json({ error: (err as Error).message });
+      const status = (err as HttpError).status || 500;
+      res.status(status).json({ error: (err as Error).message });
     }
   }
 });
