@@ -89,17 +89,21 @@ globalThis.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
   return _originalFetch(input, init);
 } as typeof fetch;
 
-async function json<T>(res: Response): Promise<T> {
-  if (!res.ok) {
-    let msg = res.statusText;
-    try {
-      const body = await res.json();
-      if (body?.error) msg = body.error;
-    } catch {
-      /* non-JSON error body */
-    }
-    throw new Error(msg);
+/** Extracts the `error` field from a failed response's JSON body, falling
+ *  back to statusText when the body isn't JSON (or has no `error` field). */
+async function errorMessage(res: Response): Promise<string> {
+  let msg = res.statusText;
+  try {
+    const body = await res.json();
+    if (body?.error) msg = body.error;
+  } catch {
+    /* non-JSON error body */
   }
+  return msg;
+}
+
+async function json<T>(res: Response): Promise<T> {
+  if (!res.ok) throw new Error(await errorMessage(res));
   return res.json() as Promise<T>;
 }
 
@@ -690,8 +694,8 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt, messages, assistantId }),
       signal,
-    }).then((r) => {
-      if (!r.ok) throw new Error(`Assistant plan failed: ${r.statusText}`);
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(await errorMessage(r));
       return parseSSE(r);
     }),
 
@@ -715,8 +719,8 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ messages, results, assistantId }),
       signal,
-    }).then((r) => {
-      if (!r.ok) throw new Error(`Assistant confirm failed: ${r.statusText}`);
+    }).then(async (r) => {
+      if (!r.ok) throw new Error(await errorMessage(r));
       return parseSSE(r);
     }),
 
