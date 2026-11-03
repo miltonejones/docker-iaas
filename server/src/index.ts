@@ -48,6 +48,11 @@ export function createApp(): express.Express {
   initDb();
 
   const app = express();
+  // Dockyard is always reached through the Caddy reverse proxy on the
+  // internal dockyard-net network, which sets X-Forwarded-For correctly —
+  // trust it so req.ip reflects the real client (needed for gateway rate
+  // limiting; otherwise every request looks like it's from Caddy).
+  app.set('trust proxy', true);
   app.use(cors());
 
   // ── Custom-domain routing (before /gw so Host-header matches win) ─────

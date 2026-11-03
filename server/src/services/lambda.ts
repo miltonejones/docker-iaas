@@ -17,6 +17,9 @@ import {
 } from '../db.js';
 import { HttpError } from './HttpError.js';
 import type { CreateFunctionInput, UpdateFunctionInput } from './types.js';
+import { acquireLambdaSlot, startLambdaReaper } from './lambdaGuard.js';
+
+startLambdaReaper();
 
 // ── Runtimes ──────────────────────────────────────────────────
 
@@ -228,6 +231,11 @@ export async function runLambda(
   const started = Date.now();
   let container: Awaited<ReturnType<typeof docker.createContainer>> | null = null;
 
+  // Cap concurrent container spin-up — without this, a burst of requests
+  // (e.g. a scanner hitting a catch-all gateway route) can create one
+  // container per request with no limit.
+  const release = await acquireLambdaSlot();
+
   try {
     let image = def.image;
     if (packages.length > 0) {
@@ -289,6 +297,7 @@ export async function runLambda(
     if (container) {
       container.remove({ force: true, v: true }).catch(() => {});
     }
+    release();
   }
 }
 

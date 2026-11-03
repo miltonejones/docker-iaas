@@ -8,6 +8,7 @@ import {
 } from './db/gateway.js';
 import { getFunction, getFunctionEnv } from './db.js';
 import { runLambda, entryPathOf, fullFileSet } from './routes/lambda.js';
+import { checkRateLimit } from './services/lambdaGuard.js';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -223,6 +224,16 @@ export async function handleContainer(route: RouteRow, req: Request, res: Respon
 }
 
 export async function handleLambda(route: RouteRow, req: Request, res: Response, telem: GatewayTelemetryState): Promise<void> {
+  // Catch-all lambda routes invoke the function for every path that hits
+  // them, so a scanner/bot burst can spin up one container per request. Gate
+  // on client IP before touching Docker at all. Both the /gw/:routeName and
+  // custom-domain pipelines call this function directly, so this single
+  // check covers all gateway traffic to lambda targets.
+  if (!checkRateLimit(req.ip || 'unknown')) {
+    sendGatewayJsonError(telem, res, 429, 'lambda_rate_limited', 'Too many requests.');
+    return;
+  }
+
   const fn = getFunction(route.target_id);
   if (!fn) {
     sendGatewayJsonError(telem, res, 404, 'lambda_target_missing', 'Target function no longer exists.');
